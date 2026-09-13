@@ -1,0 +1,47 @@
+# MIRIAM — CODEMAP
+
+Updated 2026-09-13; linked entry paths verified. Navigation only; current scope, verification and limits: [STATUS](STATUS.md). Follow imports/references from these entry points. Update affected links when boundaries move; do not expand this into an inventory.
+
+## Entry points
+
+`domain/persistence → commands → API/contracts → worker → web → iOS → Android → tests`
+
+- **Domain/persistence:** [base schema](../../migrations/001_slice01.sql); [migration runner](../../scripts/migrate.ts) discovers subsequent SQL migrations; [DB/transactions](../../src/server/db.ts).
+- **Commands:** [execute/createWorkspace](../../src/server/commands.ts) dispatches capability commands; [Workspace guards/revisions](../../src/server/workspace-state.ts).
+- **Active Work slice:** [commands/control](../../src/server/active-work-commands.ts), [contract](../../src/contracts/active-work.ts), [worker/recovery](../../src/server/active-work-worker.ts), [context](../../src/server/active-work-context.ts), [Specialist port](../../src/server/analysis-specialist.ts); persistence/client/test links: [ACTIVE_WORK](ACTIVE_WORK.md).
+- **Tasks/follow-up slice:** [commands](../../src/server/tasks-commands.ts), [contract](../../src/contracts/tasks.ts), [reads](../../src/server/tasks-queries.ts), [scheduler/recovery](../../src/server/tasks-worker.ts), [selective retrieval](../../src/server/tasks-context.ts); client/test links: [TASKS](TASKS.md).
+- **API/contracts:** [standalone server](../../src/api.ts) → [handleAPI](../../src/server/api.ts); [v1 DTOs](../../src/contracts/v1.ts), [command schemas](../../src/contracts/commands.ts), [OpenAPI](../../src/contracts/openapi.ts); [sync/history/receipts](../../src/server/sync.ts).
+- **Worker:** [process entry](../../src/worker.ts) → [job registration/recovery](../../src/server/worker-runner.ts); [interpretation/retrieval](../../src/server/interpretation.ts).
+- **Conversational AI:** [prompt](../../src/server/miriam-prompt.ts), [selective context](../../src/server/conversation-context.ts), [structured model boundary](../../src/server/structured-llm.ts), [explicit work-suggestion application](../../src/server/work-suggestions.ts); configuration/live-verification limits: [external services](EXTERNAL_SERVICES.md).
+- **Participation/invitations/links:** [current participation gate](../../src/server/participation.ts), [invitation delivery/recovery](../../src/server/invitation-delivery.ts) → [mail transport](../../src/server/invitation-mail.ts), [dual-access Workspace navigation](../../src/server/workspace-links.ts). Closure evidence: [pre-design checkpoint](PRE_DESIGN_COMPLETENESS.md).
+- **Additional capability boundaries:** [access relationships](../../src/server/access-commands.ts), [Goal/mandates/decisions](../../src/server/project-commands.ts), [attention/workstreams](../../src/server/attention.ts); [Google adapters](GOOGLE_INTEGRATIONS.md), [rich-source ingestion](RICH_INPUTS.md).
+- **Web:** [Workspace page](../../src/app/page.tsx) imports capability views; [HTTP client](../../src/client/api.ts), [command journal](../../src/client/command-journal.ts), [Next v1 adapter](../../src/app/api/v1/[...path]/route.ts).
+- **Product shell:** [design rationale](PRODUCT_DESIGN.md), [web detail layer](../../src/client/workspace-layer.tsx), [SwiftUI capability views](../../mobile/ios/Miriam/WorkspaceDetail.swift), [Compose capability views](../../mobile/android/app/src/main/java/it/miriam/nativeapp/WorkspaceDetailScreen.kt).
+- **Voice/calls:** [Conversation voice](../../src/server/voice.ts), [call commands](../../src/server/calls.ts), [control/recovery](../../src/server/call-worker.ts), [recording/transcripts](../../src/server/call-transcripts.ts); contracts, all three client controllers and tests: [VOICE_CALLS](VOICE_CALLS.md).
+- **iOS:** [SwiftUI entry](../../mobile/ios/Miriam/MiriamApp.swift) → [WorkspaceModel](../../mobile/ios/Miriam/WorkspaceModel.swift); [API/DTOs](../../mobile/ios/Miriam/API.swift), [Vault/journal](../../mobile/ios/Miriam/Vault.swift).
+- **Android:** [Compose entry](../../mobile/android/app/src/main/java/it/miriam/nativeapp/MainActivity.kt) → [WorkspaceModel](../../mobile/android/app/src/main/java/it/miriam/nativeapp/WorkspaceModel.kt); [API/DTOs](../../mobile/android/app/src/main/java/it/miriam/nativeapp/Api.kt), [Vault/journal](../../mobile/android/app/src/main/java/it/miriam/nativeapp/Vault.kt).
+- **Tests:** [domain](../../tests/domain.test.ts), [API contract](../../tests/api-contract.test.ts); [browser harness](../../tests/run-e2e.ts), [native server harness](../../tests/run-native-server.ts); [iOS boundary tests](../../mobile/ios/MiriamTests/BoundaryTests.swift), [Android boundary tests](../../mobile/android/app/src/androidTest/java/it/miriam/nativeapp/BoundaryTest.kt). Commands: [package scripts](../../package.json), [native verification guide](MULTICLIENT.md).
+
+Cross-cutting authentication: [Better Auth](../../src/server/auth.ts), [cookie/origin guards](../../src/server/http.ts), [native sessions](../../src/server/native-session.ts); Workspace access checks are in the commands/guards above.
+
+## Topic → approved ADR / canonical reference
+
+- **Product intent/scope:** [MVP specification](../product/MVP_SPEC_v0.1.md), [draft reconciliation](../product/MVP_V0.2_RECONCILIATION.md).
+- **Initial authority/adherence; Goal lifecycle:** [ADR-0001](../decisions/ADR-0001-prima-authority-goal-iniziale-setup-progressivo.md), [ADR-0003](../decisions/ADR-0003-lifecycle-goal-continuita-relazioni.md).
+- **Statements, Accepted Information, commitments:** [ADR-0002](../decisions/ADR-0002-affermazioni-attribuite-informazioni-accettate-impegni.md).
+- **Context efficiency:** [ADR-0004](../decisions/ADR-0004-context-efficiency-minimum-sufficient-context.md).
+- **Authoritative persistence/history:** [ADR-0005](../decisions/ADR-0005-postgresql-stato-canonico-storia-provenance.md).
+- **Access relationships/bootstrap/protection/history:** [ADR-0006](../decisions/ADR-0006-accesso-workspace-capability-relazioni-authority.md), [ADR-0007](../decisions/ADR-0007-bootstrap-accesso-uscita-volontaria-continuita-workspace.md), [ADR-0008](../decisions/ADR-0008-governance-accesso-protetta-condizioni-congiunte-rinuncia.md), [ADR-0009](../decisions/ADR-0009-visibilita-storica-membri-confine-condiviso-workspace.md); [B2 policy](../product/MVP_SPEC_v0.1.md#141-policy-operativa-b2-approvata).
+- **Native clients/common backend:** [ADR-0010](../decisions/ADR-0010-client-nativi-backend-comune.md); implemented boundary: [MULTICLIENT](MULTICLIENT.md).
+- **Calendar/temporal state:** [ADR-0011](../decisions/ADR-0011-calendar-stato-temporale-osservazioni-azioni.md); BUILD entry guide: [CALENDAR](CALENDAR.md).
+- **Email/private observations/send:** [ADR-0012](../decisions/ADR-0012-workspace-email-privacy-bozze-invio.md); BUILD entry guide: [EMAIL](EMAIL.md).
+- **Artifacts:** [MVP §5](../product/MVP_SPEC_v0.1.md#5-artifacts-e-tasks). **Tasks/responsibility/follow-up:** [ADR-0013](../decisions/ADR-0013-task-responsabilita-follow-up.md), [BUILD boundary](TASKS.md).
+- **Commit Points, Active Work, Specialists:** [authority](../product/MVP_SPEC_v0.1.md#9-progressive--scoped-authority), [Action Policy](../product/MVP_SPEC_v0.1.md#10-action-policy), [ADR-0014](../decisions/ADR-0014-active-work-specialist-contribution.md); [gate](ACTIVE_WORK_GATE.md), [bounded BUILD](ACTIVE_WORK.md).
+- **Product direction / GTM:** [MVP GTM/product discovery canon](../product/MVP_GTM_PRODUCT_DISCOVERY.md).
+- **Voice/call consent and sources:** [ADR-0015](../decisions/ADR-0015-voce-chiamate-consenso-registrazione.md).
+- **BUILD/WIRE and deployment prerequisites:** [canonical deployment/services guide](DEPLOY_EXTERNAL_SERVICES.md); earlier adapter detail: [external services manifest](EXTERNAL_SERVICES.md).
+
+## Navigation edges
+
+- Web still has pre-v1 paths: [snapshot route](../../src/app/api/workspaces/[id]/route.ts) → [queries](../../src/server/queries.ts), [command adapter](../../src/app/api/workspaces/[id]/commands/route.ts), [SSE hints](../../src/app/api/workspaces/[id]/events/route.ts). Include them when tracing web impact; do not assume every request uses `handleAPI`.
+- Domain behavior resides in server application modules and SQL; there is no separate domain-model package.

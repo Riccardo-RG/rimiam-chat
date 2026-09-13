@@ -1,0 +1,18 @@
+services:
+  postgres:
+    image: postgres:18.3-alpine
+    ports:
+      - "127.0.0.1:54329:5432"
+    environment:
+      POSTGRES_USER: miriam
+      POSTGRES_PASSWORD: miriam_local_only
+      POSTGRES_DB: miriam
+    volumes:
+      - miriam_pg:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U miriam -d miriam"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+volumes:
+  miriam_pg:

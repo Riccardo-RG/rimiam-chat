@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": ["ES2023", "DOM", "DOM.Iterable", "DOM.AsyncIterable"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "types": ["node"],
+    "strict": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "rootDir": "src",
+    "outDir": "dist/backend",
+    "declaration": true,
+    "rewriteRelativeImportExtensions": true
+  },
+  "include": [
+    "src/server/**/*.ts",
+    "src/contracts/**/*.ts",
+    "src/api.ts",
+    "src/worker.ts"
+  ]
+}
