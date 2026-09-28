@@ -17,6 +17,7 @@
     "src/server/**/*.ts",
     "src/contracts/**/*.ts",
     "src/api.ts",
+    "src/migrate.ts",
     "src/worker.ts"
   ]
 }

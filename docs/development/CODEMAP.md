@@ -1,12 +1,12 @@
 # MIRIAM — CODEMAP
 
-Updated 2026-09-26; linked entry paths verified. Navigation only; current scope, verification and limits: [STATUS](STATUS.md). Follow imports/references from these entry points. Update affected links when boundaries move; do not expand this into an inventory.
+Updated 2026-09-28; linked entry paths verified. Navigation only; current scope, verification and limits: [STATUS](STATUS.md). Follow imports/references from these entry points. Update affected links when boundaries move; do not expand this into an inventory.
 
 ## Entry points
 
 `domain/persistence → commands → API/contracts → worker → web → iOS → Android → tests`
 
-- **Domain/persistence:** [base schema](../../migrations/001_slice01.sql); [migration runner](../../scripts/migrate.ts) discovers subsequent SQL migrations; [DB/transactions](../../src/server/db.ts).
+- **Domain/persistence:** [base schema](../../migrations/001_slice01.sql); [migration runner](../../src/migrate.ts) discovers subsequent SQL migrations; [DB/transactions](../../src/server/db.ts).
 - **Commands:** [execute/createWorkspace](../../src/server/commands.ts) dispatches capability commands; [Workspace guards/revisions](../../src/server/workspace-state.ts).
 - **Active Work slice:** [commands/control](../../src/server/active-work-commands.ts), [contract](../../src/contracts/active-work.ts), [worker/recovery](../../src/server/active-work-worker.ts), [context](../../src/server/active-work-context.ts), [Specialist port](../../src/server/analysis-specialist.ts); persistence/client/test links: [ACTIVE_WORK](ACTIVE_WORK.md).
 - **Tasks/follow-up slice:** [commands](../../src/server/tasks-commands.ts), [contract](../../src/contracts/tasks.ts), [reads](../../src/server/tasks-queries.ts), [scheduler/recovery](../../src/server/tasks-worker.ts), [selective retrieval](../../src/server/tasks-context.ts); client/test links: [TASKS](TASKS.md).
@@ -24,6 +24,7 @@ Updated 2026-09-26; linked entry paths verified. Navigation only; current scope,
 - **iOS:** [SwiftUI entry](../../mobile/ios/Miriam/MiriamApp.swift) → [WorkspaceModel](../../mobile/ios/Miriam/WorkspaceModel.swift); [API/DTOs](../../mobile/ios/Miriam/API.swift), [Vault/journal](../../mobile/ios/Miriam/Vault.swift).
 - **Android:** [Compose entry](../../mobile/android/app/src/main/java/it/miriam/nativeapp/MainActivity.kt) → [WorkspaceModel](../../mobile/android/app/src/main/java/it/miriam/nativeapp/WorkspaceModel.kt); [API/DTOs](../../mobile/android/app/src/main/java/it/miriam/nativeapp/Api.kt), [Vault/journal](../../mobile/android/app/src/main/java/it/miriam/nativeapp/Vault.kt).
 - **Tests:** [domain](../../tests/domain.test.ts), [API contract](../../tests/api-contract.test.ts); [browser harness](../../tests/run-e2e.ts), [native server harness](../../tests/run-native-server.ts); [iOS boundary tests](../../mobile/ios/MiriamTests/BoundaryTests.swift), [Android boundary tests](../../mobile/android/app/src/androidTest/java/it/miriam/nativeapp/BoundaryTest.kt). Commands: [package scripts](../../package.json), [native verification guide](MULTICLIENT.md).
+- **Deployment:** [Render Blueprint](../../render.yaml), [Docker runtime](../../Dockerfile), [web](../../scripts/render-web.sh) / [worker](../../scripts/render-worker.sh) startup, [DB health](../../src/app/api/health/route.ts); activation/cost limits: [deployment guide](DEPLOY_EXTERNAL_SERVICES.md).
 
 Cross-cutting authentication: [Better Auth](../../src/server/auth.ts), [cookie/origin guards](../../src/server/http.ts), [native sessions](../../src/server/native-session.ts); Workspace access checks are in the commands/guards above.
 

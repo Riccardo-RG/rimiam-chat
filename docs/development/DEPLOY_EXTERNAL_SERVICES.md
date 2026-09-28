@@ -33,6 +33,14 @@ Aggiornato 2026-09-26. Guida operativa canonica per l’attivazione, non autoriz
 
 ## Runtime e infrastruttura da predisporre
 
+### Preparazione Render (2026-09-28)
+
+Il database Render esistente `rimiam-db` è un **PostgreSQL Free a Frankfurt** con accesso esterno bloccato; il piano gratuito scade il **2026-10-28** e richiede upgrade o migrazione dei dati prima della cancellazione prevista dal provider. Il [Blueprint](../../render.yaml) fa riferimento a quel database senza crearne un altro. Prevede web Free e un worker sempre attivo sul piano Render `0.5c-512mb` (**$7/mese secondo il listino verificato per questa preparazione**, oltre a eventuali altri consumi). **Il Blueprint non è stato applicato:** nessun web/worker o costo è stato attivato da questa preparazione.
+
+L’[immagine Docker](../../Dockerfile) include Node 24, il backend compilato, Python per PDF/DOCX e FFmpeg. Web e worker eseguono il migratore compilato prima dell’avvio; l’advisory lock e i checksum serializzano le migrazioni se i due servizi partono insieme. `/api/health` verifica anche PostgreSQL. Il segreto di sessione condiviso viene generato dal gruppo Render; `DATABASE_URL` usa la connessione interna del database esistente e `BETTER_AUTH_URL` l’URL HTTPS del web. Nessun `.env`, `.npmrc` o segreto locale entra nel contesto Docker.
+
+Prima della sincronizzazione occorrono l’autorizzazione al costo ricorrente del worker e la pubblicazione della configurazione nel repository privato. Dopo la creazione, configurare i provider necessari come variabili protette condivise da web e worker (in particolare Resend e OpenAI per i primi test remoti), senza inserire chiavi in Git. Verificare migrazioni/health, due account e invito reale, poi gli altri provider per le relative capability. Il solo avvio di web/database non dimostra il funzionamento della Conversation AI o della verifica email.
+
 Una configurazione iniziale sufficiente comprende **un servizio Node Web/API, un worker persistente, PostgreSQL, il bucket e LiveKit Cloud**. Le route Next riusano il backend comune; un processo API standalone aggiuntivo è opzionale, non necessario per duplicare il dominio. SSE, Graphile, Better Auth e i client nativi non richiedono abbonamenti SaaS separati. Non servono Redis, vector database, knowledge graph, Kubernetes o framework agent.
 
 - Runtime Node 24 compatibile con `package.json`; dipendenze con lockfile. Build web `npm run build`, worker `npm run build:backend`. Sul servizio pubblico usare `next start --hostname 0.0.0.0 --port <PORT>`; il comando locale lega deliberatamente il loopback. Worker: `node dist/backend/worker.js` con ambiente iniettato dal gestore segreti. API standalone opzionale: `node dist/backend/api.js`, `API_HOST=0.0.0.0`, porta assegnata dall’host. Nessun `.env` deve entrare nell’artefatto pubblico.
