@@ -98,6 +98,10 @@ struct AudioCall: Decodable, Identifiable {
   private var playbackFile: URL?
   private var voiceTimer: Task<Void, Never>?
   private var generation = 0
+  private struct VoiceAnchor:Equatable {let boundary:String;let focus:WorkstreamFocus?;let reference:ConversationReference?}
+  private var voiceAnchor:VoiceAnchor?
+  var voiceReference:ConversationReference? {voiceAnchor?.reference}
+  private var committedVoiceFilename:String?
   var inCall: Bool { wantsCall || room != nil }
   func run(_ model: WorkspaceModel) async {
     let key = model.mediaBoundary
@@ -132,6 +136,7 @@ struct AudioCall: Decodable, Identifiable {
     voiceConsent = false
     endDialog()
     note.discard()
+    voiceAnchor=nil;committedVoiceFilename=nil
     stopPlayback()
     wantsCall = false
     Self.callInProgress = false
@@ -298,26 +303,67 @@ struct AudioCall: Decodable, Identifiable {
     note.stop()
     SpeechPlayback.shared.stop()
   }
-  func startNote() async {
-    guard voiceConsent, !inCall else { return }
+  private func currentVoiceAnchor(_ model:WorkspaceModel) -> VoiceAnchor {
+    VoiceAnchor(boundary:model.mediaBoundary,focus:model.workstreamFocus,reference:model.composerReference?.reference)
+  }
+  func voiceNeedsFocusSelection(_ model:WorkspaceModel) -> Bool {
+    note.file != nil && (voiceAnchor != currentVoiceAnchor(model) || model.focusIsStale)
+  }
+  func focusChanged(_ model:WorkspaceModel) {
+    guard note.file != nil || dialog else {return}
+    if voiceAnchor != currentVoiceAnchor(model) || model.focusIsStale {
+      generation += 1
+      endDialog()
+      error="Il filone o il riferimento è cambiato. L’audio è conservato: verifica la selezione e conferma dove inviarlo."
+    }
+  }
+  func useCurrentVoiceFocus(_ model:WorkspaceModel) {
+    guard !note.recording,!dialog,note.file != nil,!model.focusIsStale,
+      voiceAnchor?.boundary == model.mediaBoundary else {return}
+    voiceAnchor=currentVoiceAnchor(model);error=""
+  }
+  func discardNote() {note.discard();voiceAnchor=nil;committedVoiceFilename=nil}
+  func voiceCommitted(_ command:PendingCommand,_ model:WorkspaceModel) {
+    guard command.type == "voice.send",command.base == model.credential?.base,
+      command.actor == model.credential?.user.id,command.workspace == model.selected,
+      let file=note.file,let json=command.commandJSON,
+      let body=(try? JSONSerialization.jsonObject(with:Data(json.utf8))) as? [String:Any],
+      body["filename"] as? String == file.lastPathComponent else {return}
+    committedVoiceFilename=file.lastPathComponent
+    note.discard()
+  }
+  func startNote(_ model:WorkspaceModel) async {
+    guard voiceConsent,!inCall,!model.focusIsStale else {return}
     endDialog()
     stopPlayback()
+    let anchor=currentVoiceAnchor(model),token=generation
+    voiceAnchor=anchor;committedVoiceFilename=nil
     await note.start()
+    guard token == generation,anchor == currentVoiceAnchor(model),!model.focusIsStale else {note.stop();return}
   }
   func sendVoice(_ model: WorkspaceModel, _ mode: String) async {
     let token = generation
     guard voiceConsent, let file = note.file, !model.busy else { return }
+    guard voiceAnchor == currentVoiceAnchor(model),!model.focusIsStale else {focusChanged(model);return}
+    if model.pending.contains(where:{command in
+      guard command.type == "voice.send",let json=command.commandJSON,
+        let body=(try? JSONSerialization.jsonObject(with:Data(json.utf8))) as? [String:Any] else {return false}
+      return body["filename"] as? String == file.lastPathComponent
+    }) {error="Questo audio ha già un invio da verificare. Recupera la stessa operazione.";return}
+    let anchor=voiceAnchor
     do {
       let data = try Data(contentsOf: file)
       guard data.count <= 8_388_608 else { throw APIError(code: "DOCUMENT_TOO_LARGE", status: 413) }
       let before = model.voiceReplySourceID
-      let saved = await model.workspaceCommand(
-        [
+      var command:[String:Any] = [
           "type": "voice.send", "filename": file.lastPathComponent,
           "bytesBase64": data.base64EncodedString(), "mode": mode, "allowModelProcessing": true,
-        ], label: mode == "miriam" ? "Messaggio vocale a RIMIAM" : "Messaggio vocale")
-      if saved, token == generation {
-        note.discard()
+        ]
+      if let focus=anchor?.focus {command["workstreamFocus"]=focus.json}
+      if let reference=anchor?.reference {command["reference"]=reference.json}
+      let saved=await model.workspaceCommand(command,label:mode == "miriam" ? "Messaggio vocale a RIMIAM" : "Messaggio vocale")
+      if saved,token == generation,anchor == voiceAnchor,anchor == currentVoiceAnchor(model) {
+        guard committedVoiceFilename == file.lastPathComponent else {endDialog();error="Invio da verificare. L’audio è conservato e la stessa operazione è recuperabile.";return}
         if mode == "miriam", model.voiceReplySourceID != before {
           pendingVoice = model.voiceReplySourceID
         } else if mode == "miriam" {
@@ -330,15 +376,18 @@ struct AudioCall: Decodable, Identifiable {
     }
   }
   func beginDialog(_ model: WorkspaceModel) async {
-    guard voiceConsent, !inCall else { return }
+    guard voiceConsent,!inCall,!model.focusIsStale else {return}
+    voiceAnchor=currentVoiceAnchor(model);committedVoiceFilename=nil
     dialog = true
     error = ""
     stopPlayback()
     await listen(model)
   }
   private func listen(_ model: WorkspaceModel) async {
-    guard dialog else { return }
+    guard dialog,voiceAnchor == currentVoiceAnchor(model),!model.focusIsStale else {focusChanged(model);return}
+    let anchor=voiceAnchor,token=generation
     await note.start()
+    guard token == generation,anchor == voiceAnchor,anchor == currentVoiceAnchor(model),!model.focusIsStale else {note.stop();return}
     guard note.recording else {
       error = note.error
       endDialog()
@@ -350,6 +399,7 @@ struct AudioCall: Decodable, Identifiable {
       var lastSpeech = Date()
       let started = Date()
       while !Task.isCancelled && dialog && note.recording {
+        guard anchor == currentVoiceAnchor(model),!model.focusIsStale else {focusChanged(model);return}
         if note.power() > -36 {
           heard = true
           lastSpeech = Date()
@@ -366,6 +416,7 @@ struct AudioCall: Decodable, Identifiable {
     }
   }
   private func updateDialog(_ model: WorkspaceModel) async {
+    guard voiceAnchor == currentVoiceAnchor(model),!model.focusIsStale else {focusChanged(model);return}
     if let pendingVoice {
       if let voice = voices.first(where: { $0.sourceId == pendingVoice }),
         voice.errorCode != nil || ["failed", "stale"].contains(voice.interpretationStatus ?? "")
@@ -396,23 +447,33 @@ struct AudioCall: Decodable, Identifiable {
 struct ConversationVoiceView: View {
   let model: WorkspaceModel
   @Environment(\.scenePhase) private var phase
+  @State private var discardAudio=false
   var body: some View {
     @Bindable var media = model.media
     DisclosureGroup("Voce e dialogo con RIMIAM") {
+      if let reference=(media.note.file != nil || media.dialog) ? media.voiceReference : model.composerReference?.reference {
+        Text("Riferimento per l’audio: " + reference.kind.label + " · " + reference.versionLabel).font(.caption.weight(.semibold))
+      }
       Toggle(
         "Condivido l’audio nel Workspace e autorizzo la trascrizione con il servizio configurato",
         isOn: $media.voiceConsent
       ).disabled(media.note.recording || media.dialog)
       Button(media.note.recording ? "Ferma registrazione" : "Registra messaggio vocale") {
-        Task { if media.note.recording { media.note.stop() } else { await media.startNote() } }
-      }.disabled(!media.voiceConsent || media.inCall || media.dialog)
+        Task { if media.note.recording { media.note.stop() } else { await media.startNote(model) } }
+      }.disabled(!media.voiceConsent || media.inCall || media.dialog || model.focusIsStale || (media.note.file != nil && !media.note.recording))
       if media.note.file != nil && !media.note.recording {
+        if media.voiceNeedsFocusSelection(model) {
+          Text("L’audio è legato alla selezione precedente. Il testo e i dati condivisi non vengono spostati automaticamente.").font(.caption)
+          Button("Usa la selezione attuale per questo audio"){media.useCurrentVoiceFocus(model)}.disabled(model.focusIsStale)
+        }
         Button("Invia messaggio vocale") { Task { await media.sendVoice(model, "message") } }
-          .disabled(model.busy || !media.voiceConsent)
+          .disabled(model.busy || !media.voiceConsent || media.voiceNeedsFocusSelection(model))
+        Button("Elimina questa registrazione locale",role:.destructive){discardAudio=true}
       }
       Button(media.dialog ? "Termina dialogo vocale" : "Parla con RIMIAM") {
         Task { if media.dialog { media.endDialog() } else { await media.beginDialog(model) } }
-      }.disabled(!media.voiceConsent || media.inCall || model.busy)
+      }.disabled(!media.voiceConsent || media.inCall || model.busy || model.focusIsStale || (media.note.file != nil && !media.dialog))
+      if model.focusIsStale {Text("Il filone è cambiato. Seleziona nuovamente un filone attivo prima di iniziare o inviare audio.").font(.caption)}
       if media.dialog {
         Text(
           media.note.recording
@@ -422,10 +483,14 @@ struct ConversationVoiceView: View {
       }
       if !media.error.isEmpty { Text(media.error).foregroundStyle(.red) }
       if !media.note.error.isEmpty { Text(media.note.error).foregroundStyle(.red) }
-    }.onChange(of: phase) { _, value in
+    }.confirmationDialog("Eliminare la registrazione da questo dispositivo?",isPresented:$discardAudio,titleVisibility:.visible) {
+      Button("Elimina registrazione locale",role:.destructive){media.discardNote()}
+      Button("Annulla",role:.cancel){}
+    } message:{Text("Questa azione non annulla un eventuale invio già ricevuto dal server.")}
+    .onChange(of: phase) { _, value in
       if value != .active {
         media.endDialog()
-        media.note.discard()
+        media.note.stop()
         media.stopPlayback()
       }
     }

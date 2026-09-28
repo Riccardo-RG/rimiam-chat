@@ -9,6 +9,11 @@ export async function POST(request: Request) {
     assertOrigin(request);
     const actor = await actorFrom(request);
     const input = await body(request);
-    return createWorkspace(actor, input.name, input.commandId);
+    return createWorkspace(
+      actor,
+      input.name,
+      input.commandId,
+      input.description,
+    );
   });
 }

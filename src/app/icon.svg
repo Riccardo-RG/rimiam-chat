@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1254 1254">
+  <title>RIMIAM</title>
+  <defs>
+    <linearGradient id="leaf" x1="237" y1="86" x2="661" y2="284" gradientUnits="userSpaceOnUse"><stop stop-color="#70C72E"/><stop offset="1" stop-color="#53B228"/></linearGradient>
+    <linearGradient id="green" x1="237" y1="86" x2="430" y2="650" gradientUnits="userSpaceOnUse"><stop stop-color="#07933F"/><stop offset="1" stop-color="#007B43"/></linearGradient>
+    <linearGradient id="edge" x1="237" y1="86" x2="376" y2="678" gradientUnits="userSpaceOnUse"><stop stop-color="#35A927"/><stop offset="1" stop-color="#2AA439"/></linearGradient>
+    <linearGradient id="emerald" x1="433" y1="284" x2="661" y2="486" gradientUnits="userSpaceOnUse"><stop stop-color="#009B47"/><stop offset="1" stop-color="#008642"/></linearGradient>
+    <linearGradient id="forest" x1="661" y1="252" x2="822" y2="562" gradientUnits="userSpaceOnUse"><stop stop-color="#00643B"/><stop offset="1" stop-color="#007136"/></linearGradient>
+    <linearGradient id="orange" x1="440" y1="600" x2="715" y2="842" gradientUnits="userSpaceOnUse"><stop stop-color="#FFA209"/><stop offset="1" stop-color="#FF8D06"/></linearGradient>
+    <linearGradient id="orangeTop" x1="529" y1="456" x2="821" y2="586" gradientUnits="userSpaceOnUse"><stop stop-color="#FF730D"/><stop offset="1" stop-color="#F65411"/></linearGradient>
+    <linearGradient id="orangeSide" x1="715" y1="633" x2="821" y2="866" gradientUnits="userSpaceOnUse"><stop stop-color="#F65A04"/><stop offset="1" stop-color="#EC4009"/></linearGradient>
+    <linearGradient id="violet" x1="313" y1="680" x2="842" y2="1113" gradientUnits="userSpaceOnUse"><stop stop-color="#7932CB"/><stop offset="1" stop-color="#6A2DB7"/></linearGradient>
+    <linearGradient id="deepPurple" x1="511" y1="818" x2="822" y2="1129" gradientUnits="userSpaceOnUse"><stop stop-color="#492082"/><stop offset="1" stop-color="#501987"/></linearGradient>
+    <linearGradient id="lilac" x1="843" y1="585" x2="1060" y2="874" gradientUnits="userSpaceOnUse"><stop stop-color="#AC5EEE"/><stop offset="1" stop-color="#914CE0"/></linearGradient>
+    <linearGradient id="purpleSide" x1="843" y1="874" x2="1060" y2="742" gradientUnits="userSpaceOnUse"><stop stop-color="#542293"/><stop offset="1" stop-color="#6324A1"/></linearGradient>
+  </defs><rect width="1254" height="1254" fill="#F7F8F5"/>
+  <path fill="url(#leaf)" d="M237 86 661 252 433 284Z"/>
+  <path fill="url(#edge)" d="M237 86 415 610 376 678 275 522Z"/>
+  <path fill="url(#green)" d="M237 86 509 442 415 610Z"/>
+  <path fill="url(#emerald)" d="M433 284 661 252 661 486 590 455Z"/>
+  <path fill="url(#forest)" d="M661 252 822 485 822 562 661 486Z"/>
+  <path fill="url(#orange)" d="M529 456 715 633 715 842 520 797 387 705Z"/>
+  <path fill="url(#orangeTop)" d="M529 456 821 586 715 633Z"/>
+  <path fill="url(#orangeSide)" d="M715 633 821 586 821 866 715 842Z"/>
+  <path fill="#501689" d="M529 615H661V745H529Z"/>
+  <path fill="#F9F5EC" d="M551 637H639V724H551Z"/>
+  <path fill="#EEE5D3" d="M551 724 595 680 639 724Z"/>
+  <path fill="#F2EBDC" d="M639 637V724L595 680Z"/>
+  <path fill="url(#violet)" d="M313 680 511 818 313 945Z"/>
+  <path fill="url(#deepPurple)" d="M313 945 511 818 842 1113 822 1129Z"/>
+  <path fill="url(#violet)" d="M511 818 842 893 842 1113Z"/>
+  <path fill="url(#deepPurple)" d="M842 893 1055 939 842 1113 822 1129Z"/>
+  <path fill="url(#lilac)" d="M843 585 1060 742 843 874Z"/>
+  <path fill="url(#purpleSide)" d="M1060 742V922L843 874Z"/>
+</svg>

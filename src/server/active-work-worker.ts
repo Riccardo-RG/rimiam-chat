@@ -54,22 +54,25 @@ async function inputsFor(tx: Tx, w: string, id: string, extra: string[] = []) {
   ).rows.flatMap(
     (r) => [r.reference_id, r.document_id].filter(Boolean) as string[],
   );
-  const inputs = await analysisInputs(tx, w, a.objective, a.focus, [
-    ...new Set([...extra, ...remembered, ...selected]),
-  ]);
+  const contractSources = (
+    await tx.query(
+      "SELECT source_id FROM active_work_contract WHERE workspace_id=$1 AND work_id=$2 AND version IN (1,$3) ORDER BY version DESC",
+      [w, id, a.contract_version],
+    )
+  ).rows;
+  const initialSource = contractSources.at(-1)?.source_id;
+  const inputs = await analysisInputs(
+    tx,
+    w,
+    a.objective,
+    a.focus,
+    [...new Set([...extra, ...remembered, ...selected])],
+    initialSource,
+  );
   const explicit = (
     await tx.query(
       `SELECT s.* FROM workspace_source s WHERE s.workspace_id=$1 AND (s.id=$3 OR s.id IN (SELECT source_id FROM active_work_event WHERE workspace_id=$1 AND work_id=$2 AND kind='input'))`,
-      [
-        w,
-        id,
-        (
-          await tx.query(
-            "SELECT source_id FROM active_work_contract WHERE workspace_id=$1 AND work_id=$2 AND version=$3",
-            [w, id, a.contract_version],
-          )
-        ).rows[0].source_id,
-      ],
+      [w, id, contractSources[0].source_id],
     )
   ).rows;
   const merged = new Map(inputs.map((i) => [i.key, i]));
@@ -209,7 +212,7 @@ export async function processActiveWork(
   id: string,
   supplied?: AnalysisSpecialist,
 ) {
-  const specialist = supplied ?? configuredAnalysisSpecialist();
+  const specialist = supplied ?? configuredAnalysisSpecialist(w);
   const claim = await transaction(async (tx) => {
     await lockWorkspace(tx, w);
     await reassessActiveWork(tx, w);

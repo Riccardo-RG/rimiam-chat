@@ -15,14 +15,21 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 @OptIn(ExperimentalMaterial3Api::class)
-@Composable fun ArtifactEditor(state:UiState,model:WorkspaceModel,existing:JSONObject?=null,dismiss:()->Unit){
+@Composable fun ArtifactEditor(state:UiState,model:WorkspaceModel,existing:JSONObject?=null,origin:ConversationHandoff?=null,dismiss:()->Unit){
     var title by remember{mutableStateOf(existing?.optString("title") ?: "")};var purpose by remember{mutableStateOf(existing?.optString("purpose")?.takeIf{it!="null"} ?: "")};var reason by remember{mutableStateOf("")}
     val blocks=remember {mutableStateListOf<JSONObject>().apply {val previous=existing?.optJSONArray("blocks");if(previous!=null&&previous.length()>0)repeat(previous.length()){add(JSONObject(previous.getJSONObject(it).toString()))} else add(JSONObject().put("type","paragraph").put("text",existing?.optString("body") ?: ""))}}
+    var draftSources by remember {mutableStateOf(setOf<String>())}
+    LaunchedEffect(origin?.id) {
+        if(origin!=null){purpose=origin.summary;blocks.clear();blocks.add(JSONObject().put("type","paragraph").put("text",origin.suggestedText));draftSources=origin.sourceIds.toSet()}
+    }
     var remove by remember{mutableStateOf<Int?>(null)};var menu by remember{mutableStateOf(false)}
     fun update(index:Int,change:(JSONObject)->Unit){val next=JSONObject(blocks[index].toString());change(next);blocks[index]=next}
     BackHandler{dismiss()}
     Dialog(onDismissRequest=dismiss,properties=DialogProperties(usePlatformDefaultWidth=false)){Surface(Modifier.fillMaxSize()){Scaffold(topBar={TopAppBar(title={Text(if(existing==null)"Nuovo Artifact" else "Modifica bozza")},navigationIcon={TextButton(onClick=dismiss){Text("Chiudi")}})}){padding->
         Column(Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState()).imePadding().padding(20.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
+            origin?.let {HandoffOriginPanel(state,it)}
+            if(draftSources.isNotEmpty())Text("Fonti proposte per la bozza",style=MaterialTheme.typography.titleSmall)
+            draftSources.forEach {id->Row {Checkbox(true,{draftSources=draftSources-id});ReferenceLink(ConversationReference("source",id,1),"Rileggi fonte · ${id.take(8)}")}}
             OutlinedTextField(title,{title=it},label={Text("Titolo")},modifier=Modifier.fillMaxWidth());OutlinedTextField(purpose,{purpose=it},label={Text("A cosa serve?")},modifier=Modifier.fillMaxWidth());OutlinedTextField(reason,{reason=it},label={Text("Motivo della versione")},modifier=Modifier.fillMaxWidth())
             blocks.forEachIndexed{index,block->Card(Modifier.fillMaxWidth()){Column(Modifier.padding(12.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){
                 when(block.getString("type")){
@@ -35,10 +42,11 @@ import org.json.JSONObject
             }}}
             Box{OutlinedButton(onClick={menu=true}){Text("Aggiungi blocco")};DropdownMenu(menu,onDismissRequest={menu=false}){listOf("paragraph" to "Paragrafo","heading" to "Titolo","checklist" to "Checklist","table" to "Tabella","image" to "Immagine condivisa").forEach{(type,label)->DropdownMenuItem(text={Text(label)},onClick={val value=JSONObject().put("type",type);when(type){"paragraph","heading"->value.put("text","");"checklist"->value.put("items",JSONArray().put(JSONObject().put("text","").put("checked",false)));"table"->value.put("columns",JSONArray(listOf("Voce","Dettaglio"))).put("rows",JSONArray().put(JSONArray(listOf("",""))));"image"->value.put("sourceId","").put("alt","").put("caption","")};blocks.add(value);menu=false})}}}
             Text("Salva una bozza versionata non operativa. Non adotta contenuti né modifica obblighi.",style=MaterialTheme.typography.bodySmall)
-            Button(onClick={val sources=mutableSetOf<String>();blocks.filter{it.getString("type")=="image"}.forEach{sources.add(it.optString("sourceId"))};val info=JSONArray();if(existing!=null){state.detail?.rows("artifactInformation")?.filter{it.getString("artifact_id")==existing.getString("artifact_id")&&it.getInt("artifact_version")==existing.getInt("version")}?.forEach{info.put(JSONObject().put("id",it.getString("information_id")).put("version",it.getInt("information_version")))};state.detail?.rows("artifactSources")?.filter{it.getString("artifact_id")==existing.getString("artifact_id")&&it.getInt("artifact_version")==existing.getInt("version")}?.forEach{sources.add(it.getString("source_id"))}}
+            Button(onClick={val sources=draftSources.toMutableSet();blocks.filter{it.getString("type")=="image"}.forEach{sources.add(it.optString("sourceId"))};val info=JSONArray();if(existing!=null){state.detail?.rows("artifactInformation")?.filter{it.getString("artifact_id")==existing.getString("artifact_id")&&it.getInt("artifact_version")==existing.getInt("version")}?.forEach{info.put(JSONObject().put("id",it.getString("information_id")).put("version",it.getInt("information_version")))};state.detail?.rows("artifactSources")?.filter{it.getString("artifact_id")==existing.getString("artifact_id")&&it.getInt("artifact_version")==existing.getInt("version")}?.forEach{sources.add(it.getString("source_id"))}}
                 val body=JSONObject().put("type","artifact.compose").put("title",title).put("purpose",purpose).put("reason",reason).put("blocks",JSONArray(blocks)).put("information",info).put("sourceIds",JSONArray(sources.filter{it.isNotEmpty()}.sorted())).put("nonOperative",true)
-                if(existing!=null){body.put("artifactId",existing.getString("artifact_id")).put("expectedVersion",existing.getInt("version"));if(!existing.isNull("contribution_id"))body.put("contributionId",existing.getString("contribution_id"))};model.workspaceCommand(body,"Bozza: $title",dismiss)
-            },enabled=!state.busy&&title.isNotBlank()&&purpose.isNotBlank()&&reason.isNotBlank()&&blocks.isNotEmpty()){Text("Salva bozza")}
+                if(existing!=null){body.put("artifactId",existing.getString("artifact_id")).put("expectedVersion",existing.getInt("version"));if(!existing.isNull("contribution_id"))body.put("contributionId",existing.getString("contribution_id"))}
+                model.workspaceCommand(body.withHandoff(origin),"Bozza: $title") {if(origin==null)dismiss()}
+            },enabled=!state.busy&&title.isNotBlank()&&purpose.isNotBlank()&&reason.isNotBlank()&&blocks.isNotEmpty()&&state.canUseHandoff(origin)){Text("Salva bozza")}
             if(state.error.isNotEmpty())Text(state.error,color=MaterialTheme.colorScheme.error)
         }
     }}}

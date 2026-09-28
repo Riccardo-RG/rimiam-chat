@@ -1,6 +1,8 @@
 "use client";
 import { useEffect, useState } from "react";
 import { createAuthClient } from "better-auth/react";
+import { BrandSignature } from "@/client/brand-signature";
+import { AppearanceControl } from "@/client/appearance-control";
 const auth = createAuthClient();
 export function AccountRecovery({
   initialToken,
@@ -36,9 +38,14 @@ export function AccountRecovery({
   }, []);
   return (
     <main className="welcome">
-      <div className="wordmark">
-        miriam<span>●</span>
-      </div>
+      <AppearanceControl />
+      <a
+        className="wordmark brand-home"
+        href={returnTo}
+        aria-label="RIMIAM — Accesso"
+      >
+        <BrandSignature />
+      </a>
       <h1>
         {done
           ? "Password aggiornata"

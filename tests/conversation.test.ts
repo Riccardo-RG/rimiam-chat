@@ -106,7 +106,7 @@ describe("durable conversational Miriam", () => {
       error_code: "AI_CONFIGURATION_REQUIRED",
       lease_until: null,
     });
-    expect((await snapshot(a, w)).messages).toHaveLength(1);
+    expect((await snapshot(a, w)).messages).toHaveLength(2);
   });
   it("records malformed output without publishing a reply or losing the original source", async () => {
     const { a, w, m } = await setup();
@@ -127,7 +127,7 @@ describe("durable conversational Miriam", () => {
       ).rows[0],
     ).toMatchObject({ status: "failed", error_code: "AI_OUTPUT_PARSE_ERROR" });
     const s = await snapshot(a, w);
-    expect(s.messages).toHaveLength(1);
+    expect(s.messages).toHaveLength(2);
     expect(s.candidates).toHaveLength(0);
   });
   it("does not publish a failure event for a newer recovered and completed generation", async () => {
@@ -149,20 +149,20 @@ describe("durable conversational Miriam", () => {
     ).rejects.toThrow("INTERPRETATION_FAILED");
     const s = await snapshot(a, w);
     expect(s.workspace.revision).toBe(completedRevision);
-    expect(s.messages).toHaveLength(2);
+    expect(s.messages).toHaveLength(3);
     expect(s.interpretations[0].status).toBe("completed");
   });
   it("persists AI attribution, exact sources/inputs and no adopted state", async () => {
     const { a, w, m } = await setup();
     await processInterpretation(m.interpretationId, responder);
     const s = await snapshot(a, w);
-    expect(s.messages).toHaveLength(2);
-    expect(s.messages[0]).toMatchObject({
+    expect(s.messages).toHaveLength(3);
+    expect(s.messages[1]).toMatchObject({
       author_id: a,
       actor_kind: "human",
       author_name: "Miriam",
     });
-    expect(s.messages[1]).toMatchObject({
+    expect(s.messages[2]).toMatchObject({
       author_id: null,
       actor_kind: "miriam",
       reply_to_source_id: m.messageId,
@@ -194,13 +194,13 @@ describe("durable conversational Miriam", () => {
       current.messageSequence,
       50,
     );
-    expect(page.messages[1]).toMatchObject({
+    expect(page.messages[2]).toMatchObject({
       actorKind: "miriam",
       authorId: "miriam",
       citationSourceIds: [m.messageId],
     });
     await processInterpretation(m.interpretationId, responder);
-    expect((await snapshot(a, w)).messages).toHaveLength(2);
+    expect((await snapshot(a, w)).messages).toHaveLength(3);
   });
   it("observes without manufacturing a reply", async () => {
     const { a, w, m } = await setup();
@@ -213,7 +213,7 @@ describe("durable conversational Miriam", () => {
         };
       },
     });
-    expect((await snapshot(a, w)).messages).toHaveLength(1);
+    expect((await snapshot(a, w)).messages).toHaveLength(2);
   });
   it("rejects invented citations and preserves the source", async () => {
     const { a, w, m } = await setup();
@@ -239,7 +239,7 @@ describe("durable conversational Miriam", () => {
         ])
       ).rows[0].error_code,
     ).toBe("INVALID_SOURCE_REFERENCE");
-    expect((await snapshot(a, w)).messages).toHaveLength(1);
+    expect((await snapshot(a, w)).messages).toHaveLength(2);
   });
   it("fences late results after access changes", async () => {
     const { a, w, m } = await setup();
@@ -289,7 +289,7 @@ describe("durable conversational Miriam", () => {
     });
     await processInterpretation(n.interpretationId, {
       async interpret(c) {
-        expect(c.conversation).toHaveLength(3);
+        expect(c.conversation).toHaveLength(4);
         expect(c.sources.some((s) => s.id === m.messageId)).toBe(true);
         return {
           proposals: [],

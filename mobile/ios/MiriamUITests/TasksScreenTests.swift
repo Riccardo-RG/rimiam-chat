@@ -4,7 +4,12 @@ import XCTest
   func testTaskCreationAndColdRelaunch() {
     let app = XCUIApplication()
     app.launch()
-    if app.buttons["logout"].waitForExistence(timeout: 2) { app.buttons["logout"].tap() }
+    if app.buttons["home-open"].waitForExistence(timeout: 3) {
+      app.buttons["home-open"].tap()
+      app.buttons["tools-open"].tap()
+      XCTAssertTrue(app.buttons["logout"].waitForExistence(timeout:5))
+      app.buttons["logout"].tap()
+    }
     let email = app.textFields["email"]
     XCTAssertTrue(email.waitForExistence(timeout: 10))
     let server = app.textFields["server"]
@@ -19,9 +24,11 @@ import XCTest
     password.tap()
     password.typeText("Native-test-only-2026!")
     app.buttons["login"].tap()
-    XCTAssertTrue(app.buttons["logout"].waitForExistence(timeout: 10))
+    XCTAssertTrue(app.buttons["home-open"].waitForExistence(timeout: 15))
     app.enterWorkspace()
     app.exploreWorkspace()
+    XCTAssertTrue(app.buttons["work-open"].waitForExistence(timeout:10))
+    app.buttons["work-open"].tap()
     let open = app.buttons["tasks-open"]
     for _ in 0..<10 {
       if open.isHittable { break }
@@ -48,9 +55,11 @@ import XCTest
     XCTAssertTrue(task.waitForExistence(timeout: 10))
     app.terminate()
     app.launch()
-    XCTAssertTrue(app.buttons["logout"].waitForExistence(timeout: 10))
+    XCTAssertTrue(app.buttons["home-open"].waitForExistence(timeout: 15))
     app.enterWorkspace()
     app.exploreWorkspace()
+    XCTAssertTrue(app.buttons["work-open"].waitForExistence(timeout:10))
+    app.buttons["work-open"].tap()
     for _ in 0..<10 {
       if open.isHittable { break }
       app.swipeUp()

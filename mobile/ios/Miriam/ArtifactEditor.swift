@@ -7,10 +7,24 @@ private struct DraftBlock:Identifiable {let id=UUID();var value:ArtifactBlock}
 struct ArtifactEditor:View {
   @Bindable var model:WorkspaceModel
   var existing:WorkspaceDetail.ArtifactVersion?
+  var handoff:ConversationHandoff?=nil
   @Environment(\.dismiss) private var dismiss
   @State private var title="";@State private var purpose="";@State private var reason="";@State private var blocks:[DraftBlock]=[];@State private var remove:UUID?
+  @State private var initialized=false
+  @State private var baseArtifact:WorkspaceDetail.ArtifactVersion?
+  @State private var expectedVersion:Int?
+  @State private var information:[WorkspaceDetail.ArtifactInformation]=[]
+  @State private var originalSources:[String]=[]
+  private var currentVersion:Int? {guard let baseArtifact else {return nil};return model.detail?.artifacts.first(where:{$0.id == baseArtifact.artifact_id})?.current_draft_version}
+  private var stale:Bool {baseArtifact != nil && currentVersion != expectedVersion}
   var body:some View {
     Form {
+      if stale {
+        Section {
+          Text("La bozza è stata preparata dalla versione \(expectedVersion ?? 0). L’Artifact è cambiato; testo e riferimenti selezionati sono conservati.").foregroundStyle(.orange)
+          if let currentVersion {Button("Usa questo testo sulla versione \(currentVersion)"){expectedVersion=currentVersion}}
+        }
+      }
       Section {TextField("Titolo",text:$title);TextField("A cosa serve?",text:$purpose,axis:.vertical);TextField("Motivo della versione",text:$reason,axis:.vertical)}
       ForEach($blocks) {$block in Section {
         ArtifactBlockEditor(block:$block.value,sources:model.detail?.sources ?? [])
@@ -23,22 +37,32 @@ struct ArtifactEditor:View {
         Button("Tabella"){blocks.append(DraftBlock(value:ArtifactBlock(type:"table",columns:["Voce","Dettaglio"],rows:[["",""]])))}
         Button("Immagine condivisa"){blocks.append(DraftBlock(value:ArtifactBlock(type:"image",sourceId:"",alt:"",caption:"")))}
       }}
-      Section {Text("Salva una bozza versionata non operativa. Non adotta contenuti né modifica obblighi.").font(.caption);Button("Salva bozza") {save()}.disabled(model.busy || title.isEmpty || purpose.isEmpty || reason.isEmpty || blocks.isEmpty)}
+      Section {Text("Salva una bozza versionata non operativa. Conserva le versioni dei riferimenti originali, anche storiche; non adotta contenuti né modifica obblighi.").font(.caption);Button("Salva bozza") {save()}.disabled(model.busy || !initialized || stale || title.isEmpty || purpose.isEmpty || reason.isEmpty || blocks.isEmpty || (handoff.map{!model.canApplyHandoff($0)} ?? false))}
       if !model.error.isEmpty {Text(model.error).foregroundStyle(.red)}
-    }.navigationTitle(existing==nil ? "Nuovo Artifact" : "Modifica bozza").onAppear {guard blocks.isEmpty else{return};title=existing?.title ?? "";purpose=existing?.purpose ?? "";blocks=(existing?.blocks ?? [ArtifactBlock(type:"paragraph",text:existing?.body ?? "")]).map{DraftBlock(value:$0)}}
+    }.navigationTitle(existing==nil ? "Nuovo Artifact" : "Modifica bozza").onAppear {prepare()}
       .confirmationDialog("Rimuovere questo blocco dalla nuova bozza? Le versioni precedenti restano consultabili.",isPresented:Binding(get:{remove != nil},set:{if !$0 {remove=nil}})){Button("Rimuovi dalla bozza",role:.destructive){blocks.removeAll{$0.id==remove};remove=nil}}
   }
-  func save(){Task{do {
+  private func prepare() {
+    guard !initialized else {return}
+    initialized=true;baseArtifact=existing;expectedVersion=existing?.version
+    title=existing?.title ?? handoff?.summary ?? "";purpose=existing?.purpose ?? handoff?.summary ?? "";reason=handoff?.summary ?? ""
+    blocks=(existing?.blocks ?? [ArtifactBlock(type:"paragraph",text:existing?.body ?? handoff?.suggestedText ?? "")]).map{DraftBlock(value:$0)}
+    if let existing {
+      information=(model.detail?.artifactInformation ?? []).filter{$0.artifact_id == existing.artifact_id && $0.artifact_version == existing.version}
+      originalSources=(model.detail?.artifactSources ?? []).filter{$0.artifact_id == existing.artifact_id && $0.artifact_version == existing.version}.map(\.source_id)
+    }
+  }
+  func save(){guard initialized,!stale else {return};let boundary=model.mediaBoundary;do {
     let values=blocks.map(\.value);let raw=try JSONSerialization.jsonObject(with:JSONEncoder().encode(values))
     var body:[String:Any]=["type":"artifact.compose","title":title,"purpose":purpose,"reason":reason,"blocks":raw,"information":[Any](),"sourceIds":values.compactMap(\.sourceId).filter{!$0.isEmpty},"nonOperative":true]
-    if let existing {body["artifactId"]=existing.artifact_id;body["expectedVersion"]=existing.version
-      body["information"]=(model.detail?.artifactInformation ?? []).filter{$0.artifact_id==existing.artifact_id && $0.artifact_version==existing.version}.map{["id":$0.information_id,"version":$0.information_version] as [String:Any]}
-      let prior=(model.detail?.artifactSources ?? []).filter{$0.artifact_id==existing.artifact_id && $0.artifact_version==existing.version}.map(\.source_id)
-      body["sourceIds"]=Array(Set(prior+values.compactMap(\.sourceId).filter{!$0.isEmpty})).sorted()
-      if let contribution=existing.contribution_id {body["contributionId"]=contribution}
+    if let baseArtifact,let expectedVersion {body["artifactId"]=baseArtifact.artifact_id;body["expectedVersion"]=expectedVersion
+      body["information"]=information.map{["id":$0.information_id,"version":$0.information_version] as [String:Any]}
+      body["sourceIds"]=Array(Set(originalSources+values.compactMap(\.sourceId).filter{!$0.isEmpty})).sorted()
+      if let contribution=baseArtifact.contribution_id {body["contributionId"]=contribution}
     }
-    if await model.workspaceCommand(body,label:"Bozza: " + title) {dismiss()}
-  } catch {model.error=error.localizedDescription}}}
+    let label="Bozza: " + title
+    Task {guard boundary == model.mediaBoundary else {return};if await model.handoffCommand(body,handoff:handoff,label:label),boundary == model.mediaBoundary {dismiss()}}
+  } catch {if boundary == model.mediaBoundary {model.error=error.localizedDescription}}}
 }
 private struct ArtifactBlockEditor:View {
   @Binding var block:ArtifactBlock

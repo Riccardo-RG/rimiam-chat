@@ -4,6 +4,8 @@ import { auth } from "../src/server/auth";
 import { pool } from "../src/server/db";
 import { handleAPI } from "../src/server/api";
 import { createWorkspace, execute } from "../src/server/commands";
+import { betaFeedbackViewSchema } from "../src/contracts/beta-feedback";
+import { aiUsageViewSchema } from "../src/contracts/ai-usage";
 import {
   stateSchema,
   messagesSchema,
@@ -88,6 +90,48 @@ afterAll(() => pool.end());
 describe.sequential(
   "Public v1 API with real PostgreSQL and authentication",
   () => {
+    it("shares beta feedback through authenticated contracts while usage stays an on-demand guarded read", async () => {
+      const saved = await call(`workspaces/${workspaceId}/commands`, {
+        commandId: randomUUID(),
+        command: { type: "beta.feedback.add", content: "Contract feedback" },
+      });
+      expect(saved.status).toBe(200);
+      const response = await call(`workspaces/${workspaceId}/beta-feedback`);
+      expect(response.status).toBe(200);
+      expect(response.headers.get("cache-control")).toBe("private, no-store");
+      const view = betaFeedbackViewSchema.parse(await response.json());
+      expect(
+        view.entries.some(
+          (entry) =>
+            entry.content === "Contract feedback" && entry.authorId === userId,
+        ),
+      ).toBe(true);
+      const web = await handleAPI(
+        new Request(`${base}/api/v1/workspaces/${workspaceId}/beta-feedback`, {
+          headers: { cookie },
+        }),
+      );
+      expect(web.status).toBe(200);
+      expect(betaFeedbackViewSchema.parse(await web.json()).entries).toEqual(
+        view.entries,
+      );
+      const usage = await call(`workspaces/${workspaceId}/ai-usage?days=7`);
+      expect(usage.status).toBe(200);
+      expect(aiUsageViewSchema.parse(await usage.json()).periodDays).toBe(7);
+      expect(
+        (await call(`workspaces/${workspaceId}/ai-usage?days=10000`)).status,
+      ).toBe(400);
+      for (const path of ["beta-feedback", "ai-usage"]) {
+        expect((await call(`workspaces/${foreign}/${path}`)).status).toBe(403);
+        expect(
+          (
+            await handleAPI(
+              new Request(`${base}/api/v1/workspaces/${workspaceId}/${path}`),
+            )
+          ).status,
+        ).toBe(401);
+      }
+    });
     it("publishes a language-neutral contract without loading client framework types", async () => {
       const response = await handleAPI(
         new Request(`${base}/api/v1/openapi.json`),
@@ -103,6 +147,7 @@ describe.sequential(
         commandId,
         expectedActorId: userId,
         name: "Created through v1",
+        description: "Descrizione introduttiva, non Goal",
       });
       expect(created.status).toBe(200);
       expect(await created.json()).toEqual({ id: commandId });
@@ -115,8 +160,35 @@ describe.sequential(
         commandId,
         expectedActorId: userId,
         name: "Created through v1",
+        description: "Descrizione introduttiva, non Goal",
       });
       expect(replay.status).toBe(200);
+      expect(
+        (
+          await call("workspaces", {
+            commandId,
+            name: "Created through v1",
+            description: "Diversa",
+          })
+        ).status,
+      ).toBe(409);
+      const initialized = stateSchema.parse(
+        await (await call(`workspaces/${commandId}/state`)).json(),
+      );
+      expect(initialized.goals).toHaveLength(0);
+      const initialMessages = messagesSchema.parse(
+        await (
+          await call(
+            `workspaces/${commandId}/messages?after=0&through=${initialized.messageSequence}`,
+          )
+        ).json(),
+      ).messages;
+      expect(initialMessages.map((m) => m.purpose)).toEqual([
+        "workspace_introduction",
+        "workspace_welcome",
+      ]);
+      expect(initialMessages[0].authorId).toBe(userId);
+
       expect(
         (await call("workspaces", { commandId, name: "Changed" })).status,
       ).toBe(409);
@@ -234,11 +306,11 @@ describe.sequential(
       const state = stateSchema.parse(
         await (await call(`workspaces/${workspaceId}/state`)).json(),
       );
-      expect(state.messageSequence).toBe(2);
+      expect(state.messageSequence).toBe(3);
       const first = messagesSchema.parse(
         await (
           await call(
-            `workspaces/${workspaceId}/messages?after=0&through=${state.messageSequence}&limit=1`,
+            `workspaces/${workspaceId}/messages?after=1&through=${state.messageSequence}&limit=1`,
           )
         ).json(),
       );
@@ -298,6 +370,54 @@ describe.sequential(
       expect(
         (await call(`workspaces/${workspaceId}/changes?after=999999`)).status,
       ).toBe(409);
+    });
+    it("round-trips exact Workstream focus through the authenticated command and paginated read boundary", async () => {
+      const w = (await createWorkspace(userId, "Focused API", randomUUID())).id;
+      const stream = await execute(userId, w, randomUUID(), {
+        type: "workstream.save",
+        title: "RIMIAM beta",
+        description: "Interviste",
+      });
+      const focus = { workstreamId: stream.id, version: 1 };
+      const response = await call(`workspaces/${w}/commands`, {
+        commandId: randomUUID(),
+        command: {
+          type: "message.send",
+          content: "Domande per la beta",
+          workstreamFocus: focus,
+        },
+      });
+      expect(response.status).toBe(200);
+      const sent = receiptSchema.parse(await response.json()).result;
+      const head = stateSchema.parse(
+        await (await call(`workspaces/${w}/state`)).json(),
+      ).messageSequence;
+      for (const resource of ["messages", "history"]) {
+        const page = await call(
+          `workspaces/${w}/${resource}?through=${head}&workstreamId=${stream.id}`,
+        );
+        expect(page.status).toBe(200);
+        expect((await page.json()).messages).toEqual([
+          expect.objectContaining({
+            id: sent.messageId,
+            workstreamFocus: focus,
+          }),
+        ]);
+        expect(
+          (
+            await call(
+              `workspaces/${w}/${resource}?through=${head}&workstreamId=invalid`,
+            )
+          ).status,
+        ).toBe(400);
+        expect(
+          (
+            await call(
+              `workspaces/${w}/${resource}?through=${head}&workstreamId=${randomUUID()}`,
+            )
+          ).status,
+        ).toBe(404);
+      }
     });
     it("denies cross-Workspace state, sources of updates and command receipts", async () => {
       for (const path of [

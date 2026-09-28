@@ -1,6 +1,20 @@
 "use client";
 import { invitationDeliveryLabel } from "@/shared/invitation-delivery";
 import { WorkspaceLinks } from "@/client/workspace-links";
+import { WorkspaceCreation } from "@/client/workspace-create";
+import { WorkspaceLens } from "@/client/workspace-lens";
+import { WorkspaceBetaFeedback } from "@/client/workspace-beta-feedback";
+import { feedbackFromComposer } from "@/shared/beta-feedback";
+import { AppearanceControl } from "@/client/appearance-control";
+import { BrandSignature } from "@/client/brand-signature";
+import { useFocusedHistory } from "@/client/focused-history";
+import { useConversationScroll } from "@/client/conversation-scroll";
+import {
+  WorkspaceActivity,
+  ReferenceInspector,
+} from "@/client/workspace-activity";
+import type { ConversationReference } from "@/contracts/activity";
+import type { AttentionView } from "@/contracts/attention";
 import { addressMiriam } from "@/shared/miriam-address";
 import { ConversationVoice, VoiceMessage } from "@/client/conversation-voice";
 import { WorkspaceCall } from "@/client/workspace-call";
@@ -23,15 +37,18 @@ import {
 } from "react";
 import { accountReturnFromSearch } from "@/shared/account-navigation";
 import { createAuthClient } from "better-auth/react";
-import {
-  newCommand,
-  newWorkspaceCommand,
-  sendCommand,
-} from "@/client/command-journal";
+import { newCommand, sendCommand } from "@/client/command-journal";
 import { PendingCommands } from "@/client/pending-commands";
 import { api, errors } from "@/client/api";
 import type { Command } from "@/contracts/commands";
 import type { Candidate, Snapshot } from "@/client/types";
+import {
+  useConversationHandoffs,
+  ConversationHandoffs,
+  HandoffContext,
+  handoffDestination,
+} from "@/client/conversation-handoffs";
+import type { ConversationHandoff } from "@/contracts/conversation-handoff";
 
 import { WorkspaceQuestions } from "@/client/workspace-questions";
 import { WorkspaceSources } from "@/client/workspace-sources";
@@ -53,8 +70,53 @@ function time(value: string) {
 }
 
 export default function Home() {
-  const { data: session, isPending } = auth.useSession();
+  const state = auth.useSession();
+  return (
+    <WorkspaceApp
+      key={state.data?.session.id ?? "signed-out"}
+      session={state.data}
+      isPending={state.isPending}
+    />
+  );
+}
+
+function WorkspaceApp({
+  session,
+  isPending,
+}: {
+  session: ReturnType<typeof auth.useSession>["data"];
+  isPending: boolean;
+}) {
   const [panel, setPanel] = useState("");
+  const [lensDocked, setLensDocked] = useState(false);
+  const [lensSection, setLensSection] = useState("lens");
+  const [selectedWork, setSelectedWork] = useState("");
+  const [createdWorkspace, setCreatedWorkspace] = useState("");
+  const [selectedHandoff, setSelectedHandoff] =
+    useState<ConversationHandoff | null>(null);
+  const [selectedReference, setSelectedReference] =
+    useState<ConversationReference | null>(null);
+  const [composerReference, setComposerReference] = useState<{
+    reference: ConversationReference;
+    title: string;
+  } | null>(null);
+  const [messageDraft, setMessageDraft] = useState({ text: "", scope: "" });
+  const [feedbackMessage, setFeedbackMessage] = useState<{
+    id: string;
+    content: string;
+  } | null>(null);
+  const [requestedSource, setRequestedSource] = useState<{ id: string } | null>(
+    null,
+  );
+  const revealedSource = useRef<object | null>(null);
+  const revealedHandoff = useRef("");
+  const [focusedStream, setFocusedStream] = useState<
+    AttentionView["workstreams"][number] | null
+  >(null);
+  const readingGeneration = useRef(0);
+  const [workstreams, setWorkstreams] = useState<AttentionView["workstreams"]>(
+    [],
+  );
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
@@ -73,7 +135,76 @@ export default function Home() {
   const [correctionFor, setCorrectionFor] = useState<Candidate | null>(null);
   const revision = useRef(-1);
   const selected = useRef("");
+  const viewGeneration = useRef(0);
   const actor = session?.user.id;
+  const handoffView = useConversationHandoffs(
+    workspaceId,
+    actor,
+    snapshot?.workspace.revision ?? 0,
+  );
+  const handoff = selectedHandoff
+    ? (handoffView.handoffs.find((h) => h.id === selectedHandoff.id) ??
+      selectedHandoff)
+    : null;
+  const focusedHistory = useFocusedHistory(
+    actor,
+    workspaceId,
+    focusedStream?.id,
+    snapshot?.messages.at(-1)?.sequence ?? 0,
+    snapshot?.workspace.revision ?? 0,
+  );
+  const displayedMessages = focusedStream
+    ? focusedHistory.messages
+    : (snapshot?.messages ?? []);
+  const messagesElement = useRef<HTMLDivElement>(null);
+  const { onScroll: captureConversationScroll, followLatest } =
+    useConversationScroll(
+      messagesElement,
+      `${actor}:${workspaceId}:${focusedStream?.id ?? "all"}`,
+      displayedMessages.map((message) => message.id).join(":"),
+      !!focusedStream && focusedHistory.historical,
+      displayedMessages[0]?.id,
+    );
+  const currentFocus =
+    focusedStream && workstreams.find((s) => s.id === focusedStream.id);
+  const focusWritable =
+    !focusedStream ||
+    (!!currentFocus &&
+      currentFocus.version === focusedStream.version &&
+      currentFocus.state === "active");
+  const messageScope = `${workspaceId}:${focusedStream?.id ?? "all"}:${focusedStream?.version ?? ""}`;
+  const draftNeedsScope =
+    !!messageDraft.text.trim() && messageDraft.scope !== messageScope;
+  const feedbackDraft = feedbackFromComposer(messageDraft.text);
+  useEffect(() => {
+    if (
+      !handoff ||
+      panel !== "context" ||
+      correctionFor ||
+      revealedHandoff.current === handoff.id
+    )
+      return;
+    const element = document.getElementById(`candidate-${handoff.candidateId}`);
+    if (element) {
+      element.scrollIntoView({ block: "center" });
+      element.focus({ preventScroll: true });
+      revealedHandoff.current = handoff.id;
+    }
+  }, [handoff, panel, correctionFor, snapshot]);
+  useEffect(() => {
+    if (
+      !requestedSource ||
+      focusedStream ||
+      revealedSource.current === requestedSource
+    )
+      return;
+    const element = document.getElementById(`source-${requestedSource.id}`);
+    if (element) {
+      element.scrollIntoView({ block: "center" });
+      element.focus({ preventScroll: true });
+      revealedSource.current = requestedSource;
+    }
+  }, [requestedSource, focusedStream, snapshot]);
   const [mode, setMode] = useState("");
   const [localMail, setLocalMail] = useState(false);
   const accountReturn = useSyncExternalStore(
@@ -94,31 +225,42 @@ export default function Home() {
     setError(errors[message] ?? message);
   }, []);
   async function action(fn: () => Promise<void>) {
+    const generation = viewGeneration.current;
     setBusy(true);
     setError("");
     setNotice("");
     try {
       await fn();
     } catch (error) {
-      report(error);
+      if (generation === viewGeneration.current) report(error);
     } finally {
-      setBusy(false);
+      if (generation === viewGeneration.current) setBusy(false);
     }
   }
   const load = useCallback(
     async (w: string) => {
+      const generation = viewGeneration.current;
       try {
         const next = await api<Snapshot>(`/api/workspaces/${w}`);
         if (
           selected.current === w &&
+          generation === viewGeneration.current &&
           next.workspace.revision >= revision.current
         ) {
           revision.current = next.workspace.revision;
           setSnapshot(next);
         }
       } catch (error) {
-        if (selected.current === w) {
-          setSnapshot(null);
+        if (selected.current === w && generation === viewGeneration.current) {
+          if (
+            error instanceof Error &&
+            [
+              "WORKSPACE_ACCESS_DENIED",
+              "AUTHENTICATION_REQUIRED",
+              "ACCOUNT_INELIGIBLE",
+            ].includes(error.message)
+          )
+            setSnapshot(null);
           report(error);
         }
         throw error;
@@ -166,16 +308,114 @@ export default function Home() {
     };
   }, [workspaceId, actor, load]);
   async function command(c: Command) {
-    const result = await sendCommand(newCommand(actor!, workspaceId, c));
-    if (c.type !== "member.leave") await load(workspaceId);
+    const w = workspaceId;
+    const generation = viewGeneration.current;
+    const reading = readingGeneration.current;
+    const result = await sendCommand(newCommand(actor!, w, c));
+    // The verified receipt is already retained server-side and cleared from the journal.
+    // Stop only the old view's continuation; never publish its result in another space.
+    if (generation !== viewGeneration.current)
+      throw new Error(
+        "Operazione confermata nello spazio di origine; la vista è cambiata.",
+      );
+    // A failed projection refresh cannot turn a verified commit into a failed operation.
+    if (c.type !== "member.leave" && selected.current === w)
+      await load(w).catch(() => {});
+    if (generation !== viewGeneration.current)
+      throw new Error(
+        "Operazione confermata nello spazio di origine; la vista è cambiata.",
+      );
+    if (
+      (c.type === "message.send" || c.type === "voice.send") &&
+      reading === readingGeneration.current &&
+      c.workstreamFocus?.workstreamId === focusedStream?.id
+    ) {
+      followLatest();
+      focusedHistory.recent();
+    }
     return result;
   }
   function choose(w: string) {
+    viewGeneration.current++;
+    selected.current = w;
+    revision.current = -1;
     setWorkspaceId(w);
+    setBusy(false);
+    setPeopleFor(null);
+    setCorrectionFor(null);
     setPanel("");
+    setLensDocked(false);
+    setLensSection("lens");
+    setSelectedWork("");
+    setCreatedWorkspace("");
+    setSelectedHandoff(null);
+    setSelectedReference(null);
+    setComposerReference(null);
+    setFeedbackMessage(null);
+    chooseFocus(null);
+    setWorkstreams([]);
+    setMessageDraft({ text: "", scope: "" });
+    setRequestedSource(null);
     setInviteLink("");
     setError("");
     window.history.replaceState(null, "", w ? `/?workspace=${w}` : "/");
+  }
+  function openPanel(next: string) {
+    setPanel(next);
+    if (next === "feedback") setFeedbackMessage(null);
+    if (next) setLensSection(next);
+  }
+  function openWork(id: string) {
+    setSelectedWork(id);
+    openPanel("work");
+  }
+  function focusConversation(stream: AttentionView["workstreams"][number]) {
+    chooseFocus(stream);
+    setPanel("");
+  }
+  function chooseFocus(stream: AttentionView["workstreams"][number] | null) {
+    readingGeneration.current++;
+    setFocusedStream(stream);
+  }
+  function revealSource(id: string) {
+    chooseFocus(null);
+    setPanel("");
+    setRequestedSource({ id });
+  }
+  function inspectReference(reference: ConversationReference) {
+    setSelectedReference(reference);
+    openPanel("reference");
+  }
+  function openHandoff(handoff: ConversationHandoff) {
+    if (handoff.status === "applied" && handoff.application?.resultReference) {
+      inspectReference(handoff.application.resultReference);
+      return;
+    }
+    if (handoff.status === "stale" && handoff.target) {
+      inspectReference(handoff.target);
+      return;
+    }
+    setSelectedHandoff(handoff);
+    openPanel(handoffDestination(handoff));
+    if (handoff.kind === "information.correct" && handoff.candidateId) {
+      const candidate = snapshot?.candidates.find(
+        (c) => c.id === handoff.candidateId,
+      );
+      if (candidate) setCorrectionFor(candidate);
+    }
+  }
+  function askReference(reference: ConversationReference, title: string) {
+    setComposerReference({ reference, title });
+    setMessageDraft((draft) =>
+      draft.text
+        ? draft
+        : {
+            text: "@RIMIAM, aiutaci a capire questo passaggio.",
+            scope: messageScope,
+          },
+    );
+    setPanel("");
+    requestAnimationFrame(() => document.getElementById("message")?.focus());
   }
   const name = (id: string) =>
     snapshot?.members.find((m) => m.user_id === id)?.name ?? "Membro";
@@ -189,18 +429,20 @@ export default function Home() {
   if (isPending && !busy)
     return (
       <main className="welcome">
+        <AppearanceControl />
         <p>Caricamento…</p>
       </main>
     );
   if (!session)
     return (
       <main className="welcome">
+        <AppearanceControl />
         <button
           className="wordmark brand-home"
           onClick={() => choose("")}
-          aria-label="Miriam — Home"
+          aria-label="RIMIAM — Home"
         >
-          miriam<span>●</span>
+          <BrandSignature />
         </button>
         <p className="eyebrow">UNO SPAZIO PER COSTRUIRE INSIEME</p>
         <h1>
@@ -279,9 +521,9 @@ export default function Home() {
         <button
           className="wordmark brand-home"
           onClick={() => choose("")}
-          aria-label="Miriam — Home"
+          aria-label="RIMIAM — Home"
         >
-          miriam<span>●</span>
+          <BrandSignature />
         </button>
         <button
           className={workspaceId ? "space" : "space selected"}
@@ -316,6 +558,7 @@ export default function Home() {
           ＋ Nuovo spazio
         </button>
         <div className="account">
+          <AppearanceControl />
           <strong>{session.user.name}</strong>
           <button
             className="quiet"
@@ -340,7 +583,15 @@ export default function Home() {
               {snapshot?.workspace.name ?? "Bentornato, " + session.user.name}
             </h1>
           </div>
-          {workspaceId && <span className="live">● Spazio condiviso</span>}
+          {workspaceId && (
+            <button
+              className="lens-trigger"
+              aria-expanded={!!panel}
+              onClick={() => openPanel(panel ? "" : lensSection)}
+            >
+              Lo spazio <span aria-hidden="true">↗</span>
+            </button>
+          )}
         </header>
         {error && (
           <div className="banner error" role="alert">
@@ -458,37 +709,18 @@ export default function Home() {
             </div>
             <details className="home-create" open={spaces.length === 0}>
               <summary>Crea un nuovo spazio</summary>{" "}
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  const form = e.currentTarget;
-                  const value = new FormData(form).get("name") as string;
-                  void action(async () => {
-                    const w = (await sendCommand(
-                      newWorkspaceCommand(actor!, value),
-                    )) as { id: string };
-                    setSpaces(await api("/api/workspaces"));
-                    choose(w.id);
-                    form.reset();
-                  });
+              <WorkspaceCreation
+                key={actor}
+                actor={actor!}
+                onCreated={(workspace) => {
+                  setSpaces((current) => [
+                    ...current.filter((item) => item.id !== workspace.id),
+                    workspace,
+                  ]);
+                  choose(workspace.id);
+                  setCreatedWorkspace(workspace.id);
                 }}
-              >
-                <label>
-                  Nuovo spazio
-                  <input
-                    id="new-workspace-name"
-                    name="name"
-                    required
-                    maxLength={120}
-                    placeholder="Il nostro cocktail bar"
-                  />
-                </label>
-                <p className="hint">
-                  La creazione avvia la gestione degli inviti. Non attribuisce
-                  consenso o autorità di progetto.
-                </p>
-                <button disabled={busy}>Crea spazio</button>
-              </form>
+              />
             </details>
             <p className="hint">
               Hai ricevuto un invito? Apri il link con l’account a cui è
@@ -497,61 +729,131 @@ export default function Home() {
           </section>
         )}
         {workspaceId && !snapshot && !invitation && (
-          <section className="empty" aria-busy="true">
-            <p>Sto aprendo lo spazio…</p>
+          <section className="empty" aria-busy={!error}>
+            <p>
+              {error
+                ? "Lo spazio non è disponibile in questo momento."
+                : "Sto aprendo lo spazio…"}
+            </p>
+            {error && (
+              <button
+                className="quiet"
+                onClick={() => void load(workspaceId).catch(() => {})}
+              >
+                Riprova ad aprire lo spazio
+              </button>
+            )}
           </section>
         )}
         {snapshot && (
           <>
+            {createdWorkspace === workspaceId && (
+              <div className="creation-next" role="status">
+                <div>
+                  <strong>Lo spazio è pronto.</strong>
+                  <p>
+                    Puoi iniziare a scrivere oppure invitare le persone con cui
+                    vuoi costruirlo.
+                  </p>
+                </div>
+                <button
+                  className="quiet"
+                  onClick={() => {
+                    openPanel("people");
+                    setCreatedWorkspace("");
+                  }}
+                >
+                  Invita una persona
+                </button>
+                <button
+                  className="quiet"
+                  onClick={() => setCreatedWorkspace("")}
+                >
+                  Più tardi
+                </button>
+              </div>
+            )}
             <div className="goal-compass">
               <div>
                 <span className="eyebrow">IL NOSTRO INTENTO</span>
                 <h2>{goal?.content ?? "Da dove volete partire?"}</h2>
               </div>
-              <button className="quiet" onClick={() => setPanel("context")}>
+              <button className="quiet" onClick={() => openPanel("goal")}>
                 {goal ? "Goal e adesioni ↗" : "Definisci il Goal"}
               </button>
             </div>
-            <WorkspaceAttention
-              workspace={workspaceId}
-              actor={actor!}
-              compact
-              open={setPanel}
-              command={command}
-              action={action}
-              busy={busy}
-              canContribute={!!canContribute}
-              name={name}
-            />
-            <nav className="workspace-tools" aria-label="Esplora lo spazio">
-              {[
-                ["context", "Contesto"],
-                ["work", "Lavoro"],
-                ["materials", "Materiali"],
-                ["tools", "Strumenti"],
-                ["people", "Persone"],
-              ].map(([id, label]) => (
-                <button
-                  key={id}
-                  className={panel === id ? "tool selected" : "tool"}
-                  aria-pressed={panel === id}
-                  onClick={() => setPanel(panel === id ? "" : id)}
-                >
-                  {label}
-                </button>
-              ))}
-            </nav>
+            <div className="activity-bar">
+              <WorkspaceActiveWork
+                inspectReference={inspectReference}
+                key={`presence:${actor}:${workspaceId}`}
+                workspace={workspaceId}
+                actor={actor!}
+                name={name}
+                command={command}
+                action={action}
+                busy={busy}
+                compact
+                openWork={openWork}
+              />
+              <WorkspaceAttention
+                key={`attention:${actor}:${workspaceId}`}
+                workspace={workspaceId}
+                actor={actor!}
+                compact
+                open={openPanel}
+                command={command}
+                action={action}
+                busy={busy}
+                canContribute={!!canContribute}
+                name={name}
+                onWorkstreams={setWorkstreams}
+              />
+            </div>
             <div
               className={
-                panel ? "workspace-stage with-layer" : "workspace-stage"
+                panel && lensDocked
+                  ? "workspace-stage with-layer"
+                  : "workspace-stage"
               }
             >
               <section className="card conversation">
+                {focusedStream && (
+                  <div className="focus-strip">
+                    <div>
+                      <strong>{focusedStream.title}</strong>
+                      <small>
+                        Stessa conversazione condivisa · vista per filone
+                      </small>
+                    </div>
+                    <button className="quiet" onClick={() => chooseFocus(null)}>
+                      Tutta la conversazione
+                    </button>
+                    {!focusWritable && (
+                      <p role="status">
+                        Il filone è cambiato o non è attivo.{" "}
+                        <button
+                          className="quiet"
+                          onClick={() => openPanel("attention")}
+                        >
+                          Verifica il filone
+                        </button>
+                        {currentFocus?.state === "active" && (
+                          <button
+                            className="quiet"
+                            onClick={() => chooseFocus(currentFocus)}
+                          >
+                            Usa la versione aggiornata
+                          </button>
+                        )}
+                      </p>
+                    )}
+                  </div>
+                )}
                 <div className="section-title">
                   <h2>Conversazione</h2>
                   <span>
-                    {snapshot.messages.length}{" "}
-                    {snapshot.messages.length === 1 ? "messaggio" : "messaggi"}
+                    {displayedMessages.length}{" "}
+                    {displayedMessages.length === 1 ? "messaggio" : "messaggi"}
                   </span>
                 </div>
                 {mode === "unconfigured" ? (
@@ -572,15 +874,6 @@ export default function Home() {
                     Una lettura di Miriam richiede attenzione ↗
                   </button>
                 ) : null}
-                <WorkspaceActiveWork
-                  key={`${session.user.id}:${snapshot.workspace.id}`}
-                  workspace={snapshot.workspace.id}
-                  actor={session.user.id}
-                  name={name}
-                  command={command}
-                  action={action}
-                  busy={busy}
-                />
                 <WorkspaceCall
                   key={`call:${actor}:${workspaceId}`}
                   workspace={workspaceId}
@@ -595,15 +888,76 @@ export default function Home() {
                   disabled={!canContribute}
                   command={command}
                   messages={snapshot.messages}
+                  workstreamFocus={
+                    focusedStream
+                      ? {
+                          workstreamId: focusedStream.id,
+                          version: focusedStream.version,
+                        }
+                      : undefined
+                  }
+                  focusLabel={focusedStream?.title}
+                  focusWritable={focusWritable}
+                  reference={composerReference ?? undefined}
                 >
-                  <div className="messages">
-                    {snapshot.messages.length === 0 && (
-                      <p className="muted">Racconta da dove state partendo.</p>
+                  <div
+                    className="messages"
+                    ref={messagesElement}
+                    onScroll={captureConversationScroll}
+                  >
+                    {focusedStream && (
+                      <div className="history-navigation">
+                        {focusedHistory.loading && (
+                          <p role="status">Caricamento del filone…</p>
+                        )}
+                        {focusedHistory.error && (
+                          <p role="alert">
+                            {focusedHistory.error}
+                            <button
+                              className="quiet"
+                              onClick={focusedHistory.retry}
+                            >
+                              Riprova
+                            </button>
+                          </p>
+                        )}
+                        {focusedHistory.hasOlder && (
+                          <button
+                            className="quiet"
+                            onClick={() => {
+                              readingGeneration.current++;
+                              focusedHistory.older();
+                            }}
+                          >
+                            Messaggi precedenti
+                          </button>
+                        )}
+                        {focusedHistory.historical && (
+                          <button
+                            className="quiet"
+                            onClick={() => {
+                              readingGeneration.current++;
+                              followLatest();
+                              focusedHistory.recent();
+                            }}
+                          >
+                            Torna ai messaggi recenti
+                          </button>
+                        )}
+                      </div>
                     )}
-                    {snapshot.messages.map((m) => (
+                    {displayedMessages.length === 0 &&
+                      !focusedHistory.loading &&
+                      !focusedHistory.error && (
+                        <p className="muted">
+                          Racconta da dove state partendo.
+                        </p>
+                      )}
+                    {displayedMessages.map((m) => (
                       <article
                         key={m.id}
                         id={`source-${m.id}`}
+                        tabIndex={-1}
                         className={
                           m.actor_kind === "miriam"
                             ? "message miriam-message"
@@ -612,16 +966,36 @@ export default function Home() {
                               : "message"
                         }
                       >
-                        <div>
+                        <div className="message-meta">
                           <strong>
                             {m.author_name}{" "}
                             <span className="author-kind">
-                              {m.actor_kind === "miriam" ? "AI" : "persona"}
+                              {m.purpose === "workspace_welcome"
+                                ? "introduzione automatica"
+                                : m.purpose === "workspace_introduction"
+                                  ? "descrizione iniziale"
+                                  : m.actor_kind === "miriam"
+                                    ? "AI"
+                                    : "persona"}
                             </span>
                           </strong>
                           <time>{time(m.created_at)}</time>
                         </div>
                         <p>{m.content}</p>
+                        <ConversationHandoffs
+                          items={handoffView.handoffs.filter(
+                            (h) => h.sourceMessageId === m.id,
+                          )}
+                          open={openHandoff}
+                        />
+                        {m.reference && (
+                          <button
+                            className="message-reference quiet"
+                            onClick={() => inspectReference(m.reference!)}
+                          >
+                            Riferimento di questo messaggio ↗
+                          </button>
+                        )}
                         <VoiceMessage id={m.id} />
                         {m.actor_kind === "miriam" && (
                           <SpokenReply
@@ -637,11 +1011,56 @@ export default function Home() {
                           </summary>
                           <small>
                             Messaggio {m.sequence} ·{" "}
-                            {m.actor_kind === "miriam"
-                              ? "Contributo AI, non stato adottato"
-                              : "Atto umano originale"}
+                            {m.purpose === "workspace_welcome"
+                              ? "Introduzione deterministica, nessuna inferenza AI"
+                              : m.actor_kind === "miriam"
+                                ? "Contributo AI, non stato adottato"
+                                : "Atto umano originale"}
                             <br />
                             Conservato senza riscritture.
+                            {canContribute && (
+                              <button
+                                className="quiet"
+                                aria-label={`Feedback sul messaggio ${m.sequence}`}
+                                onClick={() => {
+                                  openPanel("feedback");
+                                  setFeedbackMessage({
+                                    id: m.id,
+                                    content: m.content,
+                                  });
+                                }}
+                              >
+                                Feedback
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              className="quiet"
+                              onClick={() => handoffView.loadSource(m.id)}
+                            >
+                              Carica i passi proposti per questo messaggio
+                            </button>
+                            {handoffView.sourceRead === m.id && (
+                              <span role="status">
+                                {handoffView.handoffs.some(
+                                  (h) => h.sourceMessageId === m.id,
+                                )
+                                  ? "Passi disponibili sotto il messaggio."
+                                  : "Nessun passo proposto per questo messaggio."}
+                              </span>
+                            )}
+                            {m.purpose === "workspace_welcome" &&
+                              m.reply_to_source_id && (
+                                <button
+                                  type="button"
+                                  className="quiet"
+                                  onClick={() =>
+                                    revealSource(m.reply_to_source_id!)
+                                  }
+                                >
+                                  Descrizione iniziale di riferimento
+                                </button>
+                              )}
                             {m.citation_source_ids?.map((id) => {
                               const source = snapshot.sources.find(
                                   (s) => s.id === id,
@@ -664,9 +1083,13 @@ export default function Home() {
                                     {source?.content ?? message?.content}
                                   </span>
                                   {message && (
-                                    <a href={`#source-${id}`}>
+                                    <button
+                                      type="button"
+                                      className="quiet"
+                                      onClick={() => revealSource(id)}
+                                    >
                                       Vai al messaggio ↗
-                                    </a>
+                                    </button>
                                   )}
                                 </span>
                               );
@@ -677,21 +1100,86 @@ export default function Home() {
                     ))}
                   </div>
                   <form
+                    className="conversation-composer"
                     onSubmit={(e) => {
                       e.preventDefault();
+                      if (draftNeedsScope || !focusWritable) return;
+                      const sentDraft = messageDraft;
+                      const sentReference = composerReference;
                       const form = e.currentTarget;
                       const raw = new FormData(form).get("message") as string;
+                      const feedback = feedbackFromComposer(raw);
+                      if (feedback !== null) {
+                        if (!feedback || feedback.length > 6000) return;
+                        void action(async () => {
+                          await command({
+                            type: "beta.feedback.add",
+                            content: feedback,
+                          });
+                          setMessageDraft((current) =>
+                            current.text === sentDraft.text &&
+                            current.scope === sentDraft.scope
+                              ? { text: "", scope: messageScope }
+                              : current,
+                          );
+                          setNotice(
+                            "Feedback salvato. Lo ritrovi in Feedback beta, con il report da scaricare.",
+                          );
+                        });
+                        return;
+                      }
                       const addressed =
                         (e.nativeEvent as SubmitEvent).submitter?.getAttribute(
                           "data-target",
                         ) === "miriam";
                       const content = addressed ? addressMiriam(raw) : raw;
                       void action(async () => {
-                        await command({ type: "message.send", content });
-                        form.reset();
+                        await command({
+                          type: "message.send",
+                          content,
+                          ...(sentReference
+                            ? { reference: sentReference.reference }
+                            : {}),
+                          ...(focusedStream
+                            ? {
+                                workstreamFocus: {
+                                  workstreamId: focusedStream.id,
+                                  version: focusedStream.version,
+                                },
+                              }
+                            : {}),
+                        });
+                        setMessageDraft((current) =>
+                          current.text === sentDraft.text &&
+                          current.scope === sentDraft.scope
+                            ? { text: "", scope: messageScope }
+                            : current,
+                        );
+                        setComposerReference((current) =>
+                          current === sentReference ? null : current,
+                        );
                       });
                     }}
                   >
+                    {composerReference && feedbackDraft === null && (
+                      <div className="composer-reference">
+                        <span>
+                          Su: {composerReference.title} ·{" "}
+                          {composerReference.reference.kind === "active_work"
+                            ? "rev."
+                            : "v"}
+                          {composerReference.reference.version}
+                        </span>
+                        <button
+                          className="quiet"
+                          type="button"
+                          onClick={() => setComposerReference(null)}
+                          aria-label="Rimuovi il riferimento dal messaggio"
+                        >
+                          Rimuovi
+                        </button>
+                      </div>
+                    )}
                     <label className="sr-only" htmlFor="message">
                       Messaggio
                     </label>
@@ -702,24 +1190,89 @@ export default function Home() {
                       required
                       maxLength={12000}
                       rows={3}
+                      value={messageDraft.text}
+                      onChange={(event) => {
+                        const text = event.target.value;
+                        setMessageDraft((current) => ({
+                          text,
+                          scope:
+                            current.text && text ? current.scope : messageScope,
+                        }));
+                      }}
                     />
-                    <button disabled={busy || !canContribute}>
-                      Invia messaggio
+                    {feedbackDraft !== null && (
+                      <p role="status">
+                        Feedback generale condiviso: non è un messaggio a RIMIAM
+                        e non entra nel Context. Nessun messaggio o riferimento
+                        è allegato. Massimo 6.000 caratteri.
+                      </p>
+                    )}
+                    {draftNeedsScope && (
+                      <p className="draft-scope-warning">
+                        La bozza appartiene alla vista precedente.{" "}
+                        <button
+                          type="button"
+                          className="quiet"
+                          disabled={!focusWritable}
+                          onClick={() =>
+                            setMessageDraft((draft) => ({
+                              ...draft,
+                              scope: messageScope,
+                            }))
+                          }
+                        >
+                          Usa la bozza{" "}
+                          {focusedStream
+                            ? "in questo filone"
+                            : "nella conversazione completa"}
+                        </button>
+                      </p>
+                    )}
+                    <button
+                      disabled={
+                        busy ||
+                        !canContribute ||
+                        !focusWritable ||
+                        draftNeedsScope ||
+                        (feedbackDraft !== null &&
+                          (!feedbackDraft || feedbackDraft.length > 6000))
+                      }
+                    >
+                      {feedbackDraft === null
+                        ? "Invia messaggio"
+                        : "Salva feedback"}
                     </button>
                     <button
                       data-target="miriam"
-                      disabled={busy || !canContribute}
+                      disabled={
+                        busy ||
+                        !canContribute ||
+                        !focusWritable ||
+                        draftNeedsScope ||
+                        feedbackDraft !== null
+                      }
                     >
                       Chiedi a Miriam
                     </button>
                   </form>
+                  {handoffView.error && (
+                    <p className="hint" role="status">
+                      I passi proposti non sono disponibili: {handoffView.error}{" "}
+                      <button className="quiet" onClick={handoffView.retry}>
+                        Riprova
+                      </button>
+                    </p>
+                  )}
                 </ConversationVoice>
               </section>
               {panel && (
                 <WorkspaceLayer
                   title={
                     {
-                      attention: "Il punto adesso",
+                      lens: "Dentro il vostro spazio",
+                      goal: "La direzione",
+                      attention: "Activity e filoni",
+                      reference: "Il passaggio",
                       context: "Contesto condiviso",
                       work: "Lavoro e follow-up",
                       materials: "Materiali dello spazio",
@@ -728,33 +1281,96 @@ export default function Home() {
                       calendar: "Calendario",
                       email: "Email",
                       sources: "Fonti e ricerca",
-                      artifacts: "Documenti e risultati",
+                      artifacts: "Outputs",
+                      feedback: "Feedback beta",
                     }[panel] ?? "Dettagli"
                   }
                   close={() => setPanel("")}
+                  docked={lensDocked}
+                  setDocked={setLensDocked}
                 >
-                  {panel === "attention" && (
-                    <WorkspaceAttention
+                  <WorkspaceLens selected={panel} open={openPanel} />
+                  {panel === "feedback" && (
+                    <WorkspaceBetaFeedback
+                      key={`feedback:${actor}:${workspaceId}:${feedbackMessage?.id ?? "general"}`}
                       workspace={workspaceId}
                       actor={actor!}
-                      open={setPanel}
+                      revision={snapshot.workspace.revision}
+                      message={feedbackMessage}
+                      canContribute={!!canContribute}
                       command={command}
                       action={action}
                       busy={busy}
-                      canContribute={!!canContribute}
-                      name={name}
                     />
                   )}
-                  {panel === "context" && (
+                  {handoff && handoffDestination(handoff) === panel && (
+                    <HandoffContext
+                      handoff={handoff}
+                      source={() => revealSource(handoff.sourceMessageId)}
+                      close={() => setSelectedHandoff(null)}
+                    />
+                  )}
+                  {panel === "reference" && selectedReference && (
+                    <ReferenceInspector
+                      key={`${actor}:${workspaceId}:${JSON.stringify(selectedReference)}`}
+                      workspace={workspaceId}
+                      actor={actor!}
+                      reference={selectedReference}
+                      ask={askReference}
+                      open={openPanel}
+                      inspect={inspectReference}
+                    />
+                  )}
+                  {panel === "lens" && (
+                    <p className="lens-intro">
+                      La conversazione continua qui accanto. Apri ciò che serve
+                      per ritrovare la direzione, capire un’informazione o
+                      portare avanti il lavoro.
+                    </p>
+                  )}
+                  {panel === "goal" && (
+                    <WorkspaceProject
+                      key={`project:${actor}:${workspaceId}:${handoff?.id ?? "direct"}`}
+                      handoff={
+                        handoff && handoffDestination(handoff) === "goal"
+                          ? handoff
+                          : undefined
+                      }
+                      workspace={workspaceId}
+                      actor={actor!}
+                      revision={snapshot.workspace.revision}
+                      command={command}
+                      action={action}
+                      busy={busy}
+                    />
+                  )}
+                  {panel === "attention" && (
                     <>
-                      <WorkspaceProject
+                      <WorkspaceActivity
+                        key={`activity:${actor}:${workspaceId}`}
                         workspace={workspaceId}
                         actor={actor!}
                         revision={snapshot.workspace.revision}
+                        inspect={inspectReference}
+                      />
+                      <WorkspaceAttention
+                        key={`attention-detail:${actor}:${workspaceId}`}
+                        workspace={workspaceId}
+                        actor={actor!}
+                        open={openPanel}
                         command={command}
                         action={action}
                         busy={busy}
+                        canContribute={!!canContribute}
+                        name={name}
+                        focus={focusConversation}
+                        onWorkstreams={setWorkstreams}
+                        showChanges={false}
                       />
+                    </>
+                  )}
+                  {panel === "context" && (
+                    <>
                       <div className="context-column">
                         <section className="card">
                           <p className="eyebrow">SHARED CONTEXT</p>
@@ -794,6 +1410,7 @@ export default function Home() {
                                         {v.accepted_by_name}
                                       </strong>
                                       <p>{v.content}</p>
+                                      <p className="hint">{v.qualification}</p>
                                       <small>
                                         {v.reason} · {time(v.created_at)}
                                       </small>
@@ -856,19 +1473,17 @@ export default function Home() {
                           {snapshot.candidates
                             .filter(
                               (c) =>
-                                !snapshot.questions.some(
-                                  (q) => q.candidate_id === c.id,
-                                ) &&
-                                !snapshot.versions.some(
-                                  (v) => v.candidate_id === c.id,
-                                ) &&
-                                !snapshot.commitments.some(
-                                  (p) =>
-                                    p.candidate_id === c.id && p.adopted_at,
-                                ),
+                                !c.uses.information.length &&
+                                !c.uses.questions.length &&
+                                !c.uses.proposals.length,
                             )
                             .map((c) => (
-                              <article className="proposal" key={c.id}>
+                              <article
+                                id={`candidate-${c.id}`}
+                                tabIndex={-1}
+                                className={`proposal${handoff?.candidateId === c.id ? " linked-handoff-target" : ""}`}
+                                key={c.id}
+                              >
                                 <span className="tag">
                                   {c.classification === "descriptive"
                                     ? "Informazione proposta"
@@ -947,6 +1562,15 @@ export default function Home() {
                                                 type: "information.accept",
                                                 candidateId: c.id,
                                                 descriptiveOnly: true,
+                                                ...(handoff?.kind ===
+                                                  "information.accept" &&
+                                                handoff.candidateId === c.id
+                                                  ? {
+                                                      conversationOrigin: {
+                                                        handoffId: handoff.id,
+                                                      },
+                                                    }
+                                                  : {}),
                                               });
                                             })
                                           }
@@ -988,8 +1612,24 @@ export default function Home() {
                   )}
                   {panel === "work" && (
                     <>
+                      <WorkspaceActiveWork
+                        inspectReference={inspectReference}
+                        key={`work:${actor}:${workspaceId}`}
+                        workspace={workspaceId}
+                        actor={actor!}
+                        name={name}
+                        command={command}
+                        action={action}
+                        busy={busy}
+                        selectedWork={selectedWork}
+                      />
                       <WorkspaceTasks
-                        key={`tasks:${session.user.id}:${snapshot.workspace.id}`}
+                        key={`tasks:${session.user.id}:${snapshot.workspace.id}:${handoff?.id ?? "direct"}`}
+                        handoff={
+                          handoff && handoffDestination(handoff) === "work"
+                            ? handoff
+                            : undefined
+                        }
                         workspace={snapshot.workspace.id}
                         actor={session.user.id}
                         command={command}
@@ -1061,7 +1701,24 @@ export default function Home() {
                   )}
                   {panel === "artifacts" && (
                     <>
+                      <WorkspaceActiveWork
+                        inspectReference={inspectReference}
+                        key={`results:${actor}:${workspaceId}`}
+                        workspace={workspaceId}
+                        actor={actor!}
+                        name={name}
+                        command={command}
+                        action={action}
+                        busy={busy}
+                        resultsOnly
+                      />
                       <WorkspaceArtifacts
+                        key={`artifacts:${actor}:${workspaceId}:${handoff?.id ?? "direct"}`}
+                        handoff={
+                          handoff?.kind === "artifact.prepare"
+                            ? handoff
+                            : undefined
+                        }
                         state={snapshot}
                         actor={actor!}
                         busy={busy}
@@ -1289,126 +1946,139 @@ export default function Home() {
               )}
             </div>
             {peopleFor && (
-              <div className="modal-backdrop">
-                <section
-                  className="card modal"
-                  role="dialog"
-                  aria-modal="true"
-                  aria-label="Proponi impegno"
-                >
-                  <h2>Chi riguarda questo impegno?</h2>
-                  <p>{peopleFor.content}</p>
-                  <p>
-                    Il tuo atto proporrà il testo. Ciascuna persona nominata
-                    dovrà approvarlo per sé; nessuno sarà rappresentato per
-                    silenzio.
-                  </p>
-                  <form
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      const people = new FormData(e.currentTarget).getAll(
-                        "people",
-                      ) as string[];
-                      void action(async () => {
-                        await command({
-                          type: "commitment.propose",
-                          candidateId: peopleFor.id,
-                          people: [...new Set([...people, actor!])],
-                        });
-                        setPeopleFor(null);
+              <WorkspaceLayer
+                title="Proponi impegno"
+                close={() => setPeopleFor(null)}
+              >
+                <h2>Chi riguarda questo impegno?</h2>
+                <p>{peopleFor.content}</p>
+                <p>
+                  Il tuo atto proporrà il testo. Ciascuna persona nominata dovrà
+                  approvarlo per sé; nessuno sarà rappresentato per silenzio.
+                </p>
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const people = new FormData(e.currentTarget).getAll(
+                      "people",
+                    ) as string[];
+                    void action(async () => {
+                      await command({
+                        type: "commitment.propose",
+                        candidateId: peopleFor.id,
+                        people: [...new Set([...people, actor!])],
                       });
-                    }}
+                      setPeopleFor(null);
+                    });
+                  }}
+                >
+                  {snapshot.members
+                    .filter((m) => m.active)
+                    .map((m) => (
+                      <label className="check" key={m.user_id}>
+                        <input
+                          type="checkbox"
+                          name="people"
+                          value={m.user_id}
+                          defaultChecked={m.user_id === actor}
+                          disabled={m.user_id === actor}
+                        />
+                        {m.name}
+                        {m.user_id === actor ? " (tu)" : ""}
+                      </label>
+                    ))}
+                  <button disabled={busy}>
+                    Proponi il testo a queste persone
+                  </button>
+                  <button
+                    type="button"
+                    className="quiet"
+                    onClick={() => setPeopleFor(null)}
                   >
-                    {snapshot.members
-                      .filter((m) => m.active)
-                      .map((m) => (
-                        <label className="check" key={m.user_id}>
-                          <input
-                            type="checkbox"
-                            name="people"
-                            value={m.user_id}
-                            defaultChecked={m.user_id === actor}
-                            disabled={m.user_id === actor}
-                          />
-                          {m.name}
-                          {m.user_id === actor ? " (tu)" : ""}
-                        </label>
-                      ))}
-                    <button disabled={busy}>
-                      Proponi il testo a queste persone
-                    </button>
-                    <button
-                      type="button"
-                      className="quiet"
-                      onClick={() => setPeopleFor(null)}
-                    >
-                      Annulla
-                    </button>
-                  </form>
-                </section>
-              </div>
+                    Annulla
+                  </button>
+                </form>
+              </WorkspaceLayer>
             )}
             {correctionFor && (
-              <div className="modal-backdrop">
-                <section
-                  className="card modal"
-                  role="dialog"
-                  aria-modal="true"
-                  aria-label="Correzione"
-                >
-                  <h2>Correggi il riferimento di lavoro</h2>
-                  <p>
-                    Prima:{" "}
-                    {
-                      snapshot.information.find(
-                        (i) => i.subject === correctionFor.subject,
-                      )?.content
-                    }
-                  </p>
-                  <p>Nuova versione: {correctionFor.content}</p>
-                  <p>
-                    Le versioni e le fonti precedenti resteranno consultabili.
-                    La correzione non modifica impegni, vincoli o permessi.
-                  </p>
-                  <form
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      const reason = new FormData(e.currentTarget).get(
-                        "reason",
-                      ) as string;
-                      const info = snapshot.information.find(
-                        (i) => i.subject === correctionFor.subject,
-                      )!;
-                      void action(async () => {
-                        await command({
-                          type: "information.correct",
-                          informationId: info.id,
-                          expectedVersion: info.current_version,
-                          candidateId: correctionFor.id,
-                          reason,
-                          descriptiveOnly: true,
-                        });
-                        setCorrectionFor(null);
+              <WorkspaceLayer
+                title="Correzione"
+                close={() => setCorrectionFor(null)}
+              >
+                <h2>Correggi il riferimento di lavoro</h2>
+                <p>
+                  Prima:{" "}
+                  {
+                    snapshot.information.find((i) =>
+                      handoff?.kind === "information.correct" &&
+                      handoff.candidateId === correctionFor.id
+                        ? i.id === handoff.target?.id
+                        : i.subject === correctionFor.subject,
+                    )?.content
+                  }
+                </p>
+                <p>Nuova versione: {correctionFor.content}</p>
+                {handoff?.kind === "information.correct" &&
+                  handoff.candidateId === correctionFor.id && (
+                    <p className="hint">
+                      Richiesta dalla conversazione, riferita alla versione{" "}
+                      {handoff.target?.version}. Il contenuto del candidato
+                      resta attribuito alle sue fonti.
+                    </p>
+                  )}
+                <p>
+                  Le versioni e le fonti precedenti resteranno consultabili. La
+                  correzione non modifica impegni, vincoli o permessi.
+                </p>
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const reason = new FormData(e.currentTarget).get(
+                      "reason",
+                    ) as string;
+                    const info = snapshot.information.find((i) =>
+                      handoff?.kind === "information.correct" &&
+                      handoff.candidateId === correctionFor.id
+                        ? i.id === handoff.target?.id
+                        : i.subject === correctionFor.subject,
+                    )!;
+                    void action(async () => {
+                      if (!info)
+                        throw new Error(
+                          "Il riferimento da correggere non è disponibile.",
+                        );
+                      await command({
+                        type: "information.correct",
+                        informationId: info.id,
+                        expectedVersion: info.current_version,
+                        candidateId: correctionFor.id,
+                        reason,
+                        descriptiveOnly: true,
+                        ...(handoff?.kind === "information.correct" &&
+                        handoff.candidateId === correctionFor.id
+                          ? { conversationOrigin: { handoffId: handoff.id } }
+                          : {}),
                       });
-                    }}
+                      setCorrectionFor(null);
+                    });
+                  }}
+                >
+                  <label>
+                    Motivo della correzione
+                    <input name="reason" required maxLength={12000} />
+                  </label>
+                  <button disabled={busy}>
+                    Accetta la nuova versione descrittiva
+                  </button>
+                  <button
+                    type="button"
+                    className="quiet"
+                    onClick={() => setCorrectionFor(null)}
                   >
-                    <label>
-                      Motivo della correzione
-                      <input name="reason" required maxLength={12000} />
-                    </label>
-                    <button disabled={busy}>
-                      Accetta la nuova versione descrittiva
-                    </button>
-                    <button
-                      type="button"
-                      className="quiet"
-                      onClick={() => setCorrectionFor(null)}
-                    >
-                      Annulla
-                    </button>
-                  </form>
-                </section>
-              </div>
+                    Annulla
+                  </button>
+                </form>
+              </WorkspaceLayer>
             )}
           </>
         )}

@@ -10,20 +10,28 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 private fun JSONObject.people(key:String)=getJSONArray(key).let{a->(0 until a.length()).map{a.getString(it)}}
-@Composable private fun ProjectCard(title:String,content:@Composable ColumnScope.()->Unit) {var open by remember{mutableStateOf(false)};Card(Modifier.fillMaxWidth()){Column(Modifier.padding(12.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){TextButton(onClick={open=!open}){Text(title,style=MaterialTheme.typography.titleMedium)};if(open) content()}}}
+@Composable private fun ProjectCard(title:String,initiallyOpen:Boolean=false,content:@Composable ColumnScope.()->Unit) {var open by remember{mutableStateOf(initiallyOpen)};LaunchedEffect(initiallyOpen){if(initiallyOpen)open=true};Card(Modifier.fillMaxWidth()){Column(Modifier.padding(12.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){TextButton(onClick={open=!open}){Text(title,style=MaterialTheme.typography.titleMedium)};if(open) content()}}}
 @Composable private fun ProjectChoice(label:String,value:String,options:List<Pair<String,String>>,select:(String)->Unit) {var open by remember{mutableStateOf(false)};Box{OutlinedButton(onClick={open=true}){Text(label+": "+(options.firstOrNull{it.first==value}?.second ?: "scegli"))};DropdownMenu(open,onDismissRequest={open=false}){options.forEach{(id,title)->DropdownMenuItem(text={Text(title)},onClick={select(id);open=false})}}}}
 private fun projectCommand(type:String,vararg values:Pair<String,Any>)=JSONObject().put("type",type).apply{values.forEach{(key,value)->put(key,value)}}
 @Composable fun ProjectGovernance(state:UiState,model:WorkspaceModel) {
     var opened by remember{mutableStateOf(false)};var data by remember{mutableStateOf<JSONObject?>(null)};val scope=rememberCoroutineScope()
     fun refresh(){scope.launch{data=model.workspaceRead("project")}}
+    val selected=selectedHandoff("goal.change","project.propose","project.replace","project.revoke")
+    LaunchedEffect(selected?.id) {if(selected!=null){opened=true;data=model.workspaceRead("project")}}
     TextButton(onClick={opened=!opened;if(opened) refresh()}){Text("Lifecycle, decisioni e mandati")}
     if(!opened) return
     LaunchedEffect(state.detail?.getJSONObject("workspace")?.getInt("revision")){data=model.workspaceRead("project")}
     val p=data ?: return
     fun name(id:String)=p.rows("members").firstOrNull{it.getString("id")==id}?.getString("name") ?: "Partecipante"
     Text("Goal, decisioni e mandati restano distinti. Ogni adozione richiede gli atti espliciti delle persone pertinenti.")
-    p.rows("goals").forEach{g->key(g.getString("id")){ProjectCard(g.getString("content")){
+    p.rows("goals").forEach{g->key(g.getString("id")){ProjectCard(g.getString("content"),initiallyOpen=selected?.kind=="goal.change" && selected.target?.id==g.getString("id")){
         var mode by remember{mutableStateOf("revise")};var content by remember{mutableStateOf("")};var reason by remember{mutableStateOf("")};var people by remember{mutableStateOf(setOf<String>())};var blockers by remember{mutableStateOf(setOf<String>())};var subgoal by remember{mutableStateOf(false)}
+        var baseVersion by remember {mutableIntStateOf(g.getInt("version"))}
+        var baseContent by remember {mutableStateOf(g.getString("content"))}
+        val origin=selected?.takeIf {it.kind=="goal.change" && it.target?.id==g.getString("id")}
+        val expectedVersion=origin?.target?.version ?: baseVersion
+        val currentBase=expectedVersion==g.getInt("version")
+        LaunchedEffect(origin?.id){if(origin!=null)content=origin.suggestedText}
         Text("v${g.getInt("version")} · ${g.getString("status")}")
         ProjectCard("Storia del Goal"){g.rows("versions").forEach{v->Text("v${v.getInt("version")} · ${name(v.getString("actor"))} · ${v.getString("createdAt")}");Text(v.getString("content"));Text(v.getString("reason"))}}
         if(g.getString("status")=="active"){
@@ -35,7 +43,12 @@ private fun projectCommand(type:String,vararg values:Pair<String,Any>)=JSONObjec
             p.rows("members").filter{it.getBoolean("active")&&it.getBoolean("eligible")}.forEach{person->Row{Checkbox(person.getString("id") in people,{people=if(it)people+person.getString("id") else people-person.getString("id")});Text(person.getString("name"))}}
             Text("Gli obblighi restano validi. Segnala quelli incompatibili che impediscono la transizione.",style=MaterialTheme.typography.bodySmall)
             p.rows("acts").filter{it.getString("status")=="effective"&&!it.isNull("actId")}.forEach{act->Row{Checkbox(act.getString("actId") in blockers,{blockers=if(it)blockers+act.getString("actId") else blockers-act.getString("actId")});Text(act.getString("content"))}}
-            Button(onClick={model.workspaceCommand(projectCommand("goal.propose","goalId" to g.getString("id"),"expectedVersion" to g.getInt("version"),"mode" to mode,"content" to if(mode in listOf("complete","abandon"))g.getString("content") else content,"reason" to reason,"previousBecomesSubgoal" to (mode=="replace"&&subgoal),"affectedPeople" to JSONArray(people.sorted()),"blockingActIds" to JSONArray(blockers.sorted()),"preserveExistingObligations" to true),"Proposta sul Goal")},enabled=!state.busy&&reason.isNotBlank()&&(mode in listOf("complete","abandon")||content.isNotBlank())){Text("Proponi cambiamento")}
+            if(!currentBase) {
+                Text("La proposta parte dalla v$expectedVersion; il Goal è ora alla v${g.getInt("version")}. Rileggi il contenuto corrente prima di continuare.",color=MaterialTheme.colorScheme.error)
+                Text(g.getString("content"))
+                if(origin==null) TextButton(onClick={baseVersion=g.getInt("version");baseContent=g.getString("content")}) {Text("Usa la versione corrente mantenendo la bozza")}
+            }
+            Button(onClick={model.workspaceCommand(projectCommand("goal.propose","goalId" to g.getString("id"),"expectedVersion" to expectedVersion,"mode" to mode,"content" to if(mode in listOf("complete","abandon"))baseContent else content,"reason" to reason,"previousBecomesSubgoal" to (mode=="replace"&&subgoal),"affectedPeople" to JSONArray(people.sorted()),"blockingActIds" to JSONArray(blockers.sorted()),"preserveExistingObligations" to true).withHandoff(origin),"Proposta sul Goal")},enabled=!state.busy&&reason.isNotBlank()&&(mode in listOf("complete","abandon")||content.isNotBlank())&&state.canUseHandoff(origin)&&currentBase){Text("Proponi cambiamento")}
         }
     }}}
     p.rows("goalProposals").forEach{proposal->ProjectCard(proposal.getString("content")){
@@ -60,23 +73,38 @@ private fun projectCommand(type:String,vararg values:Pair<String,Any>)=JSONObjec
 }
 @Composable private fun ProjectActForm(state:UiState,model:WorkspaceModel,p:JSONObject){
     var kind by remember{mutableStateOf("decision")};var content by remember{mutableStateOf("")};var reason by remember{mutableStateOf("")};var goal by remember{mutableStateOf("")};var operation by remember{mutableStateOf("establish")};var previous by remember{mutableStateOf("")};var people by remember{mutableStateOf(setOf<String>())}
-    ProjectCard("Prepara una decisione, un vincolo o un impegno"){
+    var goalVersion by remember {mutableIntStateOf(0)}
+    val currentGoal=goal.isBlank() || p.rows("goals").any {it.getString("id")==goal && it.getInt("version")==goalVersion}
+    val origin=selectedHandoff("project.propose","project.replace","project.revoke")
+    val targetAct=origin?.target?.let {ref->p.rows("acts").firstOrNull {it.getString("proposalId")==ref.id && it.getString("status")=="effective" && !it.isNull("actId")}}
+    LaunchedEffect(origin?.id){if(origin!=null){content=origin.suggestedText;operation=when(origin.kind){"project.replace"->"replace";"project.revoke"->"revoke";else->"establish"};previous=targetAct?.getString("actId").orEmpty();targetAct?.let{kind=it.getString("kind")}}}
+    val originMatches=origin==null || when(origin.kind){"project.propose"->operation=="establish";"project.replace"->operation=="replace" && previous==targetAct?.getString("actId");else->operation=="revoke" && previous==targetAct?.getString("actId")}
+    ProjectCard("Prepara una decisione, un vincolo o un impegno",initiallyOpen=origin!=null){
         ProjectChoice("Tipo",kind,listOf("decision" to "Decisione","constraint" to "Vincolo","commitment" to "Impegno")){kind=it};ProjectChoice("Operazione",operation,listOf("establish" to "Stabilisci","replace" to "Sostituisci","revoke" to "Revoca")){operation=it}
         if(operation!="establish")ProjectChoice("Atto precedente",previous,p.rows("acts").filter{it.getString("status")=="effective"&&!it.isNull("actId")}.map{it.getString("actId") to it.getString("content")}){previous=it}
-        OutlinedTextField(content,{content=it},label={Text("Contenuto esatto")});OutlinedTextField(reason,{reason=it},label={Text("Motivazione")});ProjectChoice("Goal collegato",goal,listOf("" to "Nessuno")+p.rows("goals").map{it.getString("id") to it.getString("content")}){goal=it}
+        OutlinedTextField(content,{content=it},label={Text("Contenuto esatto")});OutlinedTextField(reason,{reason=it},label={Text("Motivazione")});ProjectChoice("Goal collegato",goal,listOf("" to "Nessuno")+p.rows("goals").map{it.getString("id") to it.getString("content")}){goal=it;goalVersion=p.rows("goals").firstOrNull {g->g.getString("id")==it}?.getInt("version") ?: 0}
         p.rows("members").filter{it.getBoolean("active")&&it.getBoolean("eligible")}.forEach{person->Row{Checkbox(person.getString("id") in people,{people=if(it)people+person.getString("id") else people-person.getString("id")});Text(person.getString("name"))}}
-        Button(onClick={val g=p.rows("goals").firstOrNull{it.getString("id")==goal};val c=projectCommand("project.propose","kind" to kind,"operation" to operation,"content" to content,"reason" to reason,"people" to JSONArray(people.sorted()),"goal" to (g?.let{JSONObject().put("id",goal).put("version",it.getInt("version"))} ?: JSONObject.NULL));if(operation!="establish")c.put("replacesActId",previous);model.workspaceCommand(c,"Proposta: $content")},enabled=!state.busy&&content.isNotBlank()&&reason.isNotBlank()&&people.isNotEmpty()&&(operation=="establish"||previous.isNotBlank())){Text("Proponi, senza adottare")}
+        if(!currentGoal) Text("Il Goal collegato è cambiato. Seleziona di nuovo la versione da collegare.",color=MaterialTheme.colorScheme.error)
+        Button(onClick={val c=projectCommand("project.propose","kind" to kind,"operation" to operation,"content" to content,"reason" to reason,"people" to JSONArray(people.sorted()),"goal" to (if(goal.isBlank())JSONObject.NULL else JSONObject().put("id",goal).put("version",goalVersion)));if(operation!="establish")c.put("replacesActId",previous);model.workspaceCommand(c.withHandoff(origin),"Proposta: $content")},enabled=!state.busy&&content.isNotBlank()&&reason.isNotBlank()&&people.isNotEmpty()&&(operation=="establish"||previous.isNotBlank())&&state.canUseHandoff(origin)&&originMatches&&currentGoal){Text("Proponi, senza adottare")}
     }
 }
 @Composable private fun ProjectMandates(state:UiState,model:WorkspaceModel,p:JSONObject){
     var holder by remember{mutableStateOf("")};var target by remember{mutableStateOf("")};var capability by remember{mutableStateOf("goal.change")};var reason by remember{mutableStateOf("")}
+    var targetVersion by remember {mutableIntStateOf(0)}
+    val targetParts=target.split(":")
+    val currentTarget=targetParts.size==2 && when(targetParts[0]) {
+        "goal" -> p.rows("goals").any {it.getString("id")==targetParts[1] && it.getInt("version")==targetVersion}
+        "act" -> p.rows("acts").any {it.optString("actId")==targetParts[1] && it.getString("status")=="effective" && targetVersion==1}
+        else -> false
+    }
     fun name(id:String)=p.rows("members").firstOrNull{it.getString("id")==id}?.getString("name") ?: "Partecipante"
     ProjectCard("Delega la tua posizione entro uno scope"){
         ProjectChoice("Destinatario",holder,p.rows("members").filter{it.getBoolean("active")&&it.getBoolean("eligible")}.map{it.getString("id") to it.getString("name")}){holder=it}
-        ProjectChoice("Scope esatto",target,p.rows("goals").map{("goal:"+it.getString("id")) to it.getString("content")}+p.rows("acts").filter{!it.isNull("actId")&&it.getString("status")=="effective"}.map{("act:"+it.getString("actId")) to it.getString("content")}){target=it}
+        ProjectChoice("Scope esatto",target,p.rows("goals").map{("goal:"+it.getString("id")) to it.getString("content")}+p.rows("acts").filter{!it.isNull("actId")&&it.getString("status")=="effective"}.map{("act:"+it.getString("actId")) to it.getString("content")}){target=it;val parts=it.split(":");targetVersion=if(parts.firstOrNull()=="goal")p.rows("goals").firstOrNull {g->g.getString("id")==parts.getOrNull(1)}?.getInt("version") ?: 0 else 1}
         ProjectChoice("Capacità",capability,listOf("goal.change","goal.conclude","goal.subgoal","act.create","act.replace","act.revoke").map{it to it}){capability=it};OutlinedTextField(reason,{reason=it},label={Text("Motivazione")})
         Text("Deleghi senza scadenza soltanto la tua rappresentanza sull’oggetto/versione indicati. Il destinatario deve accettare.")
-        Button(onClick={val parts=target.split(":");if(parts.size==2){val version=p.rows("goals").firstOrNull{it.getString("id")==parts[1]}?.getInt("version") ?: 1;model.workspaceCommand(projectCommand("mandate.offer","holderId" to holder,"scope" to JSONObject().put("kind",parts[0]).put("id",parts[1]).put("version",version),"capability" to capability,"expiresAt" to JSONObject.NULL,"reason" to reason,"representSelf" to true),"Offerta di mandato")}},enabled=!state.busy&&holder.isNotBlank()&&target.isNotBlank()&&reason.isNotBlank()){Text("Offri mandato")}
+        if(target.isNotBlank()&&!currentTarget)Text("Lo scope selezionato è cambiato. Rileggilo e selezionalo di nuovo.",color=MaterialTheme.colorScheme.error)
+        Button(onClick={val parts=target.split(":");if(parts.size==2){model.workspaceCommand(projectCommand("mandate.offer","holderId" to holder,"scope" to JSONObject().put("kind",parts[0]).put("id",parts[1]).put("version",targetVersion),"capability" to capability,"expiresAt" to JSONObject.NULL,"reason" to reason,"representSelf" to true),"Offerta di mandato")}},enabled=!state.busy&&holder.isNotBlank()&&currentTarget&&reason.isNotBlank()){Text("Offri mandato")}
     }
     p.rows("mandates").forEach{m->key(m.getString("id")){ProjectCard("${name(m.getString("grantorId"))} → ${name(m.getString("holderId"))}"){
         var explanation by remember{mutableStateOf("")};val status=m.getString("status");val actor=state.user?.id

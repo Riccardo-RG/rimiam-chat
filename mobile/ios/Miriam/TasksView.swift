@@ -74,6 +74,7 @@ struct TasksSnapshot: Decodable {
 }
 struct MiriamTasksView: View {
   @Bindable var model: WorkspaceModel
+  var handoff:ConversationHandoff?=nil
   @Environment(\.scenePhase) private var phase
   @State private var title = ""
   @State private var detail = ""
@@ -81,6 +82,7 @@ struct MiriamTasksView: View {
   @State private var suggested = ""
   @State private var candidate: String?
   @State private var due = Date()
+  @State private var taskTimeZone=TimeZone.current.identifier
   @State private var hasDue = false
   @State private var editing: WorkTask?
   @State private var refs: [WorkReference] = []
@@ -89,6 +91,8 @@ struct MiriamTasksView: View {
   @State private var followup: WorkFollowup?
   @State private var target: WorkReference?
   @State private var history = ""
+  @State private var handoffLoaded=false
+  @State private var handoffFailure=""
   private var actor: String { model.credential?.user.id ?? "" }
   private func name(_ id: String?) -> String {
     model.tasks?.members.first(where: { $0.id == id })?.name ?? id ?? "Non assegnato"
@@ -115,6 +119,7 @@ struct MiriamTasksView: View {
     reason = ""
     suggested = ""
     hasDue = false
+    taskTimeZone=TimeZone.current.identifier
     refs = []
     candidate = nil
   }
@@ -124,6 +129,7 @@ struct MiriamTasksView: View {
         Text("Task, responsabilità e impegno sono distinti. Un promemoria non autorizza azioni.")
           .font(.caption)
         if !model.error.isEmpty { Text(model.error).foregroundStyle(.red) }
+        if !handoffFailure.isEmpty {Text(handoffFailure).foregroundStyle(.red);Button("Riprova il Task di origine"){Task{await prepareHandoff()}}}
       }
       if let view = model.tasks {
         Section(editing == nil ? "Nuovo Task non assegnato" : "Modifica / proposta") {
@@ -140,20 +146,12 @@ struct MiriamTasksView: View {
             let c: [String: Any] = [
               "title": title, "description": detail,
               "dueAt": hasDue ? due.ISO8601Format() as Any : NSNull(),
-              "timeZone": TimeZone.current.identifier,
+              "timeZone": taskTimeZone,
               "suggestedPerson": suggested.isEmpty ? NSNull() : suggested as Any,
               "references": refs.map(\.json),
             ]
-            if let t = editing {
-              update(
-                t, t.responsible == nil ? "task.revise" : "task.propose_revision", ["content": c])
-            } else {
-              var b: [String: Any] = ["type": "task.create", "content": c]
-              if let candidate { b["candidateId"] = candidate }
-              send(b)
-            }
-            reset()
-          }.disabled(model.busy || title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            saveTask(c)
+          }.disabled(model.busy || title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || (handoff.map{!model.canApplyHandoff($0) || !handoffLoaded} ?? false))
             .accessibilityIdentifier("task-save")
           if editing != nil { Button("Annulla modifica", action: reset) }
         }
@@ -209,6 +207,7 @@ struct MiriamTasksView: View {
         ProgressView()
       }
     }.navigationTitle("Lavoro e follow-up").accessibilityIdentifier("tasks-content")
+      .task(id:handoff?.id){await prepareHandoff()}
       .task(id: phase) {
         guard phase == .active else { return }
         while !Task.isCancelled {
@@ -216,6 +215,44 @@ struct MiriamTasksView: View {
           try? await Task.sleep(for: .seconds(2))
         }
       }
+  }
+  private func saveTask(_ content:[String:Any]) {
+    var body:[String:Any]
+    if let task=editing {body=base(task,task.responsible == nil ? "task.revise" : "task.propose_revision");body["content"]=content}
+    else {body=["type":"task.create","content":content];if let candidate {body["candidateId"]=candidate}}
+    let boundary=model.mediaBoundary,sentTitle=title,sentDetail=detail,sentReason=reason,sentTask=editing?.id
+    Task {
+      guard boundary == model.mediaBoundary else {return}
+      let saved=await model.handoffCommand(body,handoff:handoff,label:"Tasks / follow-up")
+      guard boundary == model.mediaBoundary else {return}
+      if saved,title == sentTitle,detail == sentDetail,reason == sentReason,editing?.id == sentTask {reset()}
+      await model.loadTasks()
+    }
+  }
+  private func prepareHandoff() async {
+    guard let handoff,!handoffLoaded else {return}
+    let boundary=model.mediaBoundary
+    handoffFailure=""
+    if handoff.kind == .taskChange,let target=handoff.target {
+      await model.loadTasks(before:"")
+      var seen=Set<String>()
+      while boundary == model.mediaBoundary,!Task.isCancelled,let view=model.tasks,!view.tasks.contains(where:{$0.id == target.id}),let next=view.next,seen.insert(next).inserted {await model.loadTasks(before:next)}
+      guard boundary == model.mediaBoundary,!Task.isCancelled else {return}
+      guard let task=model.tasks?.tasks.first(where:{$0.id == target.id}),task.version == target.version else {handoffFailure="Il Task di origine non è disponibile in questa versione. Rileggi l’indicazione prima di proseguire.";return}
+      editing=task;title=task.title;detail=handoff.suggestedText;refs=task.references
+      suggested=task.suggestedPerson ?? "";hasDue=task.dueAt != nil;taskTimeZone=task.timeZone
+      if let raw=task.dueAt {
+        guard let date=taskDate(raw) else {handoffFailure="La scadenza originale non è leggibile. Riprova prima di modificare il Task.";return}
+        due=date
+      }
+    } else {
+      title=handoff.summary;detail=handoff.suggestedText;candidate=handoff.candidateId
+    }
+    reason=handoff.summary;handoffLoaded=true
+  }
+  private func taskDate(_ raw:String)->Date? {
+    let formatter=ISO8601DateFormatter();formatter.formatOptions=[.withInternetDateTime,.withFractionalSeconds]
+    return formatter.date(from:raw) ?? ISO8601DateFormatter().date(from:raw)
   }
   @ViewBuilder private func taskSection(_ t: WorkTask, _ view: TasksSnapshot) -> some View {
     Section(t.title) {
@@ -258,7 +295,8 @@ struct MiriamTasksView: View {
           suggested = t.suggestedPerson ?? ""
           refs = t.references
           hasDue = t.dueAt != nil
-          due = t.dueAt.flatMap { ISO8601DateFormatter().date(from: $0) } ?? Date()
+          due = t.dueAt.flatMap {taskDate($0)} ?? Date()
+          taskTimeZone=t.timeZone
         }
       }
       Button("Prepara follow-up") {

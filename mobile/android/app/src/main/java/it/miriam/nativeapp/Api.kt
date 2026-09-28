@@ -17,7 +17,43 @@ import kotlin.coroutines.resumeWithException
 
 data class Person(val id: String, val name: String, val email: String)
 data class Workspace(val id: String, val name: String)
-data class Message(val id: String, val sequence: Int, val content: String, val authorName: String, val actorKind: String = "human",val citationSourceIds:List<String> = emptyList(),val replyToSourceId:String? = null)
+data class WorkstreamFocus(val workstreamId:String,val version:Int) {
+    fun toJSON()=JSONObject().put("workstreamId",workstreamId).put("version",version)
+}
+data class ConversationReference(val kind: String, val id: String, val version: Int, val eventId: String? = null) {
+    fun toJSON() = JSONObject().put("kind", kind).put("id", id).put("version", version).apply {
+        eventId?.let { put("eventId", it) }
+    }
+    fun query() = "kind=${queryValue(kind)}&id=${queryValue(id)}&version=$version" +
+        (eventId?.let { "&eventId=${queryValue(it)}" } ?: "")
+}
+data class ActivityEvent(val eventId: String, val occurredAt: String, val actor: String?, val actorName: String,
+    val kind: String, val title: String, val summary: String, val qualification: String, val reference: ConversationReference)
+data class ActivityPage(val events: List<ActivityEvent>, val next: String?)
+data class ReferenceDetail(val reference: ConversationReference, val title: String, val content: String,
+    val qualification: String, val actor: String?, val createdAt: String, val current: Boolean,
+    val sourceIds: List<String>, val provenance: JSONObject, val event: ActivityEvent?)
+data class HandoffApplication(val actor: String, val commandId: String, val commandType: String, val createdAt: String,
+    val resultReference: ConversationReference?, val preparedKind: String?, val preparedId: String?)
+data class ConversationHandoff(val id: String, val sourceId: String, val sourceMessageId: String, val kind: String,
+    val summary: String, val suggestedText: String, val target: ConversationReference?, val candidateId: String?,
+    val sourceIds: List<String>, val status: String, val createdAt: String, val application: HandoffApplication?)
+fun JSONObject.conversationHandoff() = ConversationHandoff(getString("id"), getString("sourceId"), getString("sourceMessageId"),
+    getString("kind"), getString("summary"), getString("suggestedText"), optJSONObject("target")?.conversationReference(), nullableString("candidateId"),
+    getJSONArray("sourceIds").let { a -> (0 until a.length()).map { a.getString(it) } }, getString("status"), getString("createdAt"),
+    optJSONObject("application")?.let { a -> HandoffApplication(a.getString("actor"), a.getString("commandId"), a.getString("commandType"), a.getString("createdAt"),
+        a.optJSONObject("resultReference")?.conversationReference(), a.optJSONObject("prepared")?.getString("kind"), a.optJSONObject("prepared")?.getString("id")) })
+fun queryValue(value: String): String = java.net.URLEncoder.encode(value, "UTF-8")
+private fun JSONObject.nullableString(key: String) = if (isNull(key)) null else getString(key)
+fun JSONObject.conversationReference() = ConversationReference(getString("kind"), getString("id"), getInt("version"), nullableString("eventId"))
+fun JSONObject.activityEvent() = ActivityEvent(getString("eventId"), getString("occurredAt"), nullableString("actor"),
+    getString("actorName"), getString("kind"), getString("title"), getString("summary"), getString("qualification"), getJSONObject("reference").conversationReference())
+fun JSONObject.activityPage() = ActivityPage(rows("events").map { it.activityEvent() }, nullableString("next"))
+fun JSONObject.referenceDetail() = ReferenceDetail(getJSONObject("reference").conversationReference(), getString("title"),
+    getString("content"), getString("qualification"), nullableString("actor"), getString("createdAt"), getBoolean("current"),
+    getJSONArray("sourceIds").let { a -> (0 until a.length()).map { a.getString(it) } }, getJSONObject("provenance"), optJSONObject("event")?.activityEvent())
+data class Message(val id: String, val sequence: Int, val content: String, val authorName: String, val actorKind: String = "human",val citationSourceIds:List<String> = emptyList(),val replyToSourceId:String? = null,val purpose:String = "conversation",val createdAt:String = "",val workstreamFocus:WorkstreamFocus?=null,val reference:ConversationReference?=null)
+fun JSONObject.message()=Message(getString("id"),getInt("sequence"),getString("content"),getString("authorName"),optString("actorKind","human"),optJSONArray("citationSourceIds")?.let{a->(0 until a.length()).map{a.getString(it)}} ?: emptyList(),optString("replyToSourceId").takeIf{it.isNotBlank()&&it!="null"},optString("purpose","conversation"),optString("createdAt"),optJSONObject("workstreamFocus")?.let{WorkstreamFocus(it.getString("workstreamId"),it.getInt("version"))},optJSONObject("reference")?.conversationReference())
 data class Goal(val id: String, val content: String, val version: Int, val currentPrimary: Boolean)
 data class Information(val id: String, val content: String, val qualification: String, val version: Int, val acceptedBy: String, val candidateId: String)
 data class Commitment(val id: String, val content: String, val adopted: Boolean,val status:String="proposed",val kind:String="commitment")
@@ -36,12 +72,23 @@ fun aiFailureMessage(code: String): String? = when (code) {
 }
 class ApiError(val code: String, val status: Int) : Exception(aiFailureMessage(code) ?: when(code) {
     "WORK_STATE_STALE" -> "Il lavoro è cambiato. Rileggi lo stato prima di inviare nuovamente l’istruzione."
+    "WORK_NOT_FOUND" -> "Il lavoro selezionato non è disponibile nel Workspace. Il riferimento storico resta separato dai controlli correnti."
     "WORK_INSTRUCTION_UNCLEAR" -> "Istruzione non applicata. Apri il lavoro e specifica come vuoi contribuire, oppure chiarisci la richiesta a Miriam."
     "AUTHENTICATION_REQUIRED" -> "Sessione scaduta o revocata. Accedi di nuovo."
     "EMAIL_NOT_VERIFIED", "ACCOUNT_INELIGIBLE" -> "Verifica l’account prima di continuare."
     "WORKSPACE_ACCESS_DENIED" -> "Non hai più accesso a questo Workspace."
     "INVALID_EMAIL_OR_PASSWORD" -> "Email o password non corrette."
     "RECEIPT_NOT_FOUND" -> "Esito non ancora disponibile; puoi riprovare la stessa operazione."
+    "INVALID_RECEIPT" -> "La conferma ricevuta non corrisponde all’operazione. L’esito resta da verificare; usa il recupero conservato."
+    "WORKSTREAM_NOT_FOUND" -> "Il filone non è disponibile in questo Workspace. Torna alla conversazione o rileggi i filoni."
+    "WORKSTREAM_NOT_ACTIVE" -> "Il filone non è attivo. Puoi consultarne la storia; per aggiungere nuovi messaggi serve un filone attivo."
+    "WORKSTREAM_TRANSITION_INVALID" -> "Il filone è cambiato: questa transizione non è disponibile nel suo stato attuale."
+    "REFERENCE_NOT_FOUND" -> "Questa versione non è disponibile nel Workspace. Il riferimento e la bozza restano conservati."
+    "REFERENCE_EVENT_MISMATCH" -> "L’evento non corrisponde alla versione selezionata. Riapri il riferimento dalla sua storia."
+    "HANDOFF_NOT_FOUND" -> "Il passaggio dalla conversazione non è disponibile in questo Workspace."
+    "HANDOFF_ALREADY_APPLIED" -> "Questo passaggio è già stato applicato. Rileggi l’esito conservato prima di procedere."
+    "HANDOFF_TARGET_STALE" -> "Il riferimento del suggerimento è cambiato. La bozza è conservata: rileggi lo stato prima di riprepararla."
+    "HANDOFF_COMMAND_MISMATCH" -> "Il modulo non corrisponde al passaggio selezionato. Scollega l’origine per preparare un’operazione diversa."
     else -> "Operazione non completata: $code"
 })
 fun JSONObject.rows(key: String): List<JSONObject> = getJSONArray(key).let { array -> (0 until array.length()).map { array.getJSONObject(it) } }

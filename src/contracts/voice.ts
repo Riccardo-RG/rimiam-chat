@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { workstreamFocusSchema } from "./attention.ts";
+import { conversationReferenceSchema } from "./activity.ts";
 
 export const voiceSendSchema = z
   .object({
@@ -7,6 +9,8 @@ export const voiceSendSchema = z
     bytesBase64: z.string().min(1).max(11184812),
     mode: z.enum(["message", "miriam"]),
     allowModelProcessing: z.literal(true),
+    workstreamFocus: workstreamFocusSchema.optional(),
+    reference: conversationReferenceSchema.optional(),
   })
   .strict();
 

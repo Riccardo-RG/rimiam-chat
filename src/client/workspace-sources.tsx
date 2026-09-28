@@ -356,7 +356,7 @@ export function WorkspaceSources({
                   name="query"
                   maxLength={500}
                   required
-                  placeholder="Requisiti per aprire un cocktail bar a Milano"
+                  placeholder="Come validare RIMIAM con i primi utenti beta"
                 />
               </label>
               <label className="check">

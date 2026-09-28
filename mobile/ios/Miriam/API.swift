@@ -58,16 +58,24 @@ struct WorkspaceState: Decodable {
   let information: [Information]
   let commitments: [Commitment]
 }
+struct WorkstreamFocus:Codable,Equatable,Sendable {
+  let workstreamId:String
+  let version:Int
+  var json:[String:Any] {["workstreamId":workstreamId,"version":version]}
+}
 struct Message: Decodable, Identifiable {
   let id: String
   let sequence: Int
   let content: String
   let authorId: String?
   let actorKind: String?
+  let purpose: String?
   let replyToSourceId:String?
   let citationSourceIds:[String]?
   let authorName: String
   let createdAt: String
+  let workstreamFocus:WorkstreamFocus?
+  let reference:ConversationReference?
 }
 struct MessagePage: Decodable {
   let messages: [Message]
@@ -111,8 +119,22 @@ struct APIError: Error, LocalizedError {
   var errorDescription: String? {
     if let explanation = aiFailureMessage(code) { return explanation }
     switch code {
+    case "WORKSTREAM_NOT_FOUND":return "Questo filone non è disponibile nello spazio corrente. Torna alla conversazione completa o scegli un altro filone."
+    case "WORKSTREAM_NOT_ACTIVE":return "Il filone non è attivo. Puoi leggere la storia; per nuovi messaggi scegli un filone attivo o riaprilo."
+    case "WORKSTREAM_TRANSITION_INVALID":return "Lo stato del filone è cambiato. Rileggilo prima di scegliere come proseguire."
+    case "STATE_STALE":return "Lo stato è cambiato. Rileggi la versione corrente prima di confermare l’operazione."
+    case "GOAL_VERSION_STALE":return "Il Goal è cambiato. La bozza conserva la versione iniziale: rileggi il Goal prima di continuare."
+    case "INVALID_RECEIPT":return "La conferma ricevuta non permette di verificare l’esito. La stessa operazione resta recuperabile."
+    case "REFERENCE_NOT_FOUND":return "Questo riferimento non è disponibile nello spazio corrente. Il messaggio originale rimane nella storia."
+    case "REFERENCE_EVENT_MISMATCH":return "L’evento non corrisponde al riferimento richiesto. Riapri il passaggio dall’attività prima di continuare."
+    case "HANDOFF_NOT_FOUND":return "Il passo proposto non è disponibile nello spazio corrente."
+    case "HANDOFF_TARGET_STALE":return "Il riferimento o il candidato è cambiato. Rileggi il passo e chiedi a Miriam di rivalutarlo."
+    case "HANDOFF_ALREADY_APPLIED":return "Questo passo ha già un risultato registrato. Aggiorna per consultarlo."
+    case "HANDOFF_COMMAND_MISMATCH":return "L’operazione non corrisponde al passo proposto. Riapri i controlli dal riferimento corretto."
     case "WORK_STATE_STALE":
       return "Il lavoro è cambiato. Rileggi lo stato prima di inviare nuovamente l’istruzione."
+    case "WORK_NOT_FOUND":return "Questo lavoro non è disponibile nello spazio corrente."
+    case "SYNC_INCOMPLETE":return "L’aggiornamento non è completo. I dati già caricati restano disponibili; riprova."
     case "WORK_INSTRUCTION_UNCLEAR":
       return "Istruzione non applicata. Apri il lavoro e specifica come vuoi contribuire, oppure chiarisci la richiesta a Miriam."
     case "AUTHENTICATION_REQUIRED": return "Sessione scaduta o revocata. Accedi di nuovo."
@@ -142,7 +164,7 @@ final class NoRedirect: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
 @MainActor final class API {
   let base: String
   let session: URLSession
-  init(base: String) throws {
+  init(base: String, configuration: URLSessionConfiguration = .ephemeral) throws {
     guard let url = URL(string: base), let host = url.host, url.user == nil, url.password == nil,
       url.query == nil, url.fragment == nil, url.path.isEmpty || url.path == "/"
     else { throw APIError(code: "INVALID_SERVER_URL", status: 0) }
@@ -152,7 +174,6 @@ final class NoRedirect: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
     #endif
     guard allowed else { throw APIError(code: "HTTPS_REQUIRED", status: 0) }
     self.base = base.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-    let configuration = URLSessionConfiguration.ephemeral
     configuration.httpShouldSetCookies = false
     configuration.httpCookieAcceptPolicy = .never
     configuration.httpCookieStorage = nil

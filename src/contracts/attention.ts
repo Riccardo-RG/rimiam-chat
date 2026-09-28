@@ -2,6 +2,19 @@ import { z } from "zod";
 const version = z.number().int().positive();
 const revision = z.number().int().nonnegative();
 const text = z.string().trim().min(1).max(4000);
+export const workstreamStateSchema = z.enum([
+  "proposed",
+  "active",
+  "resolved",
+  "archived",
+]);
+const lifecycleAction = z.enum(["activate", "resolve", "archive", "reopen"]);
+export const workstreamFocusSchema = z
+  .object({
+    workstreamId: z.uuid(),
+    version,
+  })
+  .strict();
 export const attentionCommandSchemas = [
   z.object({ type: z.literal("attention.aligned"), revision }).strict(),
   z
@@ -18,6 +31,14 @@ export const attentionCommandSchemas = [
       expectedVersion: version.optional(),
       title: text.max(160),
       description: z.string().max(4000),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("workstream.transition"),
+      workstreamId: z.uuid(),
+      expectedVersion: version,
+      action: lifecycleAction,
     })
     .strict(),
   z
@@ -58,6 +79,7 @@ export const attentionViewSchema = z.object({
     z.object({
       id: z.uuid(),
       version,
+      state: workstreamStateSchema,
       title: z.string(),
       description: z.string(),
       actor: z.string().nullable(),
@@ -81,6 +103,8 @@ export const attentionViewSchema = z.object({
           actor: z.string().nullable(),
           origin: z.string(),
           createdAt: z.string(),
+          lifecycleState: workstreamStateSchema.nullable(),
+          lifecycleAction: lifecycleAction.nullable(),
         }),
       ),
     }),

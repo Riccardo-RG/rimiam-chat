@@ -1,5 +1,7 @@
 import { z } from "zod";
 import { commandSchema } from "./commands.ts";
+import { workstreamFocusSchema } from "./attention.ts";
+import { conversationReferenceSchema } from "./activity.ts";
 
 export const apiVersion = "1" as const;
 export const integer = z
@@ -23,6 +25,7 @@ export const createWorkspaceSchema = z
     commandId: z.uuid(),
     expectedActorId: z.string().min(1).optional(),
     name: z.string().trim().min(1).max(120),
+    description: z.string().trim().max(2000).optional(),
   })
   .strict();
 export const receiptSchema = z.object({
@@ -115,8 +118,15 @@ export const messageSchema = z.object({
   content: z.string(),
   authorId: z.string(),
   actorKind: z.enum(["human", "miriam"]),
+  purpose: z.enum([
+    "conversation",
+    "workspace_introduction",
+    "workspace_welcome",
+  ]),
   citationSourceIds: z.array(z.uuid()),
   replyToSourceId: z.uuid().nullable(),
+  workstreamFocus: workstreamFocusSchema.nullable().optional(),
+  reference: conversationReferenceSchema.nullable().optional(),
   authorName: z.string(),
   createdAt: z.string(),
 });

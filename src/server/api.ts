@@ -1,3 +1,9 @@
+import { handoffs } from "./conversation-handoffs.ts";
+import { betaFeedbackView } from "./beta-feedback.ts";
+import { aiUsageView } from "./ai-usage.ts";
+import { activity } from "./activity.ts";
+import { referenceDetail } from "./conversation-reference.ts";
+import { conversationReferenceSchema } from "../contracts/activity.ts";
 import { callView, callConnection, flushCallExit } from "./calls.ts";
 import { callAudio } from "./call-transcripts.ts";
 import { voiceMessages } from "./voice.ts";
@@ -110,11 +116,16 @@ export async function handleAPI(request: Request): Promise<Response> {
             "AUTH_CONTEXT_CHANGED",
             409,
           );
-          result = await createWorkspace(a, input.name, input.commandId);
+          result = await createWorkspace(
+            a,
+            input.name,
+            input.commandId,
+            input.description,
+          );
         } else throw new DomainError("METHOD_NOT_ALLOWED", 405);
       } else {
         const match = url.pathname.match(
-          /^\/api\/v1\/workspaces\/([^/]+)\/(calls|call-connect|call-audio|voice|attention|project|access|access-history|workspace|source-file|state|messages|history|changes|events|commands|receipts|calendar|calendar-history|email|email-history|email-attachment|email-compose|tasks|tasks-history|active-work|active-work-history)(?:\/([^/]+))?$/,
+          /^\/api\/v1\/workspaces\/([^/]+)\/(ai-usage|beta-feedback|handoffs|activity|reference|calls|call-connect|call-audio|voice|attention|project|access|access-history|workspace|source-file|state|messages|history|changes|events|commands|receipts|calendar|calendar-history|email|email-history|email-attachment|email-compose|tasks|tasks-history|active-work|active-work-history)(?:\/([^/]+))?$/,
         );
         requireThat(match, "ROUTE_NOT_FOUND", 404);
         const w = z.uuid().parse(match[1]),
@@ -303,6 +314,46 @@ export async function handleAPI(request: Request): Promise<Response> {
                 .enum(["action", "scheduled_event", "commitment"])
                 .parse(url.searchParams.get("kind")),
             );
+          else if (resource === "ai-usage")
+            result = await aiUsageView(
+              a,
+              w,
+              Number(url.searchParams.get("days") ?? 30),
+            );
+          else if (resource === "beta-feedback")
+            result = await betaFeedbackView(a, w);
+          else if (resource === "handoffs")
+            result = await handoffs(
+              a,
+              w,
+              url.searchParams.has("sourceId")
+                ? z.uuid().parse(url.searchParams.get("sourceId"))
+                : undefined,
+            );
+          else if (resource === "activity")
+            result = await activity(
+              a,
+              w,
+              url.searchParams.get("before") ?? undefined,
+              limit,
+            );
+          else if (resource === "reference")
+            result = await referenceDetail(
+              a,
+              w,
+              conversationReferenceSchema.parse({
+                kind: url.searchParams.get("kind"),
+                id: url.searchParams.get("id"),
+                version: z.coerce
+                  .number()
+                  .int()
+                  .positive()
+                  .parse(url.searchParams.get("version")),
+                ...(url.searchParams.has("eventId")
+                  ? { eventId: url.searchParams.get("eventId") }
+                  : {}),
+              }),
+            );
           else if (resource === "history") {
             requireThat(
               url.searchParams.has("through"),
@@ -316,6 +367,10 @@ export async function handleAPI(request: Request): Promise<Response> {
               cursor(url, "before", through + 1),
               through,
               limit,
+              z
+                .uuid()
+                .optional()
+                .parse(url.searchParams.get("workstreamId") ?? undefined),
             );
           } else if (resource === "messages") {
             requireThat(
@@ -329,6 +384,10 @@ export async function handleAPI(request: Request): Promise<Response> {
               after,
               cursor(url, "through", 0),
               limit,
+              z
+                .uuid()
+                .optional()
+                .parse(url.searchParams.get("workstreamId") ?? undefined),
             );
           } else if (resource === "changes")
             result = await changes(a, w, after, limit);

@@ -44,7 +44,12 @@ struct WorkspaceArtifactsView: View {
   @State private var title=""
   @State private var notes=""
   @State private var question=""
-  @State private var selected: Set<String> = []
+  @State private var questionVersion:Int?
+  @State private var selected:[String:Int]=[:]
+  private var staleReferences:Bool {
+    selected.contains {id,version in !(model.state?.information.contains(where:{$0.id == id && $0.version == version}) ?? false)}
+      || (!question.isEmpty && !(model.detail?.questions.contains(where:{$0.id == question && $0.version == questionVersion}) ?? false))
+  }
   var body: some View {
     List {
       Section {
@@ -52,10 +57,15 @@ struct WorkspaceArtifactsView: View {
         DisclosureGroup("Prepara un documento dai riferimenti") {
           TextField("Titolo",text:$title)
           TextField("Istruzioni e note",text:$notes,axis:.vertical)
-          Picker("Domanda a cui risponde",selection:$question) { Text("Scegli domanda").tag("");ForEach(model.detail?.questions ?? []) { Text($0.content).tag($0.id) } }
+          Picker("Domanda a cui risponde",selection:Binding(get:{question},set:{question=$0;questionVersion=model.detail?.questions.first(where:{$0.id == question})?.version})) { Text("Scegli domanda").tag("");ForEach(model.detail?.questions ?? []) { Text($0.content).tag($0.id) } }
+          if let questionVersion {Text("Domanda selezionata · v\(questionVersion)").font(.caption)}
           Text("Riferimenti accettati da utilizzare").font(.caption)
-          ForEach(model.state?.information ?? []) { info in Toggle(info.subject,isOn:Binding(get:{selected.contains(info.id)},set:{if $0 { selected.insert(info.id) } else { selected.remove(info.id) }})) }
-          Button("Prepara la bozza") { draft() }.disabled(model.busy || title.isEmpty || question.isEmpty || selected.isEmpty)
+          ForEach(model.state?.information ?? []) { info in Toggle(info.subject + " · v\(info.version)",isOn:Binding(get:{selected[info.id] == info.version},set:{if $0 {selected[info.id]=info.version} else {selected[info.id]=nil}})) }
+          if staleReferences {
+            Text("La domanda o alcuni riferimenti sono cambiati. Questo documento guidato richiede versioni correnti: rileggile e selezionale nuovamente.").font(.caption).foregroundStyle(.orange)
+            Button("Rimuovi la selezione da rivalutare"){selected=[:];question="";questionVersion=nil}
+          }
+          Button("Prepara la bozza") { draft() }.disabled(model.busy || staleReferences || title.isEmpty || question.isEmpty || questionVersion == nil || selected.isEmpty)
           Text("La bozza non è adottata e non autorizza azioni esterne.").font(.caption)
         }
       }
@@ -70,9 +80,15 @@ struct WorkspaceArtifactsView: View {
     }.navigationTitle("Artifacts").textSelection(.enabled)
   }
   func draft() {
-    guard let q=model.detail?.questions.first(where:{$0.id==question}) else { return }
-    let information=(model.state?.information ?? []).filter{selected.contains($0.id)}.map{["id":$0.id,"version":$0.version] as [String:Any]}
-    Task { if await model.workspaceCommand(["type":"artifact.draft","title":title,"notes":notes,"questionId":q.id,"questionVersion":q.version,"information":information,"sourceIds":[String]()],label:"Prepara " + title) { title=""; notes=""; selected=[] } }
+    guard let questionVersion,!staleReferences,!selected.isEmpty else {return}
+    let boundary=model.mediaBoundary
+    let sentTitle=title,sentNotes=notes,sentQuestion=question,sentSelected=selected
+    let information=selected.keys.sorted().map{["id":$0,"version":selected[$0]!] as [String:Any]}
+    let body:[String:Any]=["type":"artifact.draft","title":sentTitle,"notes":sentNotes,"questionId":sentQuestion,"questionVersion":questionVersion,"information":information,"sourceIds":[String]()]
+    Task {
+      guard boundary == model.mediaBoundary else {return}
+      if await model.workspaceCommand(body,label:"Prepara " + sentTitle,requireReceipt:true),boundary == model.mediaBoundary,title == sentTitle,notes == sentNotes,question == sentQuestion,self.questionVersion == questionVersion,selected == sentSelected {title="";notes="";selected=[:]}
+    }
   }
 }
 private struct ArtifactRow: View {

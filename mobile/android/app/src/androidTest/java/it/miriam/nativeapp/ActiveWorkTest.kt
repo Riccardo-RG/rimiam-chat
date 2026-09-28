@@ -14,6 +14,12 @@ class ActiveWorkTest {
     @get:Rule val compose=createAndroidComposeRule<MainActivity>()
     private fun scroll(tag:String){
         if(tag in listOf("message","send")) return
+        if(tag.startsWith("active-work-")) {
+            if(compose.onAllNodesWithTag("lens-close").fetchSemanticsNodes().isEmpty())compose.onNodeWithTag("tools-open").performClick()
+            if(compose.onAllNodesWithTag("work-open").fetchSemanticsNodes().isNotEmpty())compose.onNodeWithTag("work-open").performScrollTo().performClick()
+            compose.onNodeWithTag(tag).performScrollTo()
+            return
+        }
         if(tag.endsWith("-open")){compose.onNodeWithTag("tools-open").performClick();return}
         compose.onNodeWithTag("content").performScrollToNode(hasTestTag(tag))
     }
@@ -27,7 +33,7 @@ class ActiveWorkTest {
         scroll("login");compose.onNodeWithTag("login").performClick()
         compose.enterWorkspace()
         val c=Vault(InstrumentationRegistry.getInstrumentation().targetContext).load().credential!!; val api=Api(c.base)
-        val w=runBlocking{api.call("workspaces",c.token).rows("workspaces").first().getString("id")}
+        val w=runBlocking{api.call("workspaces",c.token).rows("workspaces").first{it.getString("name")=="Workspace android di verifica"}.getString("id")}
         fun command(body:JSONObject) = runBlocking { api.call("workspaces/$w/commands",c.token,"POST",JSONObject().put("commandId",UUID.randomUUID().toString()).put("expectedActorId",c.user.id).put("command",body)) }
         val topic="MilanoCompose${UUID.randomUUID().toString().take(8)}"
         command(JSONObject().put("type","message.send").put("content","Il locale $topic costa 3000 euro al mese, dato da verificare."))

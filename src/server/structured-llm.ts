@@ -6,8 +6,15 @@ import {
   Output,
 } from "ai";
 import { createAnthropic } from "@ai-sdk/anthropic";
+import { createOpenAI } from "@ai-sdk/openai";
 import { z } from "zod";
 import { DomainError, requireThat } from "./errors.ts";
+import {
+  beginUsage,
+  finishUsage,
+  type TokenUsage,
+  type UsageScope,
+} from "./ai-usage.ts";
 
 export interface StructuredModel {
   generateJSON<T extends z.ZodTypeAny>(args: {
@@ -16,6 +23,7 @@ export interface StructuredModel {
     schema: T;
     timeoutMs?: number;
     maxOutputTokens?: number;
+    usageScope?: UsageScope;
   }): Promise<z.output<T>>;
 }
 
@@ -61,11 +69,19 @@ function modelFailure(error: unknown): DomainError {
 }
 
 export function configuredStructuredModel(): StructuredModel | undefined {
-  if (process.env.AI_MODE === "anthropic") {
-    const apiKey = process.env.ANTHROPIC_API_KEY?.trim();
+  if (process.env.AI_MODE === "openai" || process.env.AI_MODE === "anthropic") {
+    const provider = process.env.AI_MODE;
+    const apiKey = (
+      process.env.AI_MODE === "openai"
+        ? process.env.OPENAI_API_KEY
+        : process.env.ANTHROPIC_API_KEY
+    )?.trim();
     const model = process.env.AI_MODEL?.trim();
     if (!apiKey || !model) return undefined;
-    const provider = createAnthropic({ apiKey });
+    const languageModel =
+      process.env.AI_MODE === "openai"
+        ? createOpenAI({ apiKey })(model)
+        : createAnthropic({ apiKey })(model);
     return {
       async generateJSON({
         system,
@@ -73,10 +89,14 @@ export function configuredStructuredModel(): StructuredModel | undefined {
         schema,
         timeoutMs = 45000,
         maxOutputTokens = 3000,
+        usageScope,
       }) {
+        const attempt = await beginUsage(usageScope, provider, model);
+        let usage: TokenUsage | undefined;
+        let outcome: "returned" | "failed" = "failed";
         try {
           const response = await generateText({
-            model: provider(model),
+            model: languageModel,
             maxRetries: 0,
             maxOutputTokens,
             abortSignal: AbortSignal.timeout(timeoutMs),
@@ -84,14 +104,20 @@ export function configuredStructuredModel(): StructuredModel | undefined {
             system,
             prompt,
           });
+          usage = response.totalUsage;
           requireThat(
             response.finishReason !== "length",
             "AI_OUTPUT_PARSE_ERROR",
             502,
           );
-          return parseStructuredOutput(schema, response.output);
+          const output = parseStructuredOutput(schema, response.output);
+          outcome = "returned";
+          return output;
         } catch (error) {
+          if (NoObjectGeneratedError.isInstance(error)) usage ??= error.usage;
           throw modelFailure(error);
+        } finally {
+          await finishUsage(attempt, outcome, usage);
         }
       },
     };
@@ -123,7 +149,11 @@ export function configuredStructuredModel(): StructuredModel | undefined {
         schema,
         timeoutMs = 45000,
         maxOutputTokens = 3000,
+        usageScope,
       }) {
+        const attempt = await beginUsage(usageScope, "ollama", model);
+        let usage: TokenUsage | undefined;
+        let outcome: "returned" | "failed" = "failed";
         try {
           const signal = AbortSignal.timeout(timeoutMs);
           const format = z.toJSONSchema(schema);
@@ -159,21 +189,36 @@ export function configuredStructuredModel(): StructuredModel | undefined {
               message: z.object({ content: z.string() }),
               done: z.literal(true),
               done_reason: z.string().optional(),
+              prompt_eval_count: z.number().int().nonnegative().optional(),
+              eval_count: z.number().int().nonnegative().optional(),
             }),
             await response.json(),
           );
+          usage = {
+            inputTokens: payload.prompt_eval_count,
+            outputTokens: payload.eval_count,
+            inputTokenDetails: {
+              noCacheTokens: payload.prompt_eval_count,
+              cacheReadTokens: 0,
+              cacheWriteTokens: 0,
+            },
+          };
           requireThat(
             payload.done_reason !== "length",
             "AI_OUTPUT_PARSE_ERROR",
             502,
           );
           // Do not salvage a fragment of an incomplete or otherwise invalid response.
-          return parseStructuredOutput(
+          const output = parseStructuredOutput(
             schema,
             JSON.parse(payload.message.content),
           );
+          outcome = "returned";
+          return output;
         } catch (error) {
           throw modelFailure(error);
+        } finally {
+          await finishUsage(attempt, outcome, usage);
         }
       },
     };

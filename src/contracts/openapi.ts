@@ -1,3 +1,7 @@
+import { conversationHandoffsSchema } from "./conversation-handoff.ts";
+import { betaFeedbackViewSchema } from "./beta-feedback.ts";
+import { aiUsageViewSchema } from "./ai-usage.ts";
+import { activitySchema, referenceDetailSchema } from "./activity.ts";
 import { callViewSchema } from "./calls.ts";
 import { voiceMessagesSchema } from "./voice.ts";
 import { z } from "zod";
@@ -33,6 +37,11 @@ import {
 } from "./v1.ts";
 
 const schemas = {
+  BetaFeedback: betaFeedbackViewSchema,
+  AIUsage: aiUsageViewSchema,
+  Handoffs: conversationHandoffsSchema,
+  Activity: activitySchema,
+  Reference: referenceDetailSchema,
   Voice: voiceMessagesSchema,
   Calls: callViewSchema,
   CallConnect: z.object({ callId: z.uuid() }),
@@ -323,9 +332,51 @@ export const openAPI = {
         parameter("before", "query", false, { type: "integer", minimum: 1 }),
       ]),
     },
+    "/workspaces/{workspaceId}/handoffs": {
+      get: operation("Handoffs", undefined, [
+        workspace,
+        parameter("sourceId", "query", false, {
+          type: "string",
+          format: "uuid",
+        }),
+      ]),
+    },
+    "/workspaces/{workspaceId}/beta-feedback": {
+      get: operation("BetaFeedback", undefined, [workspace]),
+    },
+    "/workspaces/{workspaceId}/ai-usage": {
+      get: operation("AIUsage", undefined, [
+        workspace,
+        parameter("days", "query", false, {
+          type: "integer",
+          enum: [7, 30],
+          default: 30,
+        }),
+      ]),
+    },
+    "/workspaces/{workspaceId}/activity": {
+      get: operation("Activity", undefined, [
+        workspace,
+        limit,
+        parameter("before", "query", false, { type: "string" }),
+      ]),
+    },
+    "/workspaces/{workspaceId}/reference": {
+      get: operation("Reference", undefined, [
+        workspace,
+        parameter("kind", "query", true, { type: "string" }),
+        parameter("id", "query", true, { type: "string", format: "uuid" }),
+        parameter("version", "query", true, { type: "integer", minimum: 1 }),
+        parameter("eventId", "query", false, { type: "string" }),
+      ]),
+    },
     "/workspaces/{workspaceId}/messages": {
       get: operation("Messages", undefined, [
         workspace,
+        parameter("workstreamId", "query", false, {
+          type: "string",
+          format: "uuid",
+        }),
         after,
         limit,
         parameter("through", "query", true, { type: "integer", minimum: 0 }),
@@ -334,6 +385,10 @@ export const openAPI = {
     "/workspaces/{workspaceId}/history": {
       get: operation("History", undefined, [
         workspace,
+        parameter("workstreamId", "query", false, {
+          type: "string",
+          format: "uuid",
+        }),
         limit,
         parameter("before", "query", false, { type: "integer", minimum: 0 }),
         parameter("through", "query", true, { type: "integer", minimum: 0 }),

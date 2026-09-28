@@ -71,6 +71,7 @@ private fun actionBody(type: String, action: JSONObject, calendar: JSONObject): 
                     val p = t.getJSONObject("payload")
                     Text(p.getString("title"), style = MaterialTheme.typography.titleMedium); CalendarSchedule(p)
                     CalendarHistoryControl(model,t.getString("id"),t.getString("kind"))
+                    if(t.getString("kind")=="scheduled_event")ReferenceLink(ConversationReference("scheduled_event",t.getString("id"),t.getInt("version")))
                     Text("${if (t.getString("kind") == "commitment") "Data dell’impegno" else "Appuntamento"} · v${t.getInt("version")} · ${t.getString("reason")}")
                     if (t.getString("personId") == state.user?.id) {
                         if (t.getString("kind") == "scheduled_event") TextButton(onClick = {

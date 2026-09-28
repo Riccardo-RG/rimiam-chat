@@ -1,3 +1,5 @@
+import type { ConversationHandoff } from "./conversation-handoff.ts";
+import type { ConversationReference } from "./activity.ts";
 import type { ArtifactBlock } from "./artifact-document.ts";
 // Legacy web projection contract; no imports from server implementation.
 export interface ArtifactVersion {
@@ -68,6 +70,14 @@ export interface ArtifactSnapshot {
 }
 
 export interface Candidate {
+  uses: {
+    information: { id: string; version: number; current: boolean }[];
+    questions: { id: string; version: number; current: boolean }[];
+    proposals: {
+      id: string;
+      status: "proposed" | "effective" | "superseded";
+    }[];
+  };
   id: string;
   interpretation_id: string;
   source_id: string;
@@ -190,13 +200,17 @@ export interface Snapshot extends ArtifactSnapshot {
     content: string;
     author_id: string | null;
     actor_kind: "human" | "miriam";
+    purpose: "conversation" | "workspace_introduction" | "workspace_welcome";
     citation_source_ids: string[];
     reply_to_source_id: string | null;
+    workstream_focus: { workstreamId: string; version: number } | null;
+    reference: ConversationReference | null;
     author_name: string;
     created_at: string;
     sequence: number;
   }[];
   candidates: Candidate[];
+  handoffs?: ConversationHandoff[];
   information: {
     id: string;
     subject: string;
@@ -224,6 +238,7 @@ export interface Snapshot extends ArtifactSnapshot {
     people: string[];
     context_revision: number;
     adopted_at: string | null;
+    status: "proposed" | "effective" | "superseded";
   }[];
   approvals: {
     proposal_id: string;

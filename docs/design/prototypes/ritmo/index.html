@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light" />
+    <meta
+      name="description"
+      content="RIMIAM — Ritmo. Proposta di esperienza conversazionale, prototipo locale con dati illustrativi."
+    />
+    <title>RIMIAM · Ritmo</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="./style.css" />
+    <script src="./app.js" defer></script>
+  </head>
+  <body>
+    <header class="studio-bar">
+      <a
+        class="studio-brand"
+        href="./index.html"
+        aria-label="Ricomincia il prototipo RIMIAM"
+        >rimiam<span>Design study 01</span></a
+      >
+      <nav class="platform-switch" aria-label="Anteprima piattaforma">
+        <button type="button" data-platform="ios" aria-pressed="true">
+          iOS
+        </button>
+        <button type="button" data-platform="android" aria-pressed="false">
+          Android
+        </button>
+        <button type="button" data-platform="web" aria-pressed="false">
+          Web
+        </button>
+      </nav>
+      <span class="studio-caption"
+        >Prototipo · dati illustrativi · nessun servizio connesso</span
+      >
+    </header>
+    <main class="studio" id="studio">
+      <aside
+        class="direction-note"
+        aria-label="Direzione e percorsi del prototipo"
+      >
+        <span class="eyebrow">01 / RITMO</span>
+        <h1>Il filo resta.<br />Lo spazio<br /><em>si fa leggero.</em></h1>
+        <p>
+          Parlare, costruire, ritrovarsi.<br />La struttura arriva quando serve.
+        </p>
+        <div class="scene-list" role="group" aria-label="Scene illustrative">
+          <button type="button" data-scene="home">
+            <span>01</span> Entrare nello spazio
+            <span class="scene-arrow">↗</span>
+          </button>
+          <button
+            type="button"
+            data-scene="conversation"
+            class="selected"
+            aria-pressed="true"
+          >
+            <span>02</span> Riprendere il filo
+            <span class="scene-arrow">↗</span>
+          </button>
+          <button type="button" data-scene="completed">
+            <span>03</span> Un risultato da leggere
+            <span class="scene-arrow">↗</span>
+          </button>
+          <button type="button" data-scene="conflict">
+            <span>04</span> Due indicazioni diverse
+            <span class="scene-arrow">↗</span>
+          </button>
+        </div>
+        <div class="explore-as">
+          <label for="persona">Esplora come</label
+          ><select id="persona">
+            <option value="riccardo">Riccardo</option>
+            <option value="giulia">Giulia</option>
+          </select>
+        </div>
+        <p class="studio-footnote">
+          Le scene e le risposte sono scritte per il design. Le interazioni
+          modificano soltanto questa anteprima, fino al ricaricamento.
+        </p>
+      </aside>
+      <section
+        class="device ios"
+        id="device"
+        aria-label="Anteprima RIMIAM per iOS"
+      >
+        <div class="system-status" aria-hidden="true">
+          <span>9:41</span><span class="status-island"></span
+          ><span class="status-radio">▂▄▆ <span>▰</span></span>
+        </div>
+        <div id="app" class="app"></div>
+        <div class="system-bottom" aria-hidden="true"><span></span></div>
+        <dialog
+          id="detail"
+          class="detail-dialog"
+          aria-labelledby="detail-title"
+        ></dialog>
+      </section>
+      <aside class="design-note" id="design-note">
+        <span class="eyebrow">LA SCELTA</span>
+        <p>Una sola conversazione.<br />Il resto, a un gesto.</p>
+        <span class="note-line"></span>
+        <p class="small">
+          Apri <strong>Lo spazio</strong> per trovare quello che è emerso, senza
+          perdere il punto da cui sei partito.
+        </p>
+      </aside>
+    </main>
+    <div class="studio-mobile-note">
+      Anteprima interattiva · nessun account o dato reale
+    </div>
+    <div
+      id="announcement"
+      class="sr-only"
+      role="status"
+      aria-live="polite"
+    ></div>
+  </body>
+</html>

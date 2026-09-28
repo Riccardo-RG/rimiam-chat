@@ -144,6 +144,9 @@ export async function login(request: Request) {
   );
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
+    // The auth limiter intentionally returns only a message; retain its distinct status/code.
+    if (response.status === 429)
+      throw new DomainError("TOO_MANY_REQUESTS", 429);
     const code = z
       .string()
       .regex(/^[A-Z_]+$/)

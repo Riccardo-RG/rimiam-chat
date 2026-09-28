@@ -7,6 +7,8 @@ import { requireThat } from "./errors.ts";
 import { inspectMedia } from "./media-provider.ts";
 import { uploadDocument } from "./sources.ts";
 import { voiceSendSchema, voiceMessagesSchema } from "../contracts/voice.ts";
+import { recordMessageFocus } from "./workstream-focus.ts";
+import { recordMessageReference } from "./conversation-reference.ts";
 
 export async function sendVoice(
   tx: Tx,
@@ -50,6 +52,17 @@ export async function sendVoice(
     "INSERT INTO voice_message(message_id,workspace_id,source_id,mode) VALUES($1,$2,$3,$4)",
     [messageId, w, source.sourceId, input.mode],
   );
+  if (input.workstreamFocus)
+    await recordMessageFocus(
+      tx,
+      w,
+      messageId,
+      actor,
+      input.workstreamFocus,
+      source.sourceId,
+    );
+  if (input.reference)
+    await recordMessageReference(tx, w, messageId, input.reference);
   await changed(tx, w, "voice.sent");
   return { ...source, messageId };
 }

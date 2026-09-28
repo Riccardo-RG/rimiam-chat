@@ -12,6 +12,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.unit.dp
 import org.json.JSONObject
 @Composable fun ArtifactBody(state:UiState,model:WorkspaceModel,version:JSONObject){
+    ReferenceLink(ConversationReference("artifact",version.getString("artifact_id"),version.getInt("version")))
     val blocks=version.optJSONArray("blocks")
     if(blocks==null||blocks.length()==0)Text(version.getString("body")) else repeat(blocks.length()){index->val b=blocks.getJSONObject(index);when(b.getString("type")){
         "paragraph"->Text(b.getString("text"));"heading"->Text(b.getString("text"),style=MaterialTheme.typography.titleMedium)

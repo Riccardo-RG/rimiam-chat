@@ -79,7 +79,7 @@ describe("Document sources and retained provenance", () => {
     const { a, b, w } = await setup();
     const bytes = "Il locale costa €3.200 al mese.\r\n";
     const first = await upload(a, w, bytes);
-    expect((await snapshot(a, w)).messages).toHaveLength(0);
+    expect((await snapshot(a, w)).messages).toHaveLength(1); // deterministic welcome, no generated response
     expect((await snapshot(a, w)).information).toHaveLength(0);
     expect(
       (await readDocument(a, w, first.sourceId as string)).original_bytes,

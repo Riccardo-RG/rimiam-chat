@@ -1,3 +1,4 @@
+import { conversationOriginSchema } from "./conversation-handoff.ts";
 import { z } from "zod";
 const version = z.number().int().positive();
 const revision = z.number().int().nonnegative();
@@ -52,6 +53,7 @@ export const projectCommandSchemas = [
   z
     .object({
       type: z.literal("goal.propose"),
+      conversationOrigin: conversationOriginSchema.optional(),
       goalId: z.uuid(),
       expectedVersion: version,
       mode: z.enum(["revise", "replace", "subgoal", "complete", "abandon"]),
@@ -73,6 +75,7 @@ export const projectCommandSchemas = [
   z
     .object({
       type: z.literal("project.propose"),
+      conversationOrigin: conversationOriginSchema.optional(),
       kind: z.enum(["decision", "constraint", "commitment"]),
       content,
       people: z.array(person).min(1).max(20),

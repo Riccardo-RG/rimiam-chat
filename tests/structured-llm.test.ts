@@ -135,6 +135,9 @@ describe("structured model boundary (no real provider or database)", () => {
     vi.stubEnv("ANTHROPIC_API_KEY", "");
     vi.stubEnv("AI_MODEL", "test-model");
     expect(configuredStructuredModel()).toBeUndefined();
+    vi.stubEnv("AI_MODE", "openai");
+    vi.stubEnv("OPENAI_API_KEY", "");
+    expect(configuredStructuredModel()).toBeUndefined();
     expect(request).not.toHaveBeenCalled();
     expect(generateText).not.toHaveBeenCalled();
   });
@@ -190,5 +193,41 @@ describe("structured model boundary (no real provider or database)", () => {
     await expect(model.generateJSON(args)).rejects.toMatchObject({
       code: "AI_OUTPUT_PARSE_ERROR",
     });
+  });
+
+  it("uses OpenAI without changing structured validation or safe failure handling", async () => {
+    vi.stubEnv("AI_MODE", "openai");
+    vi.stubEnv("OPENAI_API_KEY", "test-key");
+    vi.stubEnv("AI_MODEL", "gpt-4.1-mini");
+    const model = configuredStructuredModel()!;
+    const generate = vi.mocked(generateText);
+    generate.mockResolvedValueOnce({
+      output: value,
+      finishReason: "stop",
+    } as Awaited<ReturnType<typeof generateText>>);
+    expect(await model.generateJSON(args)).toEqual(value);
+    expect(generate.mock.calls[0][0]).toMatchObject({
+      maxRetries: 0,
+      system: args.system,
+      prompt: args.prompt,
+    });
+    expect(generate.mock.calls[0][0].model).toMatchObject({
+      provider: "openai.responses",
+      modelId: "gpt-4.1-mini",
+    });
+    generate.mockResolvedValueOnce({
+      output: { answer: "invalid" },
+      finishReason: "stop",
+    } as Awaited<ReturnType<typeof generateText>>);
+    await safeFailure(model.generateJSON(args), "AI_OUTPUT_PARSE_ERROR");
+    generate.mockRejectedValueOnce(
+      new APICallError({
+        message: "private provider response",
+        url: "https://api.openai.com/v1/responses",
+        requestBodyValues: {},
+        statusCode: 429,
+      }),
+    );
+    await safeFailure(model.generateJSON(args), "AI_RATE_LIMITED");
   });
 });

@@ -1,3 +1,5 @@
+import { conversationOriginSchema } from "./conversation-handoff.ts";
+import { addBetaFeedbackSchema } from "./beta-feedback.ts";
 import { callCommandSchemas } from "./calls.ts";
 import { z } from "zod";
 import { voiceSendSchema } from "./voice.ts";
@@ -10,9 +12,10 @@ import {
 } from "./active-work.ts";
 import { accessCommandSchemas } from "./access.ts";
 import { projectCommandSchemas } from "./project.ts";
-import { attentionCommandSchemas } from "./attention.ts";
+import { attentionCommandSchemas, workstreamFocusSchema } from "./attention.ts";
 import { artifactDocumentCommands } from "./artifact-document.ts";
 import { workspaceLinkCommandSchema } from "./workspace-links.ts";
+import { conversationReferenceSchema } from "./activity.ts";
 
 // Public command vocabulary. Domain authorization is enforced exclusively by application services.
 const selection = {
@@ -133,13 +136,22 @@ export const commandSchema = z.discriminatedUnion("type", [
   researchRequestSchema,
   workspaceLinkCommandSchema,
   researchControlSchema,
-  z.object({ type: z.literal("goal.establish"), content: text }),
+  z.object({
+    type: z.literal("goal.establish"),
+    content: text,
+    conversationOrigin: conversationOriginSchema.optional(),
+  }),
   z.object({
     type: z.literal("goal.adhere"),
     goalId: id,
     version: z.number().int().positive(),
   }),
-  z.object({ type: z.literal("message.send"), content: text }),
+  z.object({
+    type: z.literal("message.send"),
+    content: text,
+    workstreamFocus: workstreamFocusSchema.optional(),
+    reference: conversationReferenceSchema.optional(),
+  }),
   z.object({
     type: z.literal("invitation.create"),
     email: z.email().toLowerCase(),
@@ -160,11 +172,13 @@ export const commandSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("information.accept"),
+    conversationOrigin: conversationOriginSchema.optional(),
     candidateId: id,
     descriptiveOnly: z.literal(true),
   }),
   z.object({
     type: z.literal("information.correct"),
+    conversationOrigin: conversationOriginSchema.optional(),
     informationId: id,
     expectedVersion: z.number().int().positive(),
     candidateId: id,
@@ -184,5 +198,6 @@ export const commandSchema = z.discriminatedUnion("type", [
     representSelf: z.literal(true),
   }),
   z.object({ type: z.literal("interpretation.retry"), interpretationId: id }),
+  addBetaFeedbackSchema,
 ]);
 export type Command = z.infer<typeof commandSchema>;

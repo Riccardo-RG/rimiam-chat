@@ -1,4 +1,9 @@
+import {
+  validateHandoffOrigin,
+  recordHandoffApplication,
+} from "./conversation-handoffs.ts";
 import { applyCall } from "./calls.ts";
+import { addBetaFeedback } from "./beta-feedback.ts";
 import { sendVoice } from "./voice.ts";
 import { draftArtifact, reviewArtifact, approveArtifact } from "./artifacts.ts";
 import { artifactDocumentCommandSchema } from "../contracts/artifact-document.ts";
@@ -25,6 +30,8 @@ import { applyAccess } from "./access-commands.ts";
 import { projectCommandSchema } from "../contracts/project.ts";
 import { attentionCommandSchema } from "../contracts/attention.ts";
 import { attentionCommand } from "./attention.ts";
+import { recordMessageFocus } from "./workstream-focus.ts";
+import { recordMessageReference } from "./conversation-reference.ts";
 import { applyProject } from "./project-commands.ts";
 import {
   eligible,
@@ -103,9 +110,19 @@ export async function createWorkspace(
   actor: string,
   name: string,
   commandId: string,
+  description = "",
 ) {
   id.parse(commandId);
   name = z.string().trim().min(1).max(120).parse(name);
+  description = z.string().trim().max(2000).parse(description);
+  // Preserve hashes of existing name-only commands and normalize empty descriptions.
+  const requestHash = tokenHash(
+    JSON.stringify({
+      type: "workspace.create",
+      name,
+      ...(description ? { description } : {}),
+    }),
+  );
   return transaction(async (tx) => {
     await eligible(tx, actor, true);
     // Serialize retries of creation before there is a Workspace row to lock.
@@ -113,12 +130,13 @@ export async function createWorkspace(
       `${actor}:${commandId}`,
     ]);
     const prior = await tx.query(
-      "SELECT id,name,created_by FROM workspace WHERE id=$1",
+      "SELECT w.id,w.name,w.created_by,r.request_hash FROM workspace w LEFT JOIN command_receipt r ON (r.workspace_id,r.command_id,r.actor_id)=(w.id,w.id,w.created_by) WHERE w.id=$1",
       [commandId],
     );
     if (prior.rowCount) {
       requireThat(
-        prior.rows[0].created_by === actor && prior.rows[0].name === name,
+        prior.rows[0].created_by === actor &&
+          prior.rows[0].request_hash === requestHash,
         "COMMAND_ID_REUSED",
       );
       return { id: commandId };
@@ -146,15 +164,35 @@ export async function createWorkspace(
       [relation, w, actor],
     );
     await accessHistory(tx, w, actor, actor, "workspace_initialization");
+    // Same transaction as creation/receipt. No inference, Goal or adoption command
+    // is run. The human introduction is available through the ordinary source view.
+    const introductionId = description ? randomUUID() : null;
+    if (introductionId)
+      await tx.query(
+        "INSERT INTO message(id,workspace_id,sequence,author_id,content,purpose) VALUES($1,$2,1,$3,$4,'workspace_introduction')",
+        [introductionId, w, actor, description],
+      );
+    const welcomeSequence = introductionId ? 2 : 1;
+    await tx.query(
+      "INSERT INTO message(id,workspace_id,sequence,author_id,actor_kind,content,purpose,reply_to_source_id) VALUES($1,$2,$3,NULL,'miriam',$4,'workspace_welcome',$5)",
+      [
+        randomUUID(),
+        w,
+        welcomeSequence,
+        introductionId
+          ? "Benvenuti. La descrizione che hai condiviso è il punto di partenza della conversazione: potete aggiungere idee, domande o materiali. Non stabilisce da sola un Goal o un accordo del gruppo."
+          : "Benvenuti. Questo è il vostro spazio per confrontarvi e raccogliere idee, domande e materiali. Potete iniziare dalla conversazione, anche senza un Goal già stabilito.",
+        introductionId,
+      ],
+    );
+    await tx.query("UPDATE workspace SET next_message=$2 WHERE id=$1", [
+      w,
+      welcomeSequence,
+    ]);
     await changed(tx, w, "workspace.created", false, true);
     await tx.query(
       "INSERT INTO command_receipt(workspace_id,actor_id,command_id,request_hash,result) VALUES($1,$2,$1,$3,$4)",
-      [
-        w,
-        actor,
-        tokenHash(JSON.stringify({ type: "workspace.create", name })),
-        JSON.stringify({ id: w }),
-      ],
+      [w, actor, requestHash, JSON.stringify({ id: w })],
     );
     return { id: w };
   });
@@ -254,6 +292,13 @@ export async function execute(
       requireThat(previous.rows[0].request_hash === hash, "COMMAND_ID_REUSED");
       return previous.rows[0].result;
     }
+    const conversationOrigin = await validateHandoffOrigin(
+      tx,
+      w,
+      actor,
+      c,
+      sessionId,
+    );
     const calendar = calendarCommandSchema.safeParse(c);
     const email = emailCommandSchema.safeParse(c);
     const tasks = taskCommandSchema.safeParse(c);
@@ -288,11 +333,21 @@ export async function execute(
                           sessionId,
                         )
                       : await apply(tx, ws, actor, c);
-    await reassessActiveWork(tx, w);
+    if (c.type !== "beta.feedback.add") await reassessActiveWork(tx, w);
     await tx.query(
       "INSERT INTO command_receipt(workspace_id,actor_id,command_id,request_hash,result) VALUES($1,$2,$3,$4,$5)",
       [w, actor, commandId, hash, JSON.stringify(result)],
     );
+    if (conversationOrigin)
+      await recordHandoffApplication(
+        tx,
+        w,
+        actor,
+        commandId,
+        c,
+        conversationOrigin,
+        result,
+      );
     return result;
   });
 }
@@ -320,6 +375,8 @@ async function apply(
   if (c.type.startsWith("call."))
     return applyCall(tx, w, actor, c as Parameters<typeof applyCall>[3]);
   switch (c.type) {
+    case "beta.feedback.add":
+      return addBetaFeedback(tx, w, actor, c);
     case "workspace.link":
       return applyWorkspaceLink(tx, w, actor, c);
     case "artifact.draft":
@@ -397,6 +454,10 @@ async function apply(
         "INSERT INTO message(id,workspace_id,sequence,author_id,content) VALUES($1,$2,$3,$4,$5)",
         [messageId, w, seq.rows[0].next_message, actor, c.content],
       );
+      if (c.workstreamFocus)
+        await recordMessageFocus(tx, w, messageId, actor, c.workstreamFocus);
+      if (c.reference)
+        await recordMessageReference(tx, w, messageId, c.reference);
       await tx.query(
         "INSERT INTO interpretation(id,workspace_id,source_id,status) VALUES($1,$2,$3,'queued')",
         [interpretationId, w, messageId],

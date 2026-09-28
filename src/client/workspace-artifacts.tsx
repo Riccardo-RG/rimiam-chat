@@ -1,18 +1,30 @@
 "use client";
-import { ArtifactBody, ArtifactDocumentEditor } from "./artifact-document";
+import {
+  ArtifactBody,
+  ArtifactDocumentEditor,
+  ArtifactInformationSelection,
+  ArtifactRevisionReview,
+  staleArtifactInformation,
+  useArtifactEditBase,
+  type ArtifactInformationReference,
+} from "./artifact-document";
 import { useState } from "react";
 import type { Snapshot } from "./types";
 import type { Command } from "@/contracts/commands";
+import type { ConversationHandoff } from "@/contracts/conversation-handoff";
 type Props = {
   state: Snapshot;
   actor: string;
   busy: boolean;
   command: (c: Command) => Promise<unknown>;
   action: (fn: () => Promise<void>) => Promise<void>;
+  handoff?: ConversationHandoff;
 };
 export function WorkspaceArtifacts(props: Props) {
-  const { state, actor, busy, command, action } = props;
-  const [editing, setEditing] = useState<string | null>(null);
+  const { state, actor, busy, command, action, handoff } = props;
+  const [editing, setEditing] = useState<{ id: string; rich: boolean } | null>(
+    null,
+  );
   const contributes = state.members.some(
     (m) => m.user_id === actor && m.active && m.contributes,
   );
@@ -24,7 +36,7 @@ export function WorkspaceArtifacts(props: Props) {
         <summary>Documenti e risultati</summary>
         <h2>Ciò che costruiamo insieme</h2>
         {contributes && (
-          <details>
+          <details open={!!handoff || undefined}>
             <summary>Nuovo documento</summary>
             <ArtifactDocumentEditor
               state={state}
@@ -32,6 +44,7 @@ export function WorkspaceArtifacts(props: Props) {
               command={command}
               action={action}
               onSaved={() => {}}
+              handoff={handoff}
             />
           </details>
         )}
@@ -138,15 +151,21 @@ export function WorkspaceArtifacts(props: Props) {
               {contributes && (
                 <button
                   disabled={busy}
-                  onClick={() => setEditing(editing === a.id ? null : a.id)}
+                  onClick={() =>
+                    setEditing(
+                      editing?.id === a.id
+                        ? null
+                        : { id: a.id, rich: !!v.blocks },
+                    )
+                  }
                 >
                   Prepara una revisione
                 </button>
               )}
-              {editing === a.id &&
-                (v.blocks ? (
+              {editing?.id === a.id &&
+                (editing.rich ? (
                   <ArtifactDocumentEditor
-                    key={`${a.id}:${v.version}`}
+                    key={a.id}
                     state={state}
                     artifactId={a.id}
                     busy={busy}
@@ -156,7 +175,7 @@ export function WorkspaceArtifacts(props: Props) {
                   />
                 ) : (
                   <DraftForm
-                    key={`${a.id}:${v.version}`}
+                    key={a.id}
                     {...props}
                     artifactId={a.id}
                     onSaved={() => setEditing(null)}
@@ -379,61 +398,114 @@ function DraftForm({
   artifactId,
   onSaved,
 }: Props & { artifactId?: string; onSaved: () => void }) {
-  const artifact = state.artifacts.find((a) => a.id === artifactId);
-  const old = state.artifactVersions.find(
-    (v) =>
-      v.artifact_id === artifactId &&
-      v.version === artifact?.current_draft_version,
+  const { base, current, stale, setBase } = useArtifactEditBase(
+    state,
+    artifactId,
   );
-  const inputs = state.artifactInformation.filter(
-    (i) => i.artifact_id === artifactId && i.artifact_version === old?.version,
+  const [title, setTitle] = useState(base?.title ?? "");
+  const [notes, setNotes] = useState(base?.notes ?? "");
+  const [selected, setSelected] = useState<ArtifactInformationReference[]>(() =>
+    state.artifactInformation
+      .filter(
+        (i) =>
+          i.artifact_id === artifactId && i.artifact_version === base?.version,
+      )
+      .map((i) => ({ id: i.information_id, version: i.information_version })),
   );
-  const sources = state.artifactSources.filter(
-    (s) =>
-      s.artifact_id === artifactId &&
-      s.artifact_version === old?.version &&
-      s.explicitly_selected,
+  const [sourceIds, setSources] = useState<string[]>(() =>
+    state.artifactSources
+      .filter(
+        (s) =>
+          s.artifact_id === artifactId &&
+          s.artifact_version === base?.version &&
+          s.explicitly_selected,
+      )
+      .map((s) => s.source_id),
   );
+  const [question, setQuestion] = useState(
+    base?.question_id ? `${base.question_id}:${base.question_version}` : "",
+  );
+  const questionStale =
+    !!question &&
+    !state.questions.some((q) => `${q.id}:${q.version}` === question);
+  const informationStale =
+    staleArtifactInformation(selected, state.information).length > 0;
+  const isCurrentSource = (id: string) => {
+    const source = state.sources.find((s) => s.id === id);
+    // The projection may omit an older message/source. Preserve its exact ID;
+    // only a known newer document version proves this selection stale here.
+    if (!source) return true;
+    return (
+      !source.document_id ||
+      !state.sources.some(
+        (newer) =>
+          newer.document_id === source.document_id &&
+          newer.document_version! > source.document_version!,
+      )
+    );
+  };
+  const staleSources = sourceIds.filter((id) => !isCurrentSource(id));
   return (
     <form
       onSubmit={(e) => {
         e.preventDefault();
         const form = e.currentTarget;
         const data = new FormData(form);
-        const [questionId, version] = String(data.get("question")).split(":");
+        const [questionId, version] = question.split(":");
         const selection = {
           questionId,
           questionVersion: Number(version),
           title: String(data.get("title")),
           notes: String(data.get("notes")),
-          information: data.getAll("information").map((v) => {
-            const [id, version] = String(v).split(":");
-            return { id, version: Number(version) };
-          }),
-          sourceIds: data.getAll("source").map(String),
+          information: selected,
+          sourceIds,
         };
         void action(async () => {
-          if (old && artifactId)
+          if (stale)
+            throw new Error(
+              "Il documento è cambiato: confronta la versione corrente prima di salvare. La tua bozza è conservata.",
+            );
+          if (questionStale || informationStale || staleSources.length)
+            throw new Error(
+              "Riesamina i riferimenti cambiati prima di salvare il brief.",
+            );
+          if (base && artifactId)
             await command({
               ...selection,
               type: "artifact.revise",
               artifactId,
-              expectedVersion: old.version,
+              expectedVersion: base.version,
               reason: String(data.get("reason")),
             });
           else await command({ ...selection, type: "artifact.draft" });
           form.reset();
+          if (!artifactId) {
+            setTitle("");
+            setNotes("");
+            setQuestion("");
+            setSelected([]);
+            setSources([]);
+          }
           onSaved();
         });
       }}
     >
+      {stale && (
+        <ArtifactRevisionReview
+          state={state}
+          base={base}
+          current={current}
+          onReviewed={() => setBase(current)}
+        />
+      )}
       <label>
         Titolo del brief
         <input
           name="title"
           required
           maxLength={160}
-          defaultValue={old?.title}
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
         />
       </label>
       <label>
@@ -441,61 +513,86 @@ function DraftForm({
         <select
           name="question"
           required
-          defaultValue={old ? `${old.question_id}:${old.question_version}` : ""}
+          value={question}
+          onChange={(e) => setQuestion(e.target.value)}
         >
           <option value="" disabled>
             Scegli una domanda e la versione corrente
           </option>
+          {questionStale && (
+            <option value={question} disabled>
+              Domanda selezionata · v{question.split(":")[1]} · da riesaminare
+            </option>
+          )}
           {state.questions.map((q) => (
-            <option value={`${q.id}:${q.version}`} key={q.id}>
+            <option value={`${q.id}:${q.version}`} key={`${q.id}:${q.version}`}>
               {q.content} · v{q.version}
             </option>
           ))}
         </select>
+        {questionStale && (
+          <span className="processing">
+            La domanda selezionata è cambiata. Esamina e scegli esplicitamente
+            la versione da usare.
+          </span>
+        )}
       </label>
       <fieldset>
         <legend>Informazioni accettate da includere</legend>
-        {state.information.map((i) => (
-          <label className="check" key={i.id}>
-            <input
-              type="checkbox"
-              name="information"
-              value={`${i.id}:${i.current_version}`}
-              defaultChecked={inputs.some(
-                (r) =>
-                  r.information_id === i.id &&
-                  r.information_version === i.current_version,
-              )}
-            />
-            {i.subject} · v{i.current_version}: {i.content}
-          </label>
-        ))}
+        <ArtifactInformationSelection
+          state={state}
+          selected={selected}
+          onChange={setSelected}
+        />
       </fieldset>
-      {state.sources.length > 0 && (
+      {(state.sources.length > 0 || sourceIds.length > 0) && (
         <fieldset>
           <legend>Fonti aggiuntive da esaminare (facoltative)</legend>
           {state.sources
-            .filter(
-              (s) =>
-                !s.document_id ||
-                !state.sources.some(
-                  (newer) =>
-                    newer.document_id === s.document_id &&
-                    newer.document_version! > s.document_version!,
-                ),
-            )
+            .filter((s) => sourceIds.includes(s.id) || isCurrentSource(s.id))
             .map((s) => (
               <label className="check" key={s.id}>
                 <input
                   type="checkbox"
                   name="source"
                   value={s.id}
-                  defaultChecked={sources.some((r) => r.source_id === s.id)}
+                  checked={sourceIds.includes(s.id)}
+                  onChange={(e) =>
+                    setSources((old) =>
+                      e.target.checked
+                        ? [...old, s.id]
+                        : old.filter((id) => id !== s.id),
+                    )
+                  }
                 />
                 {s.title}
                 {s.document_version ? ` · v${s.document_version}` : ""}
+                {!isCurrentSource(s.id) ? " · selezione da riesaminare" : ""}
               </label>
             ))}
+          {sourceIds
+            .filter((id) => !state.sources.some((s) => s.id === id))
+            .map((id) => (
+              <p key={id}>
+                Fonte storica selezionata · {id}{" "}
+                <button
+                  type="button"
+                  className="quiet"
+                  onClick={() =>
+                    setSources((old) => old.filter((s) => s !== id))
+                  }
+                >
+                  Rimuovi riferimento
+                </button>
+              </p>
+            ))}
+          {staleSources.length > 0 && (
+            <p className="processing">
+              Una fonte selezionata non è più corrente. Rimuovi il vecchio
+              riferimento e seleziona esplicitamente la nuova versione, se
+              pertinente.
+            </p>
+          )}
         </fieldset>
       )}
       <label>
@@ -503,18 +600,27 @@ function DraftForm({
         <textarea
           name="notes"
           maxLength={12000}
-          defaultValue={old?.notes}
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
           placeholder="Osservazioni da discutere; non sono decisioni o impegni."
         />
       </label>
-      {old && (
+      {base && (
         <label>
           Motivo della revisione
           <input name="reason" required maxLength={4000} />
         </label>
       )}
-      <button disabled={busy}>
-        {old ? "Salva nuova bozza" : "Crea bozza del brief"}
+      <button
+        disabled={
+          busy ||
+          stale ||
+          questionStale ||
+          informationStale ||
+          staleSources.length > 0
+        }
+      >
+        {base ? "Salva nuova bozza" : "Crea bozza del brief"}
       </button>
     </form>
   );

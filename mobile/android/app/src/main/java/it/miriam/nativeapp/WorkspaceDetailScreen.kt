@@ -6,12 +6,17 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.ScrollState
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 import org.json.JSONArray
 import org.json.JSONObject
@@ -19,36 +24,72 @@ import org.json.JSONObject
 private fun JSONObject.safeRows(key:String)=optJSONArray(key)?.let {a->(0 until a.length()).map {a.getJSONObject(it)}} ?: emptyList()
 private fun JSONObject.strings(key:String)=optJSONArray(key)?.let {a->(0 until a.length()).map {a.getString(it)}} ?: emptyList()
 @Composable private fun Choice(label:String, selected:String, values:List<Pair<String,String>>, changed:(String)->Unit) {
-    var expanded by remember {mutableStateOf(false)}
+    var expanded by rememberSaveable(label) {mutableStateOf(false)}
     Box {OutlinedButton(onClick={expanded=true}) {Text(label+": "+(values.firstOrNull{it.first==selected}?.second ?: "scegli"))};DropdownMenu(expanded,onDismissRequest={expanded=false}) {values.forEach {(id,text)->DropdownMenuItem(text={Text(text)},onClick={changed(id);expanded=false})}}}
 }
-@Composable private fun DetailCard(title:String, content:@Composable ColumnScope.()->Unit) {
-    var expanded by remember {mutableStateOf(false)}
-    Card(Modifier.fillMaxWidth()) {Column(Modifier.padding(14.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {TextButton(onClick={expanded=!expanded}) {Text(title,style=MaterialTheme.typography.titleMedium)};if(expanded) content()}}
+@Composable private fun DetailCard(title:String, initiallyExpanded:Boolean=false, content:@Composable ColumnScope.()->Unit) {
+    var expanded by rememberSaveable(title) {mutableStateOf(initiallyExpanded)}
+    LaunchedEffect(initiallyExpanded) {if(initiallyExpanded)expanded=true}
+    OutlinedCard(Modifier.fillMaxWidth(),border=BorderStroke(1.5.dp,MaterialTheme.colorScheme.outlineVariant)) {Column(Modifier.padding(14.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {TextButton(onClick={expanded=!expanded},modifier=Modifier.fillMaxWidth().semantics {stateDescription=if(expanded)"Espanso" else "Ridotto"}) {Text(title,style=MaterialTheme.typography.titleMedium,modifier=Modifier.weight(1f));Text(if(expanded)"−" else "+")};if(expanded) content()}}
 }
 @OptIn(ExperimentalMaterial3Api::class)
-@Composable fun WorkspaceDetailScreen(destination:String,state:UiState,model:WorkspaceModel,back:()->Unit) {
+@Composable fun WorkspaceDetailScreen(destination:String,state:UiState,model:WorkspaceModel,scrollState:ScrollState=rememberScrollState(),focusWorkId:String?=null,open:(String)->Unit={},onFocus:((WorkstreamFocus)->Unit)?=null,voiceReference:ConversationReference?=null,back:()->Unit) {
     BackHandler {back()}
-    val title=mapOf("attention" to "Adesso","context" to "Context e Goal","sources" to "Fonti e ricerca","questions" to "Domande aperte","artifacts" to "Artifacts","people" to "Persone e accesso")[destination] ?: "Workspace"
-    Scaffold(topBar={TopAppBar(title={Text(title)},navigationIcon={TextButton(onClick=back) {Text("Indietro")}})}) {padding ->
-        Column(Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState()).imePadding().padding(20.dp),verticalArrangement=Arrangement.spacedBy(14.dp)) {
+    val title=mapOf("activity" to "Attività dello spazio","attention" to "Attività dello spazio","goal" to "Dove volete arrivare","context" to "Quello che è emerso","work" to "Il lavoro","sources" to "Fonti e ricerca","questions" to "Domande aperte","artifacts" to "Quello che avete costruito","people" to "Persone e accesso","voice" to "Voce e Miriam","calls" to "Chiamate audio")[destination] ?: "Workspace"
+    Scaffold(contentWindowInsets=WindowInsets(0,0,0,0)) {padding ->
+        Column(Modifier.padding(padding).fillMaxSize().verticalScroll(scrollState).imePadding().padding(20.dp),verticalArrangement=Arrangement.spacedBy(14.dp)) {
+            Text(title,style=MaterialTheme.typography.headlineMedium)
+            HorizontalDivider(thickness=1.5.dp)
             if(state.detail==null) Text("Caricamento del Workspace…") else when(destination) {
-                "attention" -> AttentionContent(state,model)
-                "context" -> ContextContent(state,model)
+                "attention","activity" -> {ActiveWorkPresence(state,model,initialWorkId=focusWorkId);AttentionContent(state,model,includeWorkstreams=false)}
+                "goal" -> GoalContent(state,model)
+                "context" -> {TextButton(onClick={open("questions")}) {Text("Domande ancora aperte →")};ContextContent(state,model)}
+                "work" -> {
+                    TextButton(onClick={open("tasks")}) {Text("Attività delle persone e follow-up →")}
+                    ActiveWorkPresence(state,model,initialWorkId=focusWorkId)
+                    WorkstreamsContent(state,model,onFocus)
+                }
                 "sources" -> SourcesContent(state,model)
                 "questions" -> QuestionsContent(state,model)
-                "artifacts" -> ArtifactsContent(state,model)
+                "artifacts" -> {ActiveWorkPresence(state,model,resultsOnly=true);ArtifactsContent(state,model)}
                 "people" -> PeopleContent(state,model)
+                "voice" -> ConversationVoiceControls(model,voiceReference)
+                "calls" -> WorkspaceCallControls(model)
             }
             if(state.error.isNotEmpty()) Text(state.error,color=MaterialTheme.colorScheme.error)
             Spacer(Modifier.height(24.dp))
         }
     }
 }
+@Composable private fun GoalContent(state:UiState,model:WorkspaceModel) {
+    val d=state.detail ?: return
+    val members=d.rows("members");val actor=state.user?.id
+    fun name(id:String)=members.firstOrNull{it.getString("user_id")==id}?.getString("name") ?: "Partecipante"
+    var goal by remember {mutableStateOf("")}
+    val origin=selectedHandoff("goal.establish")
+    LaunchedEffect(origin?.id) {if(origin!=null)goal=origin.suggestedText}
+    Text("L’intento, le adesioni e la loro storia restano distinti.",style=MaterialTheme.typography.bodyMedium)
+    if(d.rows("goals").isEmpty()) {
+        Text("Potete conversare anche prima di stabilire un Goal.")
+        OutlinedTextField(goal,{goal=it},label={Text("Il tuo intento iniziale")},modifier=Modifier.fillMaxWidth())
+        Button(onClick={model.workspaceCommand(command("goal.establish","content" to goal).withHandoff(origin),goal)},enabled=!state.busy && goal.isNotBlank() && state.canUseHandoff(origin)) {Text("Stabilisci il tuo Goal")}
+    }
+    d.rows("goals").forEach {g -> key(g.getString("id")) {DetailCard(g.getString("content")) {
+        ReferenceLink(ConversationReference("goal",g.getString("id"),g.getInt("current_version")))
+        val adherences=d.rows("adherences").filter{it.getString("goal_id")==g.getString("id") && it.getInt("goal_version")==g.getInt("current_version")}
+        Text("Versione ${g.getInt("current_version")} · "+if(g.getBoolean("current_primary")) "Goal corrente" else "Storico")
+        Text("Stabilito da "+name(g.getString("established_by")))
+        Text("Adesioni: "+adherences.map{name(it.getString("user_id"))}.ifEmpty{listOf("nessuna")}.joinToString(", "))
+        if(g.getBoolean("current_primary") && adherences.none{it.getString("user_id")==actor}) Button(onClick={model.workspaceCommand(command("goal.adhere","goalId" to g.getString("id"),"version" to g.getInt("current_version")),"Adesione personale al Goal")},enabled=!state.busy) {Text("Aderisco a questa versione")}
+        Text("Aderire non delega authority né approva decisioni future.",style=MaterialTheme.typography.bodySmall)
+    }}}
+    HorizontalDivider(thickness=1.5.dp)
+    ProjectGovernance(state,model)
+}
 @Composable private fun ContextContent(state:UiState,model:WorkspaceModel) {
     val d=state.detail ?: return;val w=d.getJSONObject("workspace");val members=d.rows("members");val actor=state.user?.id
     fun name(id:String)=members.firstOrNull{it.getString("user_id")==id}?.getString("name") ?: "Partecipante"
-    var goal by remember {mutableStateOf("")}
+    val selected=selectedHandoff("information.accept","information.correct")
     val pending = d.safeRows("interpretations").filter { it.getString("status") != "completed" }
     if (pending.isNotEmpty()) Text("Letture di Miriam", style=MaterialTheme.typography.titleMedium)
     pending.forEach { reading -> key(reading.getString("id")) {
@@ -62,41 +103,45 @@ private fun JSONObject.strings(key:String)=optJSONArray(key)?.let {a->(0 until a
             ) { Text("Riprova lettura") }
         }
     } }
-    ProjectGovernance(state,model)
-    Text("Goal",style=MaterialTheme.typography.titleLarge)
-    if(d.rows("goals").isEmpty()) {Text("Potete conversare anche prima di stabilire un Goal.");OutlinedTextField(goal,{goal=it},label={Text("Il tuo intento iniziale")},modifier=Modifier.fillMaxWidth());Button(onClick={model.workspaceCommand(command("goal.establish","content" to goal),goal)},enabled=!state.busy && goal.isNotBlank()) {Text("Stabilisci il tuo Goal")}}
-    d.rows("goals").forEach {g -> key(g.getString("id")) {DetailCard(g.getString("content")) {
-        val adherences=d.rows("adherences").filter{it.getString("goal_id")==g.getString("id") && it.getInt("goal_version")==g.getInt("current_version")}
-        Text("Versione ${g.getInt("current_version")} · "+if(g.getBoolean("current_primary")) "Goal corrente" else "Storico")
-        Text("Stabilito da "+name(g.getString("established_by")))
-        Text("Adesioni: "+adherences.map{name(it.getString("user_id"))}.ifEmpty{listOf("nessuna")}.joinToString(", "))
-        if(g.getBoolean("current_primary") && adherences.none{it.getString("user_id")==actor}) Button(onClick={model.workspaceCommand(command("goal.adhere","goalId" to g.getString("id"),"version" to g.getInt("current_version")),"Adesione personale al Goal")},enabled=!state.busy) {Text("Aderisco a questa versione")}
-        Text("Aderire non delega authority né approva decisioni future.",style=MaterialTheme.typography.bodySmall)
-    }}}
     Text("Informazioni accettate",style=MaterialTheme.typography.titleLarge)
-    d.rows("information").forEach {info -> key(info.getString("id")) {DetailCard(info.getString("subject")) {
+    d.rows("information").forEach {info -> key(info.getString("id")) {DetailCard(info.getString("subject"),initiallyExpanded=selected?.target?.id==info.getString("id")) {
+        ReferenceLink(ConversationReference("information",info.getString("id"),info.getInt("current_version")))
         var replacement by remember {mutableStateOf("")};var reason by remember {mutableStateOf("")}
+        val origin=selected?.takeIf {it.kind=="information.correct" && it.target?.id==info.getString("id")}
+        LaunchedEffect(origin?.id) {if(origin!=null)replacement=origin.candidateId.orEmpty()}
         Text(info.getString("content"));Text("${info.getString("qualification")} · v${info.getInt("current_version")} · accettata da ${name(info.getString("accepted_by"))}",style=MaterialTheme.typography.bodySmall)
         Text("Riferimento di lavoro, non consenso collettivo né certezza garantita.",style=MaterialTheme.typography.bodySmall)
-        d.rows("versions").filter{it.getString("information_id")==info.getString("id")}.forEach {v->Text("v${v.getInt("version")} · ${v.getString("accepted_by_name")} · ${v.getString("created_at")}",style=MaterialTheme.typography.labelSmall);Text(v.getString("content"));Text(v.getString("reason"),style=MaterialTheme.typography.bodySmall)}
+        d.rows("versions").filter{it.getString("information_id")==info.getString("id")}.forEach {v->Text("v${v.getInt("version")} · ${v.getString("accepted_by_name")} · ${v.getString("created_at")}",style=MaterialTheme.typography.labelSmall);Text(v.getString("content"));Text(v.getString("qualification"),style=MaterialTheme.typography.bodySmall);Text(v.getString("reason"),style=MaterialTheme.typography.bodySmall);d.rows("candidates").firstOrNull{it.getString("id")==v.getString("candidate_id")}?.let{CandidateProvenance(state,model,it)}}
         Choice("Correzione",replacement,d.rows("candidates").filter{it.getString("classification")=="descriptive" && it.getInt("context_revision")==w.getInt("context_revision")}.map{it.getString("id") to it.getString("content")}) {replacement=it}
         OutlinedTextField(reason,{reason=it},label={Text("Motivo")})
-        Button(onClick={model.workspaceCommand(command("information.correct","informationId" to info.getString("id"),"expectedVersion" to info.getInt("current_version"),"candidateId" to replacement,"reason" to reason,"descriptiveOnly" to true),"Correzione versionata")},enabled=!state.busy && replacement.isNotEmpty() && reason.isNotBlank()) {Text("Accetta correzione")}
+        Button(onClick={model.workspaceCommand(command("information.correct","informationId" to info.getString("id"),"expectedVersion" to (origin?.target?.version ?: info.getInt("current_version")),"candidateId" to replacement,"reason" to reason,"descriptiveOnly" to true).withHandoff(origin),"Correzione versionata")},enabled=!state.busy && replacement.isNotEmpty() && reason.isNotBlank() && state.canUseHandoff(origin) && (selected==null || (origin!=null && replacement==origin.candidateId && origin.target?.version==info.getInt("current_version")))) {Text("Accetta correzione")}
     }}}
-    Text("Da valutare",style=MaterialTheme.typography.titleLarge)
-    d.rows("candidates").forEach {c->key(c.getString("id")) {DetailCard(c.getString("content")) {
-        Text("${c.getString("qualification")} · ${c.getString("author_name")}",style=MaterialTheme.typography.bodySmall);Text(c.getString("source_content"));Text("Candidato non adottato",style=MaterialTheme.typography.bodySmall)
-        if(c.getInt("context_revision")!=w.getInt("context_revision")) Text("Lo stato è cambiato: proposta da rivalutare.") else when(c.getString("classification")) {
-            "descriptive" -> Button(onClick={model.workspaceCommand(command("information.accept","candidateId" to c.getString("id"),"descriptiveOnly" to true),"Accetta riferimento descrittivo")},enabled=!state.busy) {Text("Accetta come riferimento descrittivo")}
+    Text("Proposte e riferimenti alle adozioni",style=MaterialTheme.typography.titleLarge)
+    d.rows("candidates").forEach {c->key(c.getString("id")) {DetailCard(c.getString("content"),initiallyExpanded=selected?.candidateId==c.getString("id")) {
+        val origin=selected?.takeIf {it.kind=="information.accept" && it.candidateId==c.getString("id")}
+        CandidateProvenance(state,model,c)
+        val uses=c.getJSONObject("uses");val used=listOf("information","questions","proposals").any{uses.rows(it).isNotEmpty()}
+        if(!used)Text("Candidato non adottato",style=MaterialTheme.typography.bodySmall)
+        listOf("information" to "Informazione","questions" to "Domanda").forEach{(key,label)->uses.rows(key).forEach{use->Text("$label ${use.getString("id")} · v${use.getInt("version")} · "+if(use.getBoolean("current"))"corrente" else "storica",style=MaterialTheme.typography.bodySmall)}}
+        uses.rows("proposals").forEach{use->Text("Proposta normativa ${use.getString("id")} · ${use.getString("status")}",style=MaterialTheme.typography.bodySmall)}
+        if(c.getInt("context_revision")!=w.getInt("context_revision")) Text("Lo stato è cambiato: proposta da rivalutare.") else if(!used) when(c.getString("classification")) {
+            "descriptive" -> Button(onClick={model.workspaceCommand(command("information.accept","candidateId" to c.getString("id"),"descriptiveOnly" to true).withHandoff(origin),"Accetta riferimento descrittivo")},enabled=!state.busy && state.canUseHandoff(origin) && (selected==null || origin!=null)) {Text("Accetta come riferimento descrittivo")}
             "question" -> Button(onClick={model.workspaceCommand(command("question.open","candidateId" to c.getString("id"),"sourceId" to c.getString("source_id"),"content" to c.getString("content")),"Registra domanda")},enabled=!state.busy) {Text("Registra domanda aperta")}
             "normative" -> {var people by remember {mutableStateOf(setOf<String>())};Text("La proposta richiede l’approvazione delle persone indicate.");members.filter{it.getBoolean("active")}.forEach {p->Row {Checkbox(p.getString("user_id") in people,{people=if(it) people+p.getString("user_id") else people-p.getString("user_id")});Text(p.getString("name"))}};Button(onClick={model.workspaceCommand(command("commitment.propose","candidateId" to c.getString("id"),"people" to JSONArray(people.sorted())),"Proposta di impegno")},enabled=!state.busy && people.isNotEmpty()) {Text("Proponi impegno")}}
         }
     }}}
     Text("Atti e proposte",style=MaterialTheme.typography.titleLarge)
     d.rows("commitments").forEach {c->DetailCard(c.getString("content")) {
-        Text(if(c.isNull("adopted_at")) "Proposta non ancora efficace" else "Atto adottato");Text("Persone rappresentate: "+c.strings("people").map(::name).joinToString(", "))
+        ReferenceLink(ConversationReference("commitment",c.getString("id"),1))
+        Text(when(c.getString("status")){"proposed"->"Proposta non ancora efficace";"superseded"->"Atto storico, superato";else->"Atto attualmente efficace"});Text("Persone rappresentate: "+c.strings("people").map(::name).joinToString(", "))
         if(c.isNull("adopted_at") && actor in c.strings("people")) Button(onClick={model.workspaceCommand(command("commitment.approve","proposalId" to c.getString("id"),"expectedContextRevision" to w.getInt("context_revision"),"expectedAccessRevision" to w.getInt("access_revision"),"representSelf" to true),"Approvazione personale dell’impegno")},enabled=!state.busy) {Text("Approvo soltanto per me")}
     }}
+}
+@Composable private fun CandidateProvenance(state:UiState,model:WorkspaceModel,c:JSONObject) {
+    Text(if(c.getString("origin")=="inferred")"Deduzione proposta da Miriam, non dichiarazione esplicita." else "Interpretazione attribuita a ${c.getString("author_name")}.",style=MaterialTheme.typography.bodySmall)
+    Text(c.getString("qualification"),style=MaterialTheme.typography.bodySmall);Text(c.getString("source_content"))
+    Text("Candidato ${c.getString("id")} · ${c.getString("created_at")}",style=MaterialTheme.typography.labelSmall)
+    c.strings("source_ids").forEach{SourceReference(state,model,it)}
 }
 @Composable private fun SourcesContent(state:UiState,model:WorkspaceModel) {
     val d=state.detail ?: return;val context=LocalContext.current
@@ -130,6 +175,7 @@ private fun JSONObject.strings(key:String)=optJSONArray(key)?.let {a->(0 until a
     val d=state.detail ?: return;var content by remember {mutableStateOf("")};var source by remember {mutableStateOf("")}
     DetailCard("Nuova domanda") {OutlinedTextField(content,{content=it},label={Text("Cosa resta da chiarire?")});Choice("Messaggio di origine",source,state.messages.map{it.id to it.content}) {source=it};Button(onClick={model.workspaceCommand(command("question.open","content" to content,"sourceId" to source),content)},enabled=!state.busy && content.isNotBlank() && source.isNotBlank()) {Text("Registra domanda")}}
     d.rows("questions").forEach {q->key(q.getString("id")) {DetailCard(q.getString("content")) {
+        ReferenceLink(ConversationReference("question",q.getString("id"),q.getInt("version")))
         var answer by remember {mutableStateOf("")};var reason by remember {mutableStateOf("")};val open=q.getString("status")=="open"
         Text((if(open) "Aperta" else "Risposta registrata")+" · v${q.getInt("version")}");Text(q.getString("reason"),style=MaterialTheme.typography.bodySmall)
         if(open) Choice("Informazione che risponde",answer,d.rows("information").map{it.getString("id") to it.getString("content")}) {answer=it}
@@ -139,13 +185,36 @@ private fun JSONObject.strings(key:String)=optJSONArray(key)?.let {a->(0 until a
 }
 @Composable private fun ArtifactsContent(state:UiState,model:WorkspaceModel) {
     var editing by remember{mutableStateOf(false)};var existing by remember{mutableStateOf<JSONObject?>(null)}
-    if(editing)ArtifactEditor(state,model,existing){editing=false}
+    val origin=selectedHandoff("artifact.prepare")
+    LaunchedEffect(origin?.id) {if(origin!=null){existing=null;editing=true}}
+    if(editing)ArtifactEditor(state,model,existing,origin){editing=false}
     TextButton(onClick={existing=null;editing=true}){Text("Scrivi un nuovo Artifact")}
-    val d=state.detail ?: return;var title by remember {mutableStateOf("")};var notes by remember {mutableStateOf("")};var question by remember {mutableStateOf("")};var selected by remember {mutableStateOf(setOf<String>())}
+    val d=state.detail ?: return
+    var title by remember {mutableStateOf("")}
+    var notes by remember {mutableStateOf("")}
+    var question by remember {mutableStateOf("")}
+    var questionVersion by remember {mutableIntStateOf(0)}
+    var selected by remember {mutableStateOf(mapOf<String,Int>())}
+    val currentQuestion=d.rows("questions").any {it.getString("id")==question && it.getInt("version")==questionVersion}
+    val currentInformation=selected.all {(id,version)->d.rows("information").any {it.getString("id")==id && it.getInt("current_version")==version}}
     DetailCard("Prepara un documento") {
-        OutlinedTextField(title,{title=it},label={Text("Titolo")});OutlinedTextField(notes,{notes=it},label={Text("Istruzioni e note")});Choice("Domanda a cui risponde",question,d.rows("questions").map{it.getString("id") to it.getString("content")}) {question=it}
-        d.rows("information").forEach {info->Row {Checkbox(info.getString("id") in selected,{selected=if(it) selected+info.getString("id") else selected-info.getString("id")});Text(info.getString("subject"))}}
-        Button(onClick={val q=d.rows("questions").firstOrNull{it.getString("id")==question};if(q!=null) model.workspaceCommand(command("artifact.draft","title" to title,"notes" to notes,"questionId" to question,"questionVersion" to q.getInt("version"),"information" to JSONArray(d.rows("information").filter{it.getString("id") in selected}.map{JSONObject().put("id",it.getString("id")).put("version",it.getInt("current_version"))}),"sourceIds" to JSONArray()),"Prepara $title")},enabled=!state.busy && title.isNotBlank() && question.isNotBlank() && selected.isNotEmpty()) {Text("Prepara bozza")}
+        OutlinedTextField(title,{title=it},label={Text("Titolo")})
+        OutlinedTextField(notes,{notes=it},label={Text("Istruzioni e note")})
+        Choice("Domanda a cui risponde",question,d.rows("questions").map{it.getString("id") to it.getString("content")}) {
+            question=it
+            questionVersion=d.rows("questions").firstOrNull {q->q.getString("id")==it}?.getInt("version") ?: 0
+        }
+        d.rows("information").forEach {info->
+            val id=info.getString("id")
+            Row {
+                Checkbox(id in selected,{checked->selected=if(checked) selected+(id to info.getInt("current_version")) else selected-id})
+                Text(info.getString("subject")+(selected[id]?.let {" · v$it"} ?: ""))
+            }
+        }
+        if((question.isNotBlank()&&!currentQuestion)||!currentInformation)Text("Un riferimento è cambiato. Rileggilo e seleziona di nuovo la versione corrente per questa bozza guidata.",color=MaterialTheme.colorScheme.error)
+        Button(onClick={
+            model.workspaceCommand(command("artifact.draft","title" to title,"notes" to notes,"questionId" to question,"questionVersion" to questionVersion,"information" to JSONArray(selected.map {(id,version)->JSONObject().put("id",id).put("version",version)}),"sourceIds" to JSONArray()),"Prepara $title")
+        },enabled=!state.busy && title.isNotBlank() && currentQuestion && currentInformation && selected.isNotEmpty()) {Text("Prepara bozza")}
         Text("La bozza non è adottata e non autorizza azioni esterne.",style=MaterialTheme.typography.bodySmall)
     }
     d.rows("artifacts").forEach {a->val version=d.rows("artifactVersions").firstOrNull{it.getString("artifact_id")==a.getString("id") && it.getInt("version")==a.getInt("current_draft_version")};if(version!=null) key(a.getString("id")) {DetailCard(version.getString("title")) {

@@ -1,12 +1,13 @@
 import type { Command } from "@/contracts/commands";
-import type { CommandReceipt } from "@/contracts/v1";
+import { receiptSchema, type CommandReceipt } from "../contracts/v1";
 import { api } from "./api";
 
 export type PendingCommand = {
   commandId: string;
   actor: string;
   workspace: string;
-  command: Command | { type: "workspace.create"; name: string };
+  command:
+    Command | { type: "workspace.create"; name: string; description?: string };
   createdAt: string;
 };
 function database() {
@@ -54,12 +55,24 @@ export async function pendingCommands(actor: string) {
   }
 }
 export const forgetCommand = (id: string) => write(id);
+export function verifiedReceipt(command: PendingCommand, payload: unknown) {
+  const receipt = receiptSchema.safeParse(payload);
+  if (
+    !receipt.success ||
+    receipt.data.commandId !== command.commandId ||
+    (command.command.type === "workspace.create" &&
+      receipt.data.result.id !== command.workspace)
+  )
+    throw new Error("INVALID_RECEIPT");
+  return receipt.data.result;
+}
 export async function recoverCommand(command: PendingCommand) {
   const receipt = await api<CommandReceipt>(
     `/api/v1/workspaces/${command.workspace}/receipts/${command.commandId}`,
   );
+  const result = verifiedReceipt(command, receipt);
   await write(command.commandId);
-  return receipt.result;
+  return result;
 }
 export async function sendCommand(
   command: PendingCommand,
@@ -71,6 +84,7 @@ export async function sendCommand(
       commandId: command.commandId,
       expectedActorId: command.actor,
       name: command.command.name,
+      description: command.command.description,
     });
     if (result.id !== command.workspace) throw new Error("INVALID_RECEIPT");
     await write(command.commandId);
@@ -84,19 +98,25 @@ export async function sendCommand(
       command: command.command,
     },
   );
+  const result = verifiedReceipt(command, receipt);
   await write(command.commandId);
-  return receipt.result;
+  return result;
 }
 export function newWorkspaceCommand(
   actor: string,
   name: string,
+  description?: string,
 ): PendingCommand {
   const commandId = crypto.randomUUID();
   return {
     actor,
     workspace: commandId,
     commandId,
-    command: { type: "workspace.create", name },
+    command: {
+      type: "workspace.create",
+      name,
+      ...(description ? { description } : {}),
+    },
     createdAt: new Date().toISOString(),
   };
 }

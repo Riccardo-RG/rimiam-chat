@@ -76,6 +76,59 @@ afterAll(async () => {
 });
 
 describe("PostgreSQL domain commands", () => {
+  it("preserves inferred origin, source and uncertainty when information is explicitly accepted", async () => {
+    const { a, b, w } = await setup();
+    await join(a, b, w);
+    const m = await execute(a, w, randomUUID(), {
+      type: "message.send",
+      content: "Miriam, cosa deduci sui costi?",
+    });
+    await processInterpretation(m.interpretationId, {
+      async interpret(c) {
+        return {
+          needsMore: [],
+          proposals: [
+            {
+              subject: "Stima indicativa",
+              content: "Il costo potrebbe essere 3.000 euro",
+              classification: "descriptive",
+              origin: "inferred",
+              qualification:
+                "Ipotesi, non verificata; non una dichiarazione della persona.",
+              sourceIds: [c.trigger.id],
+            },
+          ],
+        };
+      },
+    });
+    const before = await snapshot(b, w),
+      candidate = before.candidates[0];
+    expect(before.information).toHaveLength(0);
+    expect(candidate.uses).toEqual({
+      information: [],
+      questions: [],
+      proposals: [],
+    });
+    await accept(b, w, candidate.id);
+    const after = await snapshot(b, w);
+    expect(after.information[0]).toMatchObject({
+      candidate_id: candidate.id,
+      qualification: candidate.qualification,
+      accepted_by: b,
+      current_version: 1,
+    });
+    expect(after.candidates[0]).toMatchObject({
+      origin: "inferred",
+      source_id: m.messageId,
+      source_ids: [m.messageId],
+      uses: {
+        information: [
+          { id: after.information[0].id, version: 1, current: true },
+        ],
+      },
+    });
+    expect(after.commitments).toHaveLength(0);
+  });
   it("creates ordinary attributable bootstrap state with no implicit Goal, adherence or project authority", async () => {
     const { a, w } = await setup();
     const state = await snapshot(a, w);
@@ -113,7 +166,7 @@ describe("PostgreSQL domain commands", () => {
       "INVITATION_INVALID",
     );
     await acceptInvitation(b, invitation.token, true);
-    expect((await snapshot(b, w)).messages).toHaveLength(1);
+    expect((await snapshot(b, w)).messages).toHaveLength(2);
     await expect(acceptInvitation(b, invitation.token, true)).rejects.toThrow(
       "INVITATION_INVALID",
     );
@@ -185,7 +238,7 @@ describe("PostgreSQL domain commands", () => {
     );
     await expect(invite(a, b, w)).rejects.toThrow("ACCESS_AUTHORITY_REQUIRED");
     await say(a, w);
-    expect((await snapshot(a, w)).messages).toHaveLength(1);
+    expect((await snapshot(a, w)).messages).toHaveLength(2);
   });
   it("revalidates account eligibility and admission does not retroactively end when its authorizer leaves", async () => {
     const { a, b, w } = await setup();
@@ -201,7 +254,7 @@ describe("PostgreSQL domain commands", () => {
       confirmed: true,
     });
     await say(b, w);
-    expect((await snapshot(b, w)).messages).toHaveLength(1);
+    expect((await snapshot(b, w)).messages).toHaveLength(2);
     await expect(snapshot(a, w)).rejects.toThrow("WORKSPACE_ACCESS_DENIED");
     expect(
       (
@@ -221,7 +274,7 @@ describe("PostgreSQL domain commands", () => {
       execute(a, w, key, command),
     ]);
     expect(one).toEqual(two);
-    expect((await snapshot(a, w)).messages).toHaveLength(1);
+    expect((await snapshot(a, w)).messages).toHaveLength(2);
     await expect(
       execute(a, w, key, { ...command, content: "Diverso" }),
     ).rejects.toThrow("COMMAND_ID_REUSED");
@@ -257,8 +310,19 @@ describe("PostgreSQL domain commands", () => {
     const state = await snapshot(b, w);
     expect(state.information[0].current_version).toBe(2);
     expect(state.versions).toHaveLength(2);
-    expect(state.messages[0].content).toContain("3.000");
+    expect(
+      state.messages.find((m) => m.id === one.messageId)!.content,
+    ).toContain("3.000");
     expect(state.candidates).toHaveLength(2);
+    expect(
+      state.candidates.find((c) => c.id === one.candidate.id).uses.information,
+    ).toEqual([{ id: original.id, version: 1, current: false }]);
+    expect(
+      state.candidates.find((c) => c.id === two.candidate.id).uses.information,
+    ).toEqual([{ id: original.id, version: 2, current: true }]);
+    expect(state.versions[0].qualification).toBe(one.candidate.qualification);
+    expect(state.versions[0].candidate_id).toBe(one.candidate.id);
+    expect(state.versions[0].accepted_by).toBe(b);
     await expect(
       pool.query("UPDATE message SET content='rewritten' WHERE id=$1", [
         one.messageId,
@@ -440,7 +504,7 @@ describe("PostgreSQL domain commands", () => {
       confirmed: true,
     });
     await say(b, w);
-    expect((await snapshot(b, w)).messages).toHaveLength(1);
+    expect((await snapshot(b, w)).messages).toHaveLength(2);
   });
   it("readmission shows absence-period history but does not restore ended governance or add adherence", async () => {
     const { a, b, w } = await setup();
@@ -452,7 +516,7 @@ describe("PostgreSQL domain commands", () => {
     await say(a, w, "Il locale costa €3.200 al mese.");
     await join(a, b, w);
     const state = await snapshot(b, w);
-    expect(state.messages).toHaveLength(1);
+    expect(state.messages).toHaveLength(2);
     expect(state.adherences).toHaveLength(0);
     expect(state.access.some((r) => r.holder_id === b && r.active)).toBe(false);
   });

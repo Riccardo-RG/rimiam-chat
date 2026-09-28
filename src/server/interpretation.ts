@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { handoffSuggestionSchema } from "../contracts/conversation-handoff.ts";
+import { publishHandoffs } from "./conversation-handoffs.ts";
 import { collaborationMode as currentCollaborationMode } from "./participation.ts";
 import { directlyAddressesMiriam } from "../shared/miriam-address.ts";
 import { z } from "zod";
@@ -10,6 +12,17 @@ import { workContext } from "./tasks-context.ts";
 import { miriamSystemPrompt } from "./miriam-prompt.ts";
 import { sharedWorkAvailable } from "./active-work-context.ts";
 import { organizeSources } from "./attention.ts";
+import {
+  messageReferenceContext,
+  referenceFingerprint,
+} from "./conversation-reference.ts";
+import type { ReferenceDetail } from "../contracts/activity.ts";
+import {
+  focusedContext,
+  focusedSources,
+  sameFocusDependencies,
+  type WorkstreamFocusContext,
+} from "./workstream-focus.ts";
 import { workControlSchema } from "../contracts/active-work.ts";
 import { createActiveWork } from "./active-work-commands.ts";
 import {
@@ -39,6 +52,7 @@ const proposalSchema = z.object({
   sourceIds: z.array(z.uuid()).min(1),
 });
 export const interpretationOutputSchema = z.object({
+  handoffs: z.array(handoffSuggestionSchema).max(3).optional(),
   proposals: z.array(proposalSchema).max(12),
   needsMore: z.array(z.string().min(1).max(120)).max(8),
   response: z
@@ -95,6 +109,8 @@ export interface InterpretationContext {
   workSelection?: { exhaustive: false; expandWithNeedsMore: true };
   conversation?: unknown[];
   workstreams?: unknown[];
+  workstreamFocus?: WorkstreamFocusContext | null;
+  objectReference?: ReferenceDetail | null;
   activeWork?: unknown[];
   artifacts?: unknown[];
   collaborationMode?: string;
@@ -106,6 +122,7 @@ export interface InterpretationContext {
 export interface Interpreter {
   interpret(
     context: InterpretationContext,
+    usageScope?: { workspace: string; operation: "conversation" },
   ): Promise<z.infer<typeof outputSchema>>;
 }
 export function configuredInterpreter(): Interpreter {
@@ -118,12 +135,13 @@ export function configuredInterpreter(): Interpreter {
     };
   }
   return {
-    async interpret(context) {
+    async interpret(context, usageScope) {
       return structuredModel.generateJSON({
         system: miriamSystemPrompt,
         prompt: JSON.stringify(context),
         schema: outputSchema,
         maxOutputTokens: 4500,
+        usageScope,
       });
     },
   };
@@ -180,6 +198,7 @@ export async function claimInterpretation(interpretationId: string) {
       trigger.qualification =
         (trigger.qualification ?? "") +
         " L'autore ha esplicitamente indirizzato questo messaggio vocale a Miriam: rispondi come a una domanda diretta, senza inventare autorizzazioni.";
+    const objectReference = await messageReferenceContext(tx, w, trigger.id);
     const goal = await goalContext(tx, w);
     const information = (
       await tx.query(
@@ -267,6 +286,7 @@ export async function claimInterpretation(interpretationId: string) {
     const activeWork = await activeWorkContext(tx, w);
     const artifacts = await artifactContext(tx, w);
     const selectedSourceIds = [
+      ...(objectReference?.sourceIds ?? []),
       ...goal.map((g) => g.source_id),
       ...artifacts.flatMap((a) => a.source_ids),
       ...activeWork.flatMap(
@@ -284,21 +304,39 @@ export async function claimInterpretation(interpretationId: string) {
     ).rows;
     const workstreams = (
       await tx.query(
-        "SELECT w.id,v.title,v.description FROM workstream w JOIN workstream_version v ON (v.workspace_id,v.workstream_id,v.version)=(w.workspace_id,w.id,w.current_version) WHERE w.workspace_id=$1 ORDER BY v.title",
+        "SELECT w.id,w.current_version AS version,w.state,v.title,v.description FROM workstream w JOIN workstream_version v ON (v.workspace_id,v.workstream_id,v.version)=(w.workspace_id,w.id,w.current_version) WHERE w.workspace_id=$1 ORDER BY v.title",
         [w],
       )
     ).rows;
+    let workstreamFocus = await focusedContext(tx, w, trigger.id);
+    const focused = workstreamFocus
+      ? await focusedSources(
+          tx,
+          w,
+          workstreamFocus.workstreamId,
+          trigger.content.toLocaleLowerCase().match(/[\p{L}\p{N}]{4,}/gu) ?? [],
+        )
+      : [];
+    if (workstreamFocus)
+      workstreamFocus = await focusedContext(
+        tx,
+        w,
+        trigger.id,
+        focused.map((s) => s.id),
+      );
     const collaborationMode = await currentCollaborationMode(tx, w);
     return {
       attempt,
+      focusDependencies: workstreamFocus,
+      referenceDependency: referenceFingerprint(objectReference),
       context: {
         trigger,
+        objectReference,
         sources: [
           ...new Map(
-            [...allSources, ...neighbours, ...referenceSources].map((s) => [
-              s.id,
-              s,
-            ]),
+            [...allSources, ...neighbours, ...referenceSources, ...focused].map(
+              (s) => [s.id, s],
+            ),
           ).values(),
         ],
         goal,
@@ -311,6 +349,16 @@ export async function claimInterpretation(interpretationId: string) {
         workSelection: { exhaustive: false, expandWithNeedsMore: true },
         conversation,
         workstreams,
+        workstreamFocus: workstreamFocus
+          ? {
+              workstreamId: workstreamFocus.workstreamId,
+              version: workstreamFocus.version,
+              title: workstreamFocus.title,
+              description: workstreamFocus.description,
+              currentVersion: workstreamFocus.currentVersion,
+              currentState: workstreamFocus.currentState,
+            }
+          : null,
         activeWork,
         artifacts,
         collaborationMode,
@@ -334,7 +382,10 @@ export async function retrieveSources(
   if (!terms.length) return [];
   return (
     await pool.query<Source>(
-      "SELECT * FROM workspace_source WHERE workspace_id=$1 AND EXISTS(SELECT 1 FROM unnest($2::text[]) term WHERE to_tsvector('simple',content) @@ plainto_tsquery('simple',term) OR content ILIKE '%' || term || '%') ORDER BY created_at,id",
+      `SELECT s.* FROM workspace_source s WHERE s.workspace_id=$1 AND EXISTS(SELECT 1 FROM unnest($2::text[]) term
+        WHERE s.id::text=term OR to_tsvector('simple',s.content) @@ plainto_tsquery('simple',term) OR s.content ILIKE '%' || term || '%'
+        OR EXISTS(SELECT 1 FROM workstream_source l WHERE l.workspace_id=s.workspace_id AND l.source_id=s.id AND l.workstream_id::text=term
+          AND l.included AND NOT EXISTS(SELECT 1 FROM workstream_source newer WHERE (newer.workspace_id,newer.workstream_id,newer.source_id)=(l.workspace_id,l.workstream_id,l.source_id) AND newer.version>l.version))) ORDER BY s.created_at,s.id`,
       [workspaceId, terms],
     )
   ).rows;
@@ -403,6 +454,18 @@ export async function publishInterpretation(
     if (
       ws.context_revision !== attempt.context_revision ||
       ws.access_revision !== attempt.access_revision ||
+      referenceFingerprint(
+        await messageReferenceContext(tx, ws.id, attempt.source_id),
+      ) !== claim.referenceDependency ||
+      !sameFocusDependencies(
+        claim.focusDependencies,
+        await focusedContext(
+          tx,
+          ws.id,
+          attempt.source_id,
+          claim.focusDependencies?.dependencySourceIds,
+        ),
+      ) ||
       new Date(row.lease_until) <= new Date()
     ) {
       await tx.query(
@@ -445,8 +508,10 @@ export async function publishInterpretation(
       );
       await changed(tx, ws.id, "work.control_proposed");
     }
+    const candidateIds: string[] = [];
     for (const p of parsed.proposals) {
       const candidateId = randomUUID();
+      candidateIds.push(candidateId);
       await tx.query(
         "INSERT INTO candidate(id,workspace_id,interpretation_id,source_id,subject,content,classification,origin,qualification,context_revision) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
         [
@@ -487,6 +552,15 @@ export async function publishInterpretation(
       directlyAddressesMiriam(claim.context.trigger.content) ||
       (await currentCollaborationMode(tx, ws.id)) !== "discreet";
     if (parsed.response?.mode === "respond" && mayIntervene) {
+      await publishHandoffs(
+        tx,
+        ws.id,
+        attempt.id,
+        attempt.generation,
+        claim.context,
+        parsed.handoffs ?? [],
+        candidateIds,
+      );
       const messageId = randomUUID();
       const sequence = (
         await tx.query(
@@ -584,6 +658,24 @@ export async function processInterpretation(
           "WORK_CAPABILITY_UNAVAILABLE",
           403,
         );
+        requireThat(
+          sameFocusDependencies(
+            claim.focusDependencies,
+            await focusedContext(
+              tx,
+              ws.id,
+              claim.attempt.source_id,
+              claim.focusDependencies?.dependencySourceIds,
+            ),
+          ),
+          "WORKSTREAM_FOCUS_STALE",
+        );
+        requireThat(
+          referenceFingerprint(
+            await messageReferenceContext(tx, ws.id, claim.attempt.source_id),
+          ) === claim.referenceDependency,
+          "REFERENCE_STATE_CHANGED",
+        );
         await tx.query(
           "INSERT INTO interpretation_input(workspace_id,interpretation_id,generation,round,context) VALUES($1,$2,$3,$4,$5)",
           [
@@ -597,7 +689,10 @@ export async function processInterpretation(
       });
       const output = parseStructuredOutput(
         outputSchema,
-        await interpreter.interpret(claim.context),
+        await interpreter.interpret(claim.context, {
+          workspace: claim.attempt.workspace_id,
+          operation: "conversation",
+        }),
       );
       await pool.query(
         "INSERT INTO interpretation_result(workspace_id,interpretation_id,generation,round,output) VALUES($1,$2,$3,$4,$5)",

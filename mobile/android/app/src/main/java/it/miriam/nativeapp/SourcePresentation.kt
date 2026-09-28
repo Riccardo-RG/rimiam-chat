@@ -18,7 +18,7 @@ fun processingLabel(status:String)=when(status){"queued"->"In attesa";"processin
     if(result.isNotEmpty())Text(result,style=MaterialTheme.typography.bodySmall)
 }
 @Composable fun SourceReference(state:UiState,model:WorkspaceModel,id:String){
-    var open by remember{mutableStateOf(false)};val source=state.detail?.rows("sources")?.firstOrNull{it.getString("id")==id};val message=state.messages.firstOrNull{it.id==id}
+    var open by remember(state.accountScope,state.selected,id){mutableStateOf(false)};val source=state.detail?.rows("sources")?.firstOrNull{it.getString("id")==id};val message=state.messages.firstOrNull{it.id==id}
     TextButton(onClick={open=!open}){Text(source?.getString("title") ?: message?.let{"Messaggio di "+it.authorName} ?: "Fonte storica del Workspace")}
-    if(open){Text(source?.getString("qualification") ?: "Messaggio attribuito",style=MaterialTheme.typography.bodySmall);Text(source?.getString("content")?.ifEmpty{"L’originale è condiviso; il contenuto non è ancora disponibile."} ?: message?.content ?: "Consulta le fonti del Workspace.");if(source!=null&&!source.isNull("media_type"))SourceOriginalButton(model,source)}
+    if(open){Text(source?.getString("qualification") ?: if(message!=null)"Messaggio attribuito" else "Fonte storica da rileggere",style=MaterialTheme.typography.bodySmall);Text(source?.getString("content")?.ifEmpty{"L’originale è condiviso; il contenuto non è ancora disponibile."} ?: message?.content ?: "La fonte non è nella pagina attuale. Apri il riferimento per leggerne contenuto e provenienza.");ReferenceLink(ConversationReference("source",id,1),"Apri fonte e provenienza");if(source!=null&&!source.isNull("media_type"))SourceOriginalButton(model,source)}
 }

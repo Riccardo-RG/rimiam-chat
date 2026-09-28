@@ -1,9 +1,11 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "./api";
 import type { Command } from "@/contracts/commands";
 import type { ProjectView, ProjectCommand } from "@/contracts/project";
+import type { ConversationHandoff } from "@/contracts/conversation-handoff";
 type GoalMode = Extract<ProjectCommand, { type: "goal.propose" }>["mode"];
+type SelectedGoal = { id: string; version: number; content: string };
 type Capability = Extract<
   ProjectCommand,
   { type: "mandate.offer" }
@@ -35,6 +37,7 @@ export function WorkspaceProject({
   command,
   action,
   busy,
+  handoff,
 }: {
   workspace: string;
   actor: string;
@@ -42,6 +45,7 @@ export function WorkspaceProject({
   command: (c: Command) => Promise<unknown>;
   action: (fn: () => Promise<void>) => Promise<void>;
   busy: boolean;
+  handoff?: ConversationHandoff;
 }) {
   const [loaded, setLoaded] = useState<{
       workspace: string;
@@ -49,13 +53,34 @@ export function WorkspaceProject({
     } | null>(null),
     [error, setError] = useState("");
   const [mode, setMode] = useState<GoalMode>("revise"),
-    [editingGoal, setEditingGoal] = useState<string>(""),
+    [goalEdit, setGoalEdit] = useState<{
+      id: string;
+      version: number;
+      content: string;
+      proposed: string;
+    } | null>(null),
     [scopeKind, setScopeKind] = useState<"goal" | "act">("goal"),
     [editingAct, setEditingAct] = useState<string>(""),
     [operation, setOperation] = useState<"establish" | "replace" | "revoke">(
-      "establish",
+      handoff?.kind === "project.replace"
+        ? "replace"
+        : handoff?.kind === "project.revoke"
+          ? "revoke"
+          : "establish",
     );
   const url = `/api/v1/workspaces/${workspace}/project`;
+  const [actGoal, setActGoal] = useState<SelectedGoal | null>(null);
+  const [mandateHolder, setMandateHolder] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
+  const [mandateScope, setMandateScope] = useState<{
+    id: string;
+    version: number;
+    label: string;
+  } | null>(null);
+  const initializedGoalHandoff = useRef("");
+  const initializedActHandoff = useRef("");
   useEffect(() => {
     let live = true,
       running = false;
@@ -67,10 +92,51 @@ export function WorkspaceProject({
         if (live) {
           setLoaded({ workspace, view });
           setError("");
+          if (
+            handoff?.status === "ready" &&
+            ["project.replace", "project.revoke"].includes(handoff.kind) &&
+            initializedActHandoff.current !== handoff.id
+          ) {
+            const target = view.acts.find(
+              (a) => a.proposalId === handoff.target?.id,
+            );
+            if (target?.actId) {
+              initializedActHandoff.current = handoff.id;
+              setEditingAct(target.actId);
+            }
+          }
+          if (
+            handoff?.kind === "goal.change" &&
+            handoff.status === "ready" &&
+            handoff.target &&
+            initializedGoalHandoff.current !== handoff.id
+          ) {
+            const target = view.goals.find((g) => g.id === handoff.target!.id);
+            const base = target?.versions.find(
+              (v) => v.version === handoff.target!.version,
+            );
+            if (target && base) {
+              initializedGoalHandoff.current = handoff.id;
+              setGoalEdit({
+                id: target.id,
+                version: base.version,
+                content: base.content,
+                proposed: handoff.suggestedText,
+              });
+            }
+          }
         }
       } catch (e) {
         if (live) {
-          setLoaded(null);
+          if (
+            [
+              "ACCOUNT_INELIGIBLE",
+              "WORKSPACE_ACCESS_DENIED",
+              "AUTHENTICATION_REQUIRED",
+              "AUTHENTICATED_SESSION_REQUIRED",
+            ].includes((e as Error).message)
+          )
+            setLoaded(null);
           setError((e as Error).message);
         }
       } finally {
@@ -83,12 +149,69 @@ export function WorkspaceProject({
       live = false;
       clearInterval(timer);
     };
-  }, [url, workspace, actor, revision]);
+  }, [url, workspace, actor, revision, handoff]);
   const view = loaded?.workspace === workspace ? loaded.view : null;
+  const root = useRef<HTMLElement>(null);
+  const revealedPrepared = useRef("");
+  const prepared = handoff?.application?.prepared;
+  useEffect(() => {
+    if (!prepared || revealedPrepared.current === prepared.id) return;
+    const element = root.current?.querySelector<HTMLElement>(
+      `[data-prepared-id="${CSS.escape(prepared.id)}"]`,
+    );
+    if (element) {
+      element.closest("details")?.setAttribute("open", "");
+      element.scrollIntoView({ block: "center" });
+      element.focus({ preventScroll: true });
+      revealedPrepared.current = prepared.id;
+    }
+  }, [prepared, view]);
+  const handoffAct =
+    handoff?.status === "ready"
+      ? view?.acts.find(
+          (a) =>
+            a.proposalId === handoff.target?.id && a.status === "effective",
+        )
+      : undefined;
+  const actId = editingAct || handoffAct?.actId || "";
+  const originFor = (c: Command) => {
+    if (!handoff || handoff.status !== "ready") return {};
+    const matches =
+      (c.type === "goal.establish" && handoff.kind === "goal.establish") ||
+      (c.type === "goal.propose" &&
+        handoff.kind === "goal.change" &&
+        c.goalId === handoff.target?.id) ||
+      (c.type === "project.propose" &&
+        ((c.operation === "establish" && handoff.kind === "project.propose") ||
+          (c.operation === "replace" &&
+            handoff.kind === "project.replace" &&
+            c.replacesActId === handoffAct?.actId) ||
+          (c.operation === "revoke" &&
+            handoff.kind === "project.revoke" &&
+            c.replacesActId === handoffAct?.actId)));
+    return matches ? { conversationOrigin: { handoffId: handoff.id } } : {};
+  };
   const perform = (c: Command) =>
     action(async () => {
-      await command(c);
-      setLoaded({ workspace, view: await api<ProjectView>(url) });
+      const origin = originFor(c);
+      if (
+        handoff &&
+        ["goal.establish", "goal.propose", "project.propose"].includes(
+          c.type,
+        ) &&
+        !origin.conversationOrigin
+      )
+        throw new Error(
+          "Questo percorso non corrisponde più alla proposta selezionata. Rivalutala o esci dal percorso prima di preparare un altro atto.",
+        );
+      await command({ ...c, ...origin });
+      try {
+        setLoaded({ workspace, view: await api<ProjectView>(url) });
+      } catch {
+        setError(
+          "Operazione registrata. Non è stato possibile aggiornare la vista: sarà ricaricata automaticamente.",
+        );
+      }
     });
   const name = (id: string) =>
     view?.members.find((m) => m.id === id)?.name ?? "Partecipante storico";
@@ -193,10 +316,30 @@ export function WorkspaceProject({
       ))}
     </div>
   );
-  const goal = view?.goals.find((g) => g.id === editingGoal),
+  const goal = view?.goals.find((g) => g.id === goalEdit?.id),
     effective = view?.acts.filter((a) => a.status === "effective") ?? [];
+  const currentGoal = (selected: SelectedGoal) =>
+    view?.goals.some(
+      (g) =>
+        g.id === selected.id &&
+        g.version === selected.version &&
+        g.status === "active",
+    );
+  const actGoalStale = actGoal !== null && !currentGoal(actGoal);
+  const mandateScopeStale =
+    mandateScope !== null &&
+    (scopeKind === "goal"
+      ? !currentGoal({ ...mandateScope, content: mandateScope.label })
+      : !effective.some((a) => a.actId === mandateScope.id));
+  const holderEligible =
+    mandateHolder !== null &&
+    view?.members.some(
+      (m) =>
+        m.id === mandateHolder.id && m.id !== actor && m.active && m.eligible,
+    );
   return (
     <section
+      ref={root}
       className="card source-work"
       aria-label="Goal, decisioni e mandati"
     >
@@ -221,7 +364,17 @@ export function WorkspaceProject({
             >
               <label>
                 Il mio intento iniziale
-                <textarea name="content" required maxLength={12000} />
+                <textarea
+                  name="content"
+                  required
+                  maxLength={12000}
+                  defaultValue={
+                    handoff?.kind === "goal.establish" &&
+                    handoff.status === "ready"
+                      ? handoff.suggestedText
+                      : ""
+                  }
+                />
               </label>
               <button disabled={busy}>
                 Stabilisci il Goal come mio intento
@@ -275,7 +428,17 @@ export function WorkspaceProject({
                   </button>
                 )}
               {g.status === "active" && (
-                <button onClick={() => setEditingGoal(g.id)}>
+                <button
+                  disabled={busy}
+                  onClick={() =>
+                    setGoalEdit({
+                      id: g.id,
+                      version: g.version,
+                      content: g.content,
+                      proposed: g.content,
+                    })
+                  }
+                >
                   Proponi evoluzione
                 </button>
               )}
@@ -318,20 +481,20 @@ export function WorkspaceProject({
               </details>
             </article>
           ))}
-          {goal && (
+          {goal && goalEdit && (
             <form
-              key={goal.id + mode}
+              key={goalEdit.id}
               onSubmit={(e) => {
                 e.preventDefault();
                 const f = new FormData(e.currentTarget);
                 void perform({
                   type: "goal.propose",
                   goalId: goal.id,
-                  expectedVersion: goal.version,
+                  expectedVersion: goalEdit.version,
                   mode,
                   content: ["complete", "abandon"].includes(mode)
-                    ? goal.content
-                    : String(f.get("content")),
+                    ? goalEdit.content
+                    : goalEdit.proposed,
                   reason: String(f.get("reason")),
                   previousBecomesSubgoal: f.has("subgoal"),
                   affectedPeople: f.getAll("people").map(String),
@@ -340,7 +503,39 @@ export function WorkspaceProject({
                 });
               }}
             >
-              <h3>Evoluzione di: {goal.content}</h3>
+              <h3>Evoluzione di: {goalEdit.content}</h3>
+              <p>Versione di partenza: v{goalEdit.version}</p>
+              {goal.version !== goalEdit.version && (
+                <div role="alert">
+                  <p>
+                    Il Goal è cambiato mentre preparavi la proposta. La tua
+                    bozza è conservata.
+                  </p>
+                  <p>
+                    Versione attuale v{goal.version}: {goal.content}
+                  </p>
+                  {handoff ? (
+                    <p>
+                      Esci dal percorso conversazionale per rivalutare una
+                      proposta sulla versione attuale.
+                    </p>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() =>
+                        setGoalEdit({
+                          ...goalEdit,
+                          version: goal.version,
+                          content: goal.content,
+                        })
+                      }
+                    >
+                      Ho confrontato i contenuti: preparo sulla v{goal.version}
+                    </button>
+                  )}
+                </div>
+              )}
               <label>
                 Tipo di cambiamento
                 <select
@@ -359,7 +554,10 @@ export function WorkspaceProject({
                   Contenuto proposto
                   <textarea
                     name="content"
-                    defaultValue={mode === "revise" ? goal.content : ""}
+                    value={goalEdit.proposed}
+                    onChange={(e) =>
+                      setGoalEdit({ ...goalEdit, proposed: e.target.value })
+                    }
                     required
                     maxLength={12000}
                   />
@@ -400,8 +598,14 @@ export function WorkspaceProject({
                 Motivazione
                 <textarea name="reason" required maxLength={4000} />
               </label>
-              <button disabled={busy}>Prepara proposta</button>
-              <button type="button" onClick={() => setEditingGoal("")}>
+              <button disabled={busy || goal.version !== goalEdit.version}>
+                Prepara proposta
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => setGoalEdit(null)}
+              >
                 Chiudi
               </button>
             </form>
@@ -409,6 +613,8 @@ export function WorkspaceProject({
           {view.goalProposals.map((p) => (
             <details
               key={p.id}
+              data-prepared-id={p.id}
+              tabIndex={-1}
               open={p.status === "pending" || p.status === "blocked"}
             >
               <summary>
@@ -438,10 +644,15 @@ export function WorkspaceProject({
               )}
             </details>
           ))}
-          <details>
+          <details open={handoff?.kind.startsWith("project.") || undefined}>
             <summary>Decisioni, vincoli e impegni</summary>
             {view.acts.map((a) => (
-              <article className="item" key={a.proposalId}>
+              <article
+                className="item"
+                key={a.proposalId}
+                data-prepared-id={a.proposalId}
+                tabIndex={-1}
+              >
                 <strong>
                   {kinds[a.kind]} ·{" "}
                   {a.status === "effective"
@@ -495,11 +706,10 @@ export function WorkspaceProject({
               </article>
             ))}
             <form
-              key={editingAct + operation}
+              key={actId + operation}
               onSubmit={(e) => {
                 e.preventDefault();
-                const f = new FormData(e.currentTarget),
-                  g = view.goals.find((g) => g.id === f.get("goal"));
+                const f = new FormData(e.currentTarget);
                 void perform({
                   type: "project.propose",
                   kind:
@@ -509,19 +719,19 @@ export function WorkspaceProject({
                           "decision" | "constraint" | "commitment"),
                   content: String(f.get("content")),
                   people: f.getAll("people").map(String),
-                  goal: g ? { id: g.id, version: g.version } : null,
+                  goal: actGoal
+                    ? { id: actGoal.id, version: actGoal.version }
+                    : null,
                   operation,
                   ...(operation !== "establish"
-                    ? { replacesActId: editingAct }
+                    ? { replacesActId: actId }
                     : {}),
                   reason: String(f.get("reason")),
                 });
               }}
             >
-              <h3>
-                {editingAct ? "Modifica proposta" : "Nuovo atto proposto"}
-              </h3>
-              {editingAct && (
+              <h3>{actId ? "Modifica proposta" : "Nuovo atto proposto"}</h3>
+              {actId && (
                 <label>
                   Operazione
                   <select
@@ -541,7 +751,7 @@ export function WorkspaceProject({
                   <select
                     name="kind"
                     defaultValue={
-                      effective.find((a) => a.actId === editingAct)?.kind ??
+                      effective.find((a) => a.actId === actId)?.kind ??
                       "decision"
                     }
                   >
@@ -560,27 +770,63 @@ export function WorkspaceProject({
                   required
                   maxLength={12000}
                   defaultValue={
-                    operation === "replace"
-                      ? effective.find((a) => a.actId === editingAct)?.content
-                      : ""
+                    handoff?.status === "ready" &&
+                    handoff.kind.startsWith("project.") &&
+                    (!editingAct || editingAct === handoffAct?.actId)
+                      ? handoff.suggestedText
+                      : operation === "replace"
+                        ? effective.find((a) => a.actId === actId)?.content
+                        : ""
                   }
                 />
               </label>
               <label>
                 Goal pertinente
-                <select name="goal">
+                <select
+                  name="goal"
+                  value={actGoal ? `${actGoal.id}:${actGoal.version}` : ""}
+                  onChange={(e) => {
+                    const selected = view.goals.find(
+                      (g) => `${g.id}:${g.version}` === e.target.value,
+                    );
+                    setActGoal(
+                      selected
+                        ? {
+                            id: selected.id,
+                            version: selected.version,
+                            content: selected.content,
+                          }
+                        : null,
+                    );
+                  }}
+                >
                   <option value="">Nessun Goal specifico</option>
+                  {actGoalStale && actGoal && (
+                    <option value={`${actGoal.id}:${actGoal.version}`} disabled>
+                      {actGoal.content} · v{actGoal.version} — da riesaminare
+                    </option>
+                  )}
                   {view.goals
                     .filter((g) => g.status === "active")
                     .map((g) => (
-                      <option value={g.id} key={g.id}>
+                      <option
+                        value={`${g.id}:${g.version}`}
+                        key={`${g.id}:${g.version}`}
+                      >
                         {g.content} · v{g.version}
                       </option>
                     ))}
                 </select>
+                {actGoalStale && (
+                  <span role="alert">
+                    Il Goal selezionato è cambiato. Rileggi e seleziona
+                    esplicitamente il riferimento attuale, oppure rimuovi il
+                    collegamento.
+                  </span>
+                )}
               </label>
               {people("people", true)}
-              {editingAct && (
+              {actId && (
                 <p>
                   Le persone rappresentate dall’atto precedente restano
                   necessarie, anche se non selezionate qui.
@@ -590,8 +836,10 @@ export function WorkspaceProject({
                 Motivazione
                 <input name="reason" required maxLength={4000} />
               </label>
-              <button disabled={busy}>Registra proposta da approvare</button>
-              {editingAct && (
+              <button disabled={busy || actGoalStale}>
+                Registra proposta da approvare
+              </button>
+              {actId && (
                 <button
                   type="button"
                   onClick={() => {
@@ -708,16 +956,15 @@ export function WorkspaceProject({
             <form
               onSubmit={(e) => {
                 e.preventDefault();
-                const f = new FormData(e.currentTarget),
-                  id = String(f.get("scope")),
-                  g = view.goals.find((g) => g.id === id);
+                if (!mandateScope || !mandateHolder) return;
+                const f = new FormData(e.currentTarget);
                 void perform({
                   type: "mandate.offer",
-                  holderId: String(f.get("holder")),
+                  holderId: mandateHolder.id,
                   scope: {
                     kind: scopeKind,
-                    id,
-                    version: scopeKind === "goal" ? g!.version : 1,
+                    id: mandateScope.id,
+                    version: mandateScope.version,
                   },
                   capability: String(f.get("capability")) as Capability,
                   expiresAt: f.get("expires")
@@ -731,7 +978,25 @@ export function WorkspaceProject({
               <h3>Offrire la mia rappresentanza</h3>
               <label>
                 Destinatario
-                <select name="holder" required>
+                <select
+                  name="holder"
+                  required
+                  value={mandateHolder?.id ?? ""}
+                  onChange={(e) => {
+                    const member = view.members.find(
+                      (m) => m.id === e.target.value,
+                    );
+                    setMandateHolder(
+                      member ? { id: member.id, name: member.name } : null,
+                    );
+                  }}
+                >
+                  <option value="">Seleziona a chi offrire il mandato</option>
+                  {mandateHolder && !holderEligible && (
+                    <option value={mandateHolder.id} disabled>
+                      {mandateHolder.name} — non disponibile
+                    </option>
+                  )}
                   {view.members
                     .filter((m) => m.active && m.eligible && m.id !== actor)
                     .map((m) => (
@@ -740,14 +1005,21 @@ export function WorkspaceProject({
                       </option>
                     ))}
                 </select>
+                {mandateHolder && !holderEligible && (
+                  <span role="alert">
+                    Il destinatario scelto non è più disponibile. Il mandato non
+                    viene offerto a un’altra persona: rivaluta la selezione.
+                  </span>
+                )}
               </label>
               <label>
                 Perimetro
                 <select
                   value={scopeKind}
-                  onChange={(e) =>
-                    setScopeKind(e.target.value as typeof scopeKind)
-                  }
+                  onChange={(e) => {
+                    setScopeKind(e.target.value as typeof scopeKind);
+                    setMandateScope(null);
+                  }}
                 >
                   <option value="goal">Goal e versione precisa</option>
                   <option value="act">Atto esistente preciso</option>
@@ -755,21 +1027,65 @@ export function WorkspaceProject({
               </label>
               <label>
                 Oggetto
-                <select name="scope" required key={scopeKind}>
+                <select
+                  name="scope"
+                  required
+                  key={scopeKind}
+                  value={
+                    mandateScope
+                      ? `${mandateScope.id}:${mandateScope.version}`
+                      : ""
+                  }
+                  onChange={(e) => {
+                    const g = view.goals.find(
+                      (g) => `${g.id}:${g.version}` === e.target.value,
+                    );
+                    const a = effective.find(
+                      (a) => `${a.actId}:1` === e.target.value,
+                    );
+                    setMandateScope(
+                      scopeKind === "goal" && g
+                        ? { id: g.id, version: g.version, label: g.content }
+                        : scopeKind === "act" && a?.actId
+                          ? { id: a.actId, version: 1, label: a.content }
+                          : null,
+                    );
+                  }}
+                >
+                  <option value="">Seleziona il perimetro esatto</option>
+                  {mandateScopeStale && mandateScope && (
+                    <option
+                      value={`${mandateScope.id}:${mandateScope.version}`}
+                      disabled
+                    >
+                      {mandateScope.label} · v{mandateScope.version} — da
+                      riesaminare
+                    </option>
+                  )}
                   {scopeKind === "goal"
                     ? view.goals
                         .filter((g) => g.status === "active")
                         .map((g) => (
-                          <option key={g.id} value={g.id}>
+                          <option
+                            key={`${g.id}:${g.version}`}
+                            value={`${g.id}:${g.version}`}
+                          >
                             {g.content} · v{g.version}
                           </option>
                         ))
                     : effective.map((a) => (
-                        <option value={a.actId!} key={a.actId}>
+                        <option value={`${a.actId}:1`} key={a.actId}>
                           {kinds[a.kind]}: {a.content}
                         </option>
                       ))}
                 </select>
+                {mandateScopeStale && (
+                  <span role="alert">
+                    Il perimetro è cambiato. Nessuna rappresentanza viene
+                    trasferita: riseleziona un perimetro attuale dopo averlo
+                    riletto.
+                  </span>
+                )}
               </label>
               <label>
                 Unico potere delegato
@@ -801,7 +1117,11 @@ export function WorkspaceProject({
                 indicati. Non consente successive deleghe. Il destinatario deve
                 accettare.
               </p>
-              <button disabled={busy}>
+              <button
+                disabled={
+                  busy || !mandateScope || mandateScopeStale || !holderEligible
+                }
+              >
                 Offri il mandato per la sola mia rappresentanza
               </button>
             </form>

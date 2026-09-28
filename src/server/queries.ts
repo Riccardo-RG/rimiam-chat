@@ -1,3 +1,12 @@
+import { readHandoffs } from "./conversation-handoffs.ts";
+import {
+  messageReferenceJoin,
+  messageReferenceProjection,
+} from "./conversation-reference.ts";
+import {
+  messageFocusJoin,
+  messageFocusProjection,
+} from "./workstream-focus.ts";
 import { readArtifacts } from "./artifacts.ts";
 import { readWorkspaceLinks } from "./workspace-links.ts";
 import { sourceRecords } from "./sources.ts";
@@ -74,9 +83,9 @@ export async function snapshot(actor: string, w: string) {
     const messages = (
       await tx.query(
         `SELECT m.*,COALESCE(u.name,'Miriam') AS author_name,
-         COALESCE(r.source_ids,'{}'::uuid[]) AS citation_source_ids
+         COALESCE(r.source_ids,'{}'::uuid[]) AS citation_source_ids,${messageFocusProjection} AS workstream_focus,${messageReferenceProjection} AS reference
          FROM message m LEFT JOIN "user" u ON u.id=m.author_id
-         LEFT JOIN miriam_response r ON (r.workspace_id,r.message_id)=(m.workspace_id,m.id)
+         LEFT JOIN miriam_response r ON (r.workspace_id,r.message_id)=(m.workspace_id,m.id) ${messageFocusJoin} ${messageReferenceJoin}
          WHERE m.workspace_id=$1 ORDER BY sequence`,
         [w],
       )
@@ -101,7 +110,7 @@ export async function snapshot(actor: string, w: string) {
     ).rows;
     const commitments = (
       await tx.query(
-        "SELECT p.*,a.adopted_at,ARRAY(SELECT person_id FROM required_project_approval r WHERE (r.workspace_id,r.proposal_id)=(p.workspace_id,p.id)) AS people FROM normative_proposal p LEFT JOIN project_act a ON (a.workspace_id,a.proposal_id)=(p.workspace_id,p.id) WHERE p.workspace_id=$1 ORDER BY p.created_at",
+        "SELECT p.*,a.adopted_at,CASE WHEN a.id IS NULL THEN 'proposed' WHEN EXISTS(SELECT 1 FROM current_project_act effective WHERE effective.workspace_id=a.workspace_id AND effective.id=a.id) THEN 'effective' ELSE 'superseded' END AS status,ARRAY(SELECT person_id FROM required_project_approval r WHERE (r.workspace_id,r.proposal_id)=(p.workspace_id,p.id)) AS people FROM normative_proposal p LEFT JOIN project_act a ON (a.workspace_id,a.proposal_id)=(p.workspace_id,p.id) WHERE p.workspace_id=$1 ORDER BY p.created_at",
         [w],
       )
     ).rows;
@@ -129,6 +138,34 @@ export async function snapshot(actor: string, w: string) {
         [w],
       )
     ).rows;
+    // Usage is a projection of governed records, never an AI acceptance score.
+    // Preserve historical references after corrections and supersession.
+    for (const c of candidates) {
+      c.uses = {
+        information: versions
+          .filter((v) => v.candidate_id === c.id)
+          .map((v) => ({
+            id: v.information_id,
+            version: v.version,
+            current: information.some(
+              (i) =>
+                i.id === v.information_id && i.current_version === v.version,
+            ),
+          })),
+        questions: questionHistory
+          .filter((v) => v.candidate_id === c.id)
+          .map((v) => ({
+            id: v.question_id,
+            version: v.version,
+            current: questions.some(
+              (q) => q.id === v.question_id && q.version === v.version,
+            ),
+          })),
+        proposals: commitments
+          .filter((p) => p.candidate_id === c.id)
+          .map((p) => ({ id: p.id, status: p.status })),
+      };
+    }
     const sources = await sourceRecords(tx, w);
     const research = (
       await tx.query(
@@ -155,6 +192,7 @@ export async function snapshot(actor: string, w: string) {
       : [];
     return {
       ...(await readArtifacts(tx, w)),
+      ...(await readHandoffs(tx, w)),
       workspace,
       members,
       access,

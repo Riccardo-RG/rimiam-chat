@@ -3,6 +3,11 @@ import type { Tx } from "./db.ts";
 import type { WorkInput } from "../contracts/active-work.ts";
 import { workContext } from "./tasks-context.ts";
 import { calendarContext } from "./calendar-state.ts";
+import { focusedContext, focusedSources } from "./workstream-focus.ts";
+import {
+  messageReferenceContext,
+  referenceFingerprint,
+} from "./conversation-reference.ts";
 
 export function topicTerms(text: string) {
   const skip = new Set(
@@ -32,10 +37,14 @@ export async function analysisInputs(
   objective: string,
   focus: string[],
   extra: string[] = [],
+  sourceId?: string | null,
 ): Promise<WorkInput[]> {
   const terms = [
     ...new Set([...topicTerms([objective, ...focus].join(" ")), ...extra]),
   ];
+  const reference = sourceId
+    ? await messageReferenceContext(tx, w, sourceId)
+    : null;
   const out: WorkInput[] = [];
   function add(
     kind: string,
@@ -90,7 +99,7 @@ export async function analysisInputs(
   }
   const acts = (
     await tx.query(
-      `SELECT a.id,p.content,p.kind,p.candidate_id,p.source_id,ARRAY(SELECT person_id FROM required_project_approval r WHERE r.workspace_id=p.workspace_id AND r.proposal_id=p.id) AS people FROM current_project_act a JOIN normative_proposal p ON p.workspace_id=a.workspace_id AND p.id=a.proposal_id WHERE a.workspace_id=$1`,
+      `SELECT a.id,a.proposal_id,p.content,p.kind,p.candidate_id,p.source_id,ARRAY(SELECT person_id FROM required_project_approval r WHERE r.workspace_id=p.workspace_id AND r.proposal_id=p.id) AS people FROM current_project_act a JOIN normative_proposal p ON p.workspace_id=a.workspace_id AND p.id=a.proposal_id WHERE a.workspace_id=$1`,
       [w],
     )
   ).rows;
@@ -108,6 +117,7 @@ export async function analysisInputs(
         kind: a.kind,
         candidateId: a.candidate_id,
         sourceId: a.source_id,
+        reference: { kind: "commitment", id: a.proposal_id, version: 1 },
         current: true,
       },
     );
@@ -151,7 +161,7 @@ export async function analysisInputs(
   const sourceTerms = explicitIds.length
     ? [...explicitIds, ...extra, ...focus.flatMap(topicTerms)]
     : terms;
-  const sources = (
+  const matchingSources = (
     await tx.query(
       `SELECT s.*, NOT EXISTS(SELECT 1 FROM external_source n WHERE n.workspace_id=s.workspace_id AND n.document_id=s.document_id AND n.document_version>s.document_version) AS current FROM workspace_source s WHERE s.workspace_id=$1 AND (EXISTS(SELECT 1 FROM unnest($2::text[]) t WHERE s.id::text=t OR s.document_id::text=t OR s.content ILIKE '%'||t||'%' OR s.title ILIKE '%'||t||'%') OR s.id IN (SELECT source_id FROM candidate_source WHERE workspace_id=$1 AND candidate_id=ANY($3::uuid[])) OR s.id=ANY($4::uuid[])) ORDER BY s.created_at,s.id`,
       [
@@ -161,10 +171,45 @@ export async function analysisInputs(
         [
           ...questions.map((q) => q.source_id),
           ...acts.map((a) => a.source_id).filter(Boolean),
+          ...(reference?.sourceIds ?? []),
         ],
       ],
     )
   ).rows;
+  const workstream = sourceId ? await focusedContext(tx, w, sourceId) : null;
+  const linkedSources = workstream
+    ? await focusedSources(tx, w, workstream.workstreamId, sourceTerms)
+    : [];
+  if (workstream)
+    add(
+      "workstream_focus",
+      workstream.workstreamId,
+      workstream.version,
+      `${workstream.title}\n${workstream.description}`,
+      "Focus editoriale scelto nel messaggio di origine, non Goal, authority o Context separato. Selezione iniziale non esaustiva: recuperare ulteriore contesto pertinente anche fuori dal filone.",
+      { sourceId, current: false, historicalSelection: true },
+    );
+  if (reference)
+    add(
+      `reference_${reference.reference.kind}`,
+      reference.reference.id,
+      reference.reference.version,
+      `${reference.title}\n${reference.content}\nEvento storico: ${reference.event?.summary ?? "nessun evento selezionato"}`,
+      reference.qualification,
+      {
+        sourceId,
+        current: reference.current,
+        reference: reference.reference,
+        referenceFingerprint: referenceFingerprint(reference),
+        detail: reference.provenance,
+        event: reference.event,
+      },
+    );
+  const sources = [
+    ...new Map(
+      [...matchingSources, ...linkedSources].map((s) => [s.id, s]),
+    ).values(),
+  ];
   for (const s of sources)
     add("source", s.id, 1, s.content, s.qualification, {
       sourceKind: s.kind,
@@ -211,6 +256,7 @@ export function inputFingerprint(inputs: WorkInput[]) {
           i.content,
           i.qualification,
           i.provenance.current,
+          i.provenance.referenceFingerprint,
         ]),
       ),
     )

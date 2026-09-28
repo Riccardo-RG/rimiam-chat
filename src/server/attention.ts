@@ -44,31 +44,74 @@ export async function attentionCommand(
   if (c.type === "workstream.save") {
     const id = c.id ?? randomUUID();
     let version = 1;
+    let state = "active";
     if (c.id) {
       const a = (
         await tx.query(
-          "SELECT current_version FROM workstream WHERE workspace_id=$1 AND id=$2",
+          "SELECT current_version,state FROM workstream WHERE workspace_id=$1 AND id=$2",
           [w, id],
         )
       ).rows[0];
       requireThat(a, "WORKSTREAM_NOT_FOUND", 404);
       requireThat(a.current_version === c.expectedVersion, "STATE_STALE");
       version = a.current_version + 1;
+      state = a.state;
       await tx.query(
         "UPDATE workstream SET current_version=$3 WHERE workspace_id=$1 AND id=$2",
         [w, id, version],
       );
     } else
-      await tx.query("INSERT INTO workstream(workspace_id,id) VALUES($1,$2)", [
-        w,
-        id,
-      ]);
+      await tx.query(
+        "INSERT INTO workstream(workspace_id,id,state) VALUES($1,$2,'active')",
+        [w, id],
+      );
     await tx.query(
-      "INSERT INTO workstream_version(workspace_id,workstream_id,version,title,description,actor_id,origin) VALUES($1,$2,$3,$4,$5,$6,'human')",
-      [w, id, version, c.title, c.description, actor],
+      "INSERT INTO workstream_version(workspace_id,workstream_id,version,title,description,actor_id,origin,lifecycle_state) VALUES($1,$2,$3,$4,$5,$6,'human',$7)",
+      [w, id, version, c.title, c.description, actor, state],
     );
     await changed(tx, w, c.type);
-    return { id, version };
+    return { id, version, state };
+  }
+  if (c.type === "workstream.transition") {
+    const stream = (
+      await tx.query(
+        "SELECT w.current_version,w.state,v.title,v.description FROM workstream w JOIN workstream_version v ON (v.workspace_id,v.workstream_id,v.version)=(w.workspace_id,w.id,w.current_version) WHERE w.workspace_id=$1 AND w.id=$2",
+        [w, c.workstreamId],
+      )
+    ).rows[0];
+    requireThat(stream, "WORKSTREAM_NOT_FOUND", 404);
+    requireThat(stream.current_version === c.expectedVersion, "STATE_STALE");
+    const transitions = {
+      activate: { from: ["proposed"], to: "active" },
+      resolve: { from: ["active"], to: "resolved" },
+      archive: { from: ["resolved"], to: "archived" },
+      reopen: { from: ["resolved", "archived"], to: "active" },
+    };
+    const transition = transitions[c.action];
+    requireThat(
+      transition.from.includes(stream.state),
+      "WORKSTREAM_TRANSITION_INVALID",
+    );
+    const version = stream.current_version + 1;
+    await tx.query(
+      "UPDATE workstream SET current_version=$3,state=$4 WHERE workspace_id=$1 AND id=$2",
+      [w, c.workstreamId, version, transition.to],
+    );
+    await tx.query(
+      "INSERT INTO workstream_version(workspace_id,workstream_id,version,title,description,actor_id,origin,lifecycle_state,lifecycle_action) VALUES($1,$2,$3,$4,$5,$6,'human',$7,$8)",
+      [
+        w,
+        c.workstreamId,
+        version,
+        stream.title,
+        stream.description,
+        actor,
+        transition.to,
+        c.action,
+      ],
+    );
+    await changed(tx, w, `workstream.${c.action}`);
+    return { id: c.workstreamId, version, state: transition.to };
   }
   const stream = (
     await tx.query(
@@ -104,21 +147,26 @@ export async function organizeSources(
   source: string,
   groups: { title: string; sourceIds: string[] }[],
 ) {
+  let changedOrganization = false;
   for (const group of groups) {
-    let id = (
+    const existing = (
       await tx.query(
-        "SELECT w.id FROM workstream w JOIN workstream_version v ON (v.workspace_id,v.workstream_id,v.version)=(w.workspace_id,w.id,w.current_version) WHERE w.workspace_id=$1 AND lower(v.title)=lower($2) ORDER BY w.id LIMIT 1",
+        "SELECT w.id,w.state FROM workstream w JOIN workstream_version v ON (v.workspace_id,v.workstream_id,v.version)=(w.workspace_id,w.id,w.current_version) WHERE w.workspace_id=$1 AND lower(v.title)=lower($2) ORDER BY w.id LIMIT 1",
         [w, group.title],
       )
-    ).rows[0]?.id;
+    ).rows[0];
+    // Late organization cannot reopen or expand a resolved/archived stream.
+    if (existing && ["resolved", "archived"].includes(existing.state)) continue;
+    let id = existing?.id;
     if (!id) {
       id = randomUUID();
+      changedOrganization = true;
       await tx.query("INSERT INTO workstream(workspace_id,id) VALUES($1,$2)", [
         w,
         id,
       ]);
       await tx.query(
-        "INSERT INTO workstream_version(workspace_id,workstream_id,version,title,description,origin,source_id) VALUES($1,$2,1,$3,'Organizzazione semantica di Miriam; non un Goal o una decisione.','miriam',$4)",
+        "INSERT INTO workstream_version(workspace_id,workstream_id,version,title,description,origin,source_id,lifecycle_state) VALUES($1,$2,1,$3,'Organizzazione semantica proposta da Miriam; non ancora un filone attivo.','miriam',$4,'proposed')",
         [w, id, group.title, source],
       );
     }
@@ -133,13 +181,14 @@ export async function organizeSources(
         ).rowCount
       )
         continue;
+      changedOrganization = true;
       await tx.query(
         "INSERT INTO workstream_source(workspace_id,workstream_id,source_id,version,included,origin) VALUES($1,$2,$3,1,true,'miriam')",
         [w, id, sid],
       );
     }
   }
-  if (groups.length) await changed(tx, w, "workstream.organized");
+  if (changedOrganization) await changed(tx, w, "workstream.organized");
 }
 
 export async function attentionView(actor: string, w: string, before?: number) {
@@ -163,7 +212,7 @@ export async function attentionView(actor: string, w: string, before?: number) {
     ).rows;
     const workstreams = (
       await tx.query(
-        "SELECT w.id,w.current_version AS version,v.title,v.description,v.actor_id AS actor,v.origin FROM workstream w JOIN workstream_version v ON (v.workspace_id,v.workstream_id,v.version)=(w.workspace_id,w.id,w.current_version) WHERE w.workspace_id=$1 ORDER BY v.title,w.id",
+        "SELECT w.id,w.current_version AS version,w.state,v.title,v.description,v.actor_id AS actor,v.origin FROM workstream w JOIN workstream_version v ON (v.workspace_id,v.workstream_id,v.version)=(w.workspace_id,w.id,w.current_version) WHERE w.workspace_id=$1 ORDER BY (w.state='active') DESC,v.title,w.id",
         [w],
       )
     ).rows;
@@ -176,7 +225,7 @@ export async function attentionView(actor: string, w: string, before?: number) {
       ).rows;
       s.history = (
         await tx.query(
-          'SELECT version,title,description,actor_id AS actor,origin,created_at AS "createdAt" FROM workstream_version WHERE workspace_id=$1 AND workstream_id=$2 ORDER BY version DESC',
+          'SELECT version,title,description,actor_id AS actor,origin,created_at AS "createdAt",lifecycle_state AS "lifecycleState",lifecycle_action AS "lifecycleAction" FROM workstream_version WHERE workspace_id=$1 AND workstream_id=$2 ORDER BY version DESC',
           [w, s.id],
         )
       ).rows;

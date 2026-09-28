@@ -16,6 +16,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
@@ -35,20 +36,53 @@ private fun emptyWork()=JSONObject().put("title","").put("description","").put("
     var editing by remember{mutableStateOf<JSONObject?>(null)};var refs by remember{mutableStateOf(JSONArray())};var candidate by remember{mutableStateOf<String?>(null)}
     var reminder by remember{mutableStateOf("")};var remindAt by remember{mutableStateOf(Instant.now().plusSeconds(600).toString())};var target by remember{mutableStateOf<JSONObject?>(null)};var follow by remember{mutableStateOf<JSONObject?>(null)}
     var history by remember{mutableStateOf("")};var suggestionsOpen by remember{mutableStateOf(false)}
+    val origin=selectedHandoff("task.create","task.change")
+    val detachOrigin=LocalDetachHandoff.current
+    var originLoading by remember{mutableStateOf(false)}
+    var originError by remember{mutableStateOf("")}
+    LaunchedEffect(origin?.id) {
+        if(origin!=null){
+            editing=null;title=origin.summary;detail=origin.suggestedText;reason="";hasDue=false;suggested="";candidate=origin.candidateId
+            refs=JSONArray(origin.sourceIds.map {JSONObject().put("kind","source").put("id",it).put("version",1)})
+            originError=""
+            if(origin.kind=="task.change"){
+                originLoading=true
+                try {
+                    val task=origin.target?.let {model.locateTask(it.id)}
+                    if(task==null)originError="Il Task collegato non è disponibile. La bozza è conservata."
+                    else {
+                        editing=JSONObject(task.toString()).put("version",origin.target!!.version)
+                        title=task.getString("title")
+                        hasDue=!task.isNull("dueAt");if(hasDue)due=task.getString("dueAt")
+                        suggested=task.optString("suggestedPerson").takeUnless {it=="null"}.orEmpty()
+                        val old=task.rows("references")
+                        val extra=origin.sourceIds.map {JSONObject().put("kind","source").put("id",it).put("version",1)}
+                        refs=JSONArray((old+extra).distinctBy {"${it.getString("kind")}:${it.getString("id")}:${it.getInt("version")}"})
+                        if(task.getInt("version")!=origin.target.version)originError="Il Task è cambiato. Non trasferiamo questa bozza alla nuova versione."
+                    }
+                } catch(e:CancellationException){throw e}
+                catch(e:Exception){originError=e.message?:"Task non disponibile."}
+                finally{originLoading=false}
+            }
+        }
+    }
     val scope=rememberCoroutineScope();val lifecycle=LocalLifecycleOwner.current
     LaunchedEffect(state.selected,state.user?.id,lifecycle){lifecycle.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED){while(true){model.loadTasks();delay(2000)}}}
     BackHandler{close()}
-    fun send(c:JSONObject){model.workspaceCommand(c,"Tasks / follow-up")}
+    fun send(c:JSONObject,from:ConversationHandoff?=null){model.workspaceCommand(c.withHandoff(from),"Tasks / follow-up")}
     fun base(t:JSONObject,type:String)=JSONObject().put("type",type).put("taskId",t.getString("id")).put("expectedVersion",t.getInt("version")).put("reason",reason.ifBlank{"Atto personale esplicito"})
-    fun reset(){editing=null;title="";detail="";reason="";hasDue=false;suggested="";refs=JSONArray();candidate=null}
+    fun reset(){detachOrigin?.invoke();editing=null;title="";detail="";reason="";hasDue=false;suggested="";refs=JSONArray();candidate=null;originError=""}
     val view=state.tasks
     fun name(id:String)=view?.rows("members")?.find{it.getString("id")==id}?.getString("name")?:id.ifEmpty{"Non assegnato"}
     Scaffold(topBar={TopAppBar(title={Text("Lavoro e follow-up")},navigationIcon={TextButton(onClick=close){Text("Indietro")}})}){padding->
         Column(Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp).testTag("tasks-content"),verticalArrangement=Arrangement.spacedBy(12.dp)){
             Text("Task, responsabilità e impegni sono distinti. Un promemoria non autorizza azioni.")
             if(state.error.isNotEmpty())Text(state.error,color=MaterialTheme.colorScheme.error)
+            if(originLoading)LinearProgressIndicator(Modifier.fillMaxWidth())
+            if(originError.isNotBlank())Text(originError,color=MaterialTheme.colorScheme.error)
             if(view==null)CircularProgressIndicator() else{
                 Text(if(editing==null)"Nuovo Task non assegnato" else "Modifica / proposta",style=MaterialTheme.typography.titleLarge)
+                editing?.let {Text("Bozza sulla versione ${it.getInt("version")}",style=MaterialTheme.typography.bodySmall)}
                 OutlinedTextField(title,{title=it},label={Text("Attività")},modifier=Modifier.fillMaxWidth().testTag("task-title"))
                 OutlinedTextField(detail,{detail=it},label={Text("Perimetro e aspettative")},modifier=Modifier.fillMaxWidth())
                 Row{Checkbox(hasDue,{hasDue=it});Text("Scadenza facoltativa")};if(hasDue)WorkTime("Entro",due){due=it}
@@ -58,15 +92,17 @@ private fun emptyWork()=JSONObject().put("title","").put("description","").put("
                 Button(onClick={
                     val c=emptyWork().put("title",title).put("description",detail).put("dueAt",if(hasDue)due else JSONObject.NULL).put("suggestedPerson",suggested.ifEmpty{null}?:JSONObject.NULL).put("references",refs)
                     val t=editing
-                    if(t==null){val b=JSONObject().put("type","task.create").put("content",c);candidate?.let{b.put("candidateId",it)};send(b)}
-                    else send(base(t,if(t.isNull("responsible"))"task.revise" else "task.propose_revision").put("content",c))
-                    reset()
-                },enabled=!state.busy&&title.isNotBlank(),modifier=Modifier.testTag("task-save")){Text(if(editing?.isNull("responsible")==false)"Proponi modifica da accettare" else "Salva Task")}
+                    if(t==null){val b=JSONObject().put("type","task.create").put("content",c);candidate?.let{b.put("candidateId",it)};send(b,origin)}
+                    else send(base(t,if(t.isNull("responsible"))"task.revise" else "task.propose_revision").put("content",c),origin)
+                    if(origin==null)reset()
+                },enabled=!state.busy&&title.isNotBlank()&&!originLoading&&state.canUseHandoff(origin)&&
+                    (origin==null || (origin.kind=="task.create" && editing==null) || (origin.kind=="task.change" && editing?.optString("id")==origin.target?.id && view.rows("tasks").firstOrNull{it.getString("id")==origin.target?.id}?.getInt("version")==origin.target?.version)),modifier=Modifier.testTag("task-save")){Text(if(editing?.isNull("responsible")==false)"Proponi modifica da accettare" else "Salva Task")}
                 if(editing!=null)TextButton(onClick=::reset){Text("Annulla modifica")}
                 TextButton(onClick={suggestionsOpen=!suggestionsOpen}){Text("Proposte Miriam — non sono Task")}
                 if(suggestionsOpen)for(s in view.rows("suggestions")){Text(s.getString("content"));Text(s.getString("qualification"));TextButton(onClick={reset();title=s.getString("subject");detail=s.getString("content");candidate=s.getString("id")}){Text("Prepara Task")}}
                 for(t in view.rows("tasks")){
                     HorizontalDivider();val id=t.getString("id");val responsible=if(t.isNull("responsible"))"" else t.getString("responsible");val status=t.getString("status")
+                    ReferenceLink(ConversationReference("task",id,t.getInt("version")))
                     Text(t.getString("title"),style=MaterialTheme.typography.titleLarge);Text(t.getString("description"));Text("$status · v${t.getInt("version")} · ${if(t.isNull("dueAt"))"Senza scadenza" else t.getString("dueAt")}")
                     Text("Responsabilità: ${name(responsible)}");if(responsible.isNotEmpty())Text("Accettata su v${t.getInt("acceptedVersion")}${if(t.getBoolean("responsibleAvailable"))"" else " · accesso non disponibile"}")
                     Text("${name(t.getString("actor"))} · ${t.getString("reason")}",style=MaterialTheme.typography.bodySmall)

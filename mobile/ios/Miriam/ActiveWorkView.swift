@@ -57,9 +57,9 @@ struct ActiveWorkSnapshot: Decodable {
 }
 struct MiriamActiveWorkView: View {
   @Bindable var model: WorkspaceModel
-  @State private var showingAll=false
+  @State private var showingAll=true
   var body: some View {
-    Text("Il lavoro di Miriam").font(.headline)
+    Text("Il lavoro di Miriam").font(.system(.title2,design:.serif).weight(.bold))
     Text("Analisi e risultati restano consultabili. Preparare lavoro non significa adottarlo.")
       .font(.caption)
     if let view = model.activeWork {
@@ -75,10 +75,97 @@ struct MiriamActiveWorkView: View {
     }
   }
 }
+struct MiriamWorkView:View {
+  @Bindable var model:WorkspaceModel
+  var body:some View {
+    List {
+      Section {
+        VStack(alignment:.leading,spacing:12) {
+          Text("Dare seguito alle idee.").font(.system(.title,design:.serif).weight(.bold))
+          Text("Le persone e Miriam lavorano nello stesso spazio. Responsabilità, istruzioni e adozioni restano distinte.").font(.subheadline).foregroundStyle(.secondary)
+          RIMIAMRule(strong:true)
+        }.padding(.vertical,8).listRowBackground(RIMIAMStyle.page)
+        NavigationLink {MiriamTasksView(model:model).rimiamList()} label:{RIMIAMNavigationLabel(title:"Lavoro e follow-up",subtitle:"Responsabilità accettate, proposte e promemoria.",symbol:"checklist")}.accessibilityIdentifier("tasks-open")
+      }
+      Section {MiriamActiveWorkView(model:model)}
+      if !model.error.isEmpty {Text(model.error).foregroundStyle(.red)}
+    }.navigationTitle("Work").rimiamList().task {await model.loadActiveWork()}
+  }
+}
+struct MiriamOutputsView:View {
+  @Bindable var model:WorkspaceModel
+  var body:some View {
+    List {
+      Section {
+        VStack(alignment:.leading,spacing:12) {
+          Text("Quello che prende forma.").font(.system(.title,design:.serif).weight(.bold))
+          Text("Un contributo, una bozza e un risultato adottato hanno significati diversi. Qui restano riconoscibili.").font(.subheadline).foregroundStyle(.secondary)
+          RIMIAMRule(strong:true)
+        }.padding(.vertical,8).listRowBackground(RIMIAMStyle.page)
+        NavigationLink {WorkspaceArtifactsView(model:model).rimiamList()} label:{RIMIAMNavigationLabel(title:"Documenti e Artifact",subtitle:"Crea, leggi, modifica e verifica le adozioni.",symbol:"doc.richtext")}
+      }
+      Section("Contributi di Miriam · non adottati") {
+        let works=(model.activeWork?.works ?? []).filter{$0.contribution != nil}
+        if works.isEmpty {Text("I contributi disponibili nei lavori caricati appariranno qui.").foregroundStyle(.secondary)}
+        ForEach(works) {work in
+          NavigationLink {MiriamWorkDetailView(model:model,workID:work.id)} label:{
+            VStack(alignment:.leading,spacing:6) {
+              Text(work.contract.objective).font(.headline)
+              Text(work.contribution?.qualification ?? "Contributo non adottato").font(.caption).foregroundStyle(.secondary)
+              if work.validity == "potentially_outdated" {Label("Potenzialmente superato",systemImage:"exclamationmark.circle").font(.caption)}
+            }.padding(.vertical,8)
+          }
+        }
+        if let next=model.activeWork?.next {Button("Cerca nei lavori precedenti"){Task {await model.loadActiveWork(before:next)}}}
+        NavigationLink("Tutti i lavori e la loro storia"){MiriamWorkView(model:model)}
+      }
+      if !model.error.isEmpty {Text(model.error).foregroundStyle(.red)}
+    }.navigationTitle("Outputs").rimiamList().task {await model.loadActiveWork()}
+  }
+}
+struct MiriamWorkDetailView:View {
+  @Bindable var model:WorkspaceModel
+  let workID:String
+  @State private var loaded:ActiveWorkSnapshot?
+  @State private var loading=false
+  @State private var failure=""
+  private var scope:String {model.mediaBoundary + "|" + workID + "|" + String(model.state?.workspace.revision ?? 0)}
+  private var snapshot:ActiveWorkSnapshot? {
+    if let current=model.activeWork,current.works.contains(where:{$0.id == workID}) {return current}
+    return loaded
+  }
+  var body:some View {
+    List {
+      if let snapshot,let work=snapshot.works.first(where:{$0.id==workID}) {
+        ActiveWorkRow(model:model,work:work,view:snapshot,initiallyExpanded:true)
+      }
+      if loading {ProgressView("Recupero del lavoro…")}
+      if !failure.isEmpty {Text(failure).foregroundStyle(.red);Button("Riprova a caricare il lavoro"){Task{await load()}}}
+      if !model.error.isEmpty {Text(model.error).foregroundStyle(.red)}
+    }.navigationTitle("Lavoro di Miriam").rimiamList().task(id:scope){await load()}
+  }
+  private func load() async {
+    let boundary=scope
+    loaded=nil;failure=""
+    guard !(model.activeWork?.works.contains(where:{$0.id == workID}) ?? false) else {loading=false;return}
+    loading=true
+    do {
+      let value=try await model.activeWorkDetail(workID)
+      guard boundary == scope,!Task.isCancelled else {return}
+      loaded=value;loading=false
+    } catch {
+      guard boundary == scope,!Task.isCancelled else {return}
+      loading=false
+      failure=error is CancellationError ? "La selezione è cambiata. Riprova a caricare il lavoro." : error.localizedDescription
+    }
+  }
+}
 private struct ActiveWorkRow: View {
   @Bindable var model: WorkspaceModel
   let work: ActiveWork
   let view: ActiveWorkSnapshot
+  var initiallyExpanded=false
+  @State private var expanded=false
   @State private var instruction = ""
   @State private var instructionKind="input"
   @State private var format="sintesi"
@@ -101,7 +188,7 @@ private struct ActiveWorkRow: View {
     }
   }
   var body: some View {
-    DisclosureGroup {
+    DisclosureGroup(isExpanded:$expanded) {
       Text(work.contract.scope).font(.caption)
       Text("Output: \(work.contract.expectedOutput) · Contratto v\(work.contract.version)").font(
         .caption)
@@ -180,12 +267,13 @@ private struct ActiveWorkRow: View {
       }
     } label: {
       VStack(alignment: .leading) {
-        Text(work.contract.objective)
+        Text(work.contract.objective).font(.headline).foregroundStyle(RIMIAMStyle.ink)
         Text(
           work.status
             + (work.validity == "potentially_outdated" ? " · Potenzialmente superato" : "")
         ).font(.caption)
+        if !work.issues.isEmpty {Label("\(work.issues.count) indicazioni da chiarire",systemImage:"exclamationmark.circle").font(.caption.weight(.semibold))}
       }
-    }.buttonStyle(.borderless)
+    }.buttonStyle(.borderless).padding(.vertical,8).onAppear {if initiallyExpanded {expanded=true}}
   }
 }

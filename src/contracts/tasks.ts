@@ -1,3 +1,4 @@
+import { conversationOriginSchema } from "./conversation-handoff.ts";
 import { z } from "zod";
 
 const version = z.number().int().positive();
@@ -53,6 +54,7 @@ export const taskCommandSchemas = [
   z
     .object({
       type: z.literal("task.create"),
+      conversationOrigin: conversationOriginSchema.optional(),
       content: taskContentSchema,
       candidateId: z.uuid().optional(),
     })
@@ -60,6 +62,7 @@ export const taskCommandSchemas = [
   z
     .object({
       type: z.literal("task.revise"),
+      conversationOrigin: conversationOriginSchema.optional(),
       ...taskBase,
       content: taskContentSchema,
     })
@@ -67,6 +70,7 @@ export const taskCommandSchemas = [
   z
     .object({
       type: z.literal("task.propose_revision"),
+      conversationOrigin: conversationOriginSchema.optional(),
       ...taskBase,
       content: taskContentSchema,
     })

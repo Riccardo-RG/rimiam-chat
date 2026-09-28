@@ -20,6 +20,29 @@ export async function api<T>(path: string, data?: unknown): Promise<T> {
   return result;
 }
 export const errors: Record<string, string> = {
+  FEEDBACK_MESSAGE_NOT_FOUND:
+    "Il messaggio non è disponibile in questo spazio.",
+  FEEDBACK_REPORT_TOO_LARGE:
+    "Il report supera 1.000 note: serve un’esportazione suddivisa. Nessun feedback è stato eliminato.",
+  HANDOFF_TARGET_STALE:
+    "Il riferimento della proposta è cambiato. Rileggilo e rivaluta il passo prima di procedere.",
+  HANDOFF_ALREADY_APPLIED:
+    "Questo passo è già stato registrato. Apri il risultato o la proposta preparata; non occorre ripeterlo.",
+  HANDOFF_NOT_FOUND: "La proposta non è disponibile nello spazio corrente.",
+  HANDOFF_COMMAND_MISMATCH:
+    "Questo comando non corrisponde al passo proposto. Rivaluta il percorso prima di procedere.",
+  HANDOFF_TARGET_MISMATCH:
+    "Il contenuto selezionato non è quello della proposta originale.",
+  HANDOFF_CANDIDATE_MISMATCH:
+    "L’informazione selezionata non corrisponde a quella proposta nel messaggio originale.",
+  INVALID_RECEIPT:
+    "La conferma ricevuta non corrisponde all’operazione. Il promemoria è conservato: verifica l’esito prima di riprovare.",
+  WORKSTREAM_NOT_FOUND:
+    "Questo filone non è disponibile nello spazio corrente.",
+  WORKSTREAM_NOT_ACTIVE:
+    "Il filone non è attivo. Puoi consultarne la storia oppure riaprirlo dai suoi controlli prima di inviare nuovi messaggi.",
+  WORKSTREAM_TRANSITION_INVALID:
+    "Lo stato del filone non consente questo passaggio. Rileggi il suo stato attuale.",
   CALL_CONFIGURATION_REQUIRED: "Il servizio chiamate non è ancora configurato.",
   CALL_ADMISSION_PENDING:
     "Ingresso in attesa: attendi che le registrazioni siano arrestate.",
@@ -32,6 +55,8 @@ export const errors: Record<string, string> = {
     "Attendi che tutte le trascrizioni siano pronte prima di richiedere l’analisi.",
   STATE_STALE:
     "Qualcuno ha aggiornato questo contenuto. Rileggi lo stato corrente prima di salvare.",
+  GOAL_VERSION_STALE:
+    "Il Goal o il suo stato è cambiato. La bozza resta da riesaminare rispetto alla versione corrente prima di procedere.",
   GOOGLE_CONFIGURATION_REQUIRED:
     "Il collegamento Google non è ancora configurato per questa installazione.",
   GOOGLE_ACCOUNT_MISMATCH:

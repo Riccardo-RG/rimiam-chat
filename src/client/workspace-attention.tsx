@@ -29,6 +29,9 @@ export function WorkspaceAttention({
   busy,
   canContribute,
   name,
+  focus,
+  onWorkstreams,
+  showChanges = true,
 }: {
   workspace: string;
   actor: string;
@@ -39,8 +42,12 @@ export function WorkspaceAttention({
   busy: boolean;
   canContribute: boolean;
   name: (id: string) => string;
+  focus?: (stream: AttentionView["workstreams"][number]) => void;
+  onWorkstreams?: (streams: AttentionView["workstreams"]) => void;
+  showChanges?: boolean;
 }) {
   const [view, setView] = useState<AttentionView | null>(null),
+    [showInactive, setShowInactive] = useState(false),
     [error, setError] = useState(""),
     [before, setBefore] = useState<number | undefined>();
   const url = `/api/v1/workspaces/${workspace}/attention${before === undefined ? "" : `?before=${before}`}`;
@@ -54,6 +61,7 @@ export function WorkspaceAttention({
         const v = await api<AttentionView>(url);
         if (active) {
           setView(v);
+          onWorkstreams?.(v.workstreams);
           setError("");
         }
       } catch (e) {
@@ -71,27 +79,38 @@ export function WorkspaceAttention({
       active = false;
       clearInterval(timer);
     };
-  }, [url, actor]);
-  const perform = (c: Command) =>
-    action(async () => {
+  }, [url, actor, onWorkstreams]);
+  const perform = async (c: Command) => {
+    let committed = false;
+    await action(async () => {
       await command(c);
-      setView(await api<AttentionView>(url));
+      committed = true;
+      try {
+        const next = await api<AttentionView>(url);
+        setView(next);
+        onWorkstreams?.(next.workstreams);
+      } catch {
+        setError(
+          "Operazione registrata. Non è stato possibile aggiornare la vista: sarà ricaricata automaticamente.",
+        );
+      }
     });
+    return committed;
+  };
   if (compact)
     return (
-      <div className="attention-strip">
-        <span>
-          {error
-            ? "Aggiornamento dello spazio non disponibile"
-            : !view
-              ? "Un momento…"
-              : view.attention.length
-                ? `${view.attention.length} ${view.attention.length === 1 ? "punto da seguire" : "punti da seguire"} · ${view.attention[0].reason}`
-                : "Lo spazio è pronto per il prossimo passo."}
-        </span>
-        <button className="quiet" onClick={() => open("attention")}>
-          Il punto adesso ↗
+      <div className="activity-entry">
+        <button
+          className="quiet"
+          onClick={() => open("attention")}
+          aria-label="Apri Activity e filoni"
+        >
+          Activity{" "}
+          {view?.attention.length
+            ? `· ${view.attention.length} da seguire`
+            : "↗"}
         </button>
+        {error && <small role="status">Aggiornamento non disponibile</small>}
       </div>
     );
   return (
@@ -112,14 +131,7 @@ export function WorkspaceAttention({
               key={`${item.kind}:${item.id}`}
               onClick={() => {
                 if (item.kind === "work") {
-                  open("");
-                  setTimeout(
-                    () =>
-                      document
-                        .querySelector('[aria-label="Active Work"]')
-                        ?.scrollIntoView({ block: "center" }),
-                    0,
-                  );
+                  open("work");
                 } else
                   open(
                     item.kind === "task"
@@ -135,58 +147,60 @@ export function WorkspaceAttention({
               <span aria-hidden>↗</span>
             </button>
           ))}
-          <details open>
-            <summary>Cosa è cambiato dal tuo ultimo allineamento</summary>
-            <p className="hint">
-              Il punto personale indica fino a dove hai ricostruito lo stato;
-              non è consenso o accettazione delle decisioni.
-            </p>
-            {view.changes.length === 0 ? (
-              <p className="muted">Nessun nuovo cambiamento strutturato.</p>
-            ) : (
-              view.changes.map((c) => (
-                <div className="history-entry" key={c.revision}>
-                  <strong>
-                    {changeLabels[c.kind.split(".")[0]] ??
-                      "Aggiornamento dello spazio"}
-                  </strong>
-                  <small>
-                    {c.kind
-                      .split(".")
-                      .slice(1)
-                      .join(" · ")
-                      .replaceAll("_", " ")}{" "}
-                    · {new Date(c.createdAt).toLocaleString("it-IT")}
-                  </small>
-                </div>
-              ))
-            )}
-            {view.nextBefore !== null && (
-              <button
-                className="quiet"
-                onClick={() => setBefore(view.nextBefore!)}
-              >
-                Cambiamenti precedenti
-              </button>
-            )}
-            {before !== undefined ? (
-              <button className="quiet" onClick={() => setBefore(undefined)}>
-                Torna agli ultimi cambiamenti
-              </button>
-            ) : (
-              <button
-                disabled={busy}
-                onClick={() =>
-                  void perform({
-                    type: "attention.aligned",
-                    revision: view.revision,
-                  })
-                }
-              >
-                Sono allineato fino a qui
-              </button>
-            )}
-          </details>
+          {showChanges && (
+            <details open>
+              <summary>Cosa è cambiato dal tuo ultimo allineamento</summary>
+              <p className="hint">
+                Il punto personale indica fino a dove hai ricostruito lo stato;
+                non è consenso o accettazione delle decisioni.
+              </p>
+              {view.changes.length === 0 ? (
+                <p className="muted">Nessun nuovo cambiamento strutturato.</p>
+              ) : (
+                view.changes.map((c) => (
+                  <div className="history-entry" key={c.revision}>
+                    <strong>
+                      {changeLabels[c.kind.split(".")[0]] ??
+                        "Aggiornamento dello spazio"}
+                    </strong>
+                    <small>
+                      {c.kind
+                        .split(".")
+                        .slice(1)
+                        .join(" · ")
+                        .replaceAll("_", " ")}{" "}
+                      · {new Date(c.createdAt).toLocaleString("it-IT")}
+                    </small>
+                  </div>
+                ))
+              )}
+              {view.nextBefore !== null && (
+                <button
+                  className="quiet"
+                  onClick={() => setBefore(view.nextBefore!)}
+                >
+                  Cambiamenti precedenti
+                </button>
+              )}
+              {before !== undefined ? (
+                <button className="quiet" onClick={() => setBefore(undefined)}>
+                  Torna agli ultimi cambiamenti
+                </button>
+              ) : (
+                <button
+                  disabled={busy}
+                  onClick={() =>
+                    void perform({
+                      type: "attention.aligned",
+                      revision: view.revision,
+                    })
+                  }
+                >
+                  Sono allineato fino a qui
+                </button>
+              )}
+            </details>
+          )}
           <details>
             <summary>Il ritmo di Miriam</summary>
             <p className="hint">
@@ -223,97 +237,162 @@ export function WorkspaceAttention({
               Organizzano temi senza creare chat separate o nuovi Goal. I
               messaggi originali restano al loro posto.
             </p>
-            {view.workstreams.map((s) => (
-              <details key={s.id}>
-                <summary>
-                  {s.title} · {s.sources.filter((x) => x.included).length} fonti
-                </summary>
-                <p>{s.description}</p>
-                <small>
-                  {s.origin === "miriam"
-                    ? "Organizzazione proposta da Miriam"
-                    : `Organizzato da ${name(s.actor!)}`}
-                </small>
-                {s.sources
-                  .filter((x) => x.included)
-                  .map((source) => (
-                    <blockquote key={source.id}>
-                      <p>{source.content}</p>
-                      <small>
-                        {source.kind === "message"
-                          ? "Messaggio originale"
-                          : "Fonte condivisa"}
-                      </small>
-                      {canContribute && (
+            <label>
+              <input
+                type="checkbox"
+                checked={showInactive}
+                onChange={(e) => setShowInactive(e.target.checked)}
+              />
+              Includi proposte e filoni conclusi
+            </label>
+            {view.workstreams
+              .filter((s) => showInactive || s.state === "active")
+              .map((s) => (
+                <details key={s.id}>
+                  <summary>
+                    {s.title} ·{" "}
+                    {
+                      {
+                        active: "Attivo",
+                        proposed: "Proposto",
+                        resolved: "Risolto",
+                        archived: "Archiviato",
+                      }[s.state]
+                    }{" "}
+                    · {s.sources.filter((x) => x.included).length} fonti
+                  </summary>
+                  <p>{s.description}</p>
+                  {focus && (
+                    <button className="quiet" onClick={() => focus(s)}>
+                      Apri la conversazione di questo filone
+                    </button>
+                  )}
+                  {canContribute && (
+                    <div className="actions">
+                      {(s.state === "proposed"
+                        ? ["activate"]
+                        : s.state === "active"
+                          ? ["resolve"]
+                          : s.state === "resolved"
+                            ? ["reopen", "archive"]
+                            : ["reopen"]
+                      ).map((transition) => (
                         <button
+                          key={transition}
                           className="quiet"
                           disabled={busy}
                           onClick={() =>
                             void perform({
-                              type: "workstream.link",
+                              type: "workstream.transition",
                               workstreamId: s.id,
-                              sourceId: source.id,
-                              expectedVersion: source.version,
-                              included: false,
+                              expectedVersion: s.version,
+                              action: transition as
+                                "activate" | "resolve" | "archive" | "reopen",
                             })
                           }
                         >
-                          Togli da questo filone
+                          {
+                            {
+                              activate: "Attiva filone",
+                              resolve: "Segna come risolto",
+                              archive: "Archivia filone",
+                              reopen: "Riapri filone",
+                            }[transition]
+                          }
                         </button>
-                      )}
-                    </blockquote>
-                  ))}
-                <details>
-                  <summary>Storia del filone</summary>
-                  {s.history.map((h) => (
-                    <div className="history-entry" key={h.version}>
-                      <strong>
-                        v{h.version} · {h.title}
-                      </strong>
-                      <p>{h.description}</p>
-                      <small>
-                        {h.actor ? name(h.actor) : "Miriam"} ·{" "}
-                        {new Date(h.createdAt).toLocaleString("it-IT")}
-                      </small>
+                      ))}
                     </div>
-                  ))}
+                  )}
+                  <small>
+                    {s.origin === "miriam"
+                      ? "Organizzazione proposta da Miriam"
+                      : `Organizzato da ${name(s.actor!)}`}
+                  </small>
+                  {s.sources
+                    .filter((x) => x.included)
+                    .map((source) => (
+                      <blockquote key={source.id}>
+                        <p>{source.content}</p>
+                        <small>
+                          {source.kind === "message"
+                            ? "Messaggio originale"
+                            : "Fonte condivisa"}
+                        </small>
+                        {canContribute && (
+                          <button
+                            className="quiet"
+                            disabled={busy}
+                            onClick={() =>
+                              void perform({
+                                type: "workstream.link",
+                                workstreamId: s.id,
+                                sourceId: source.id,
+                                expectedVersion: source.version,
+                                included: false,
+                              })
+                            }
+                          >
+                            Togli da questo filone
+                          </button>
+                        )}
+                      </blockquote>
+                    ))}
+                  <details>
+                    <summary>Storia del filone</summary>
+                    {s.history.map((h) => (
+                      <div className="history-entry" key={h.version}>
+                        <strong>
+                          v{h.version} · {h.title}
+                        </strong>
+                        <p>{h.description}</p>
+                        <small>
+                          {h.lifecycleState ??
+                            "Lifecycle non registrato in questa versione"}{" "}
+                          {h.lifecycleAction}
+                        </small>
+                        <small>
+                          {h.actor ? name(h.actor) : "Miriam"} ·{" "}
+                          {new Date(h.createdAt).toLocaleString("it-IT")}
+                        </small>
+                      </div>
+                    ))}
+                  </details>
+                  {canContribute && (
+                    <form
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        const f = new FormData(e.currentTarget);
+                        void perform({
+                          type: "workstream.save",
+                          id: s.id,
+                          expectedVersion: s.version,
+                          title: String(f.get("title")),
+                          description: String(f.get("description")),
+                        });
+                      }}
+                    >
+                      <label>
+                        Nome
+                        <input
+                          name="title"
+                          defaultValue={s.title}
+                          required
+                          maxLength={160}
+                        />
+                      </label>
+                      <label>
+                        Descrizione
+                        <textarea
+                          name="description"
+                          defaultValue={s.description}
+                          maxLength={4000}
+                        />
+                      </label>
+                      <button disabled={busy}>Aggiorna filone</button>
+                    </form>
+                  )}
                 </details>
-                {canContribute && (
-                  <form
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      const f = new FormData(e.currentTarget);
-                      void perform({
-                        type: "workstream.save",
-                        id: s.id,
-                        expectedVersion: s.version,
-                        title: String(f.get("title")),
-                        description: String(f.get("description")),
-                      });
-                    }}
-                  >
-                    <label>
-                      Nome
-                      <input
-                        name="title"
-                        defaultValue={s.title}
-                        required
-                        maxLength={160}
-                      />
-                    </label>
-                    <label>
-                      Descrizione
-                      <textarea
-                        name="description"
-                        defaultValue={s.description}
-                        maxLength={4000}
-                      />
-                    </label>
-                    <button disabled={busy}>Aggiorna filone</button>
-                  </form>
-                )}
-              </details>
-            ))}
+              ))}
             {canContribute && (
               <form
                 onSubmit={(e) => {
@@ -323,7 +402,9 @@ export function WorkspaceAttention({
                     type: "workstream.save",
                     title: String(new FormData(f).get("title")),
                     description: "",
-                  }).then(() => f.reset());
+                  }).then((committed) => {
+                    if (committed) f.reset();
+                  });
                 }}
               >
                 <label>
@@ -332,7 +413,7 @@ export function WorkspaceAttention({
                     name="title"
                     required
                     maxLength={160}
-                    placeholder="Per esempio: trovare il locale"
+                    placeholder="Per esempio: preparare la beta"
                   />
                 </label>
                 <button disabled={busy}>Crea filone</button>

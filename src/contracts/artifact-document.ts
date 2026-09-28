@@ -1,3 +1,4 @@
+import { conversationOriginSchema } from "./conversation-handoff.ts";
 import { z } from "zod";
 const text = z.string().trim().min(1).max(24000);
 export const artifactBlockSchema = z.discriminatedUnion("type", [
@@ -45,6 +46,7 @@ export const artifactDocumentCommands = [
   z
     .object({
       type: z.literal("artifact.compose"),
+      conversationOrigin: conversationOriginSchema.optional(),
       artifactId: z.uuid().optional(),
       expectedVersion: z.number().int().positive().optional(),
       title: z.string().trim().min(1).max(160),
@@ -67,6 +69,7 @@ export const artifactDocumentCommands = [
   z
     .object({
       type: z.literal("artifact.from_contribution"),
+      conversationOrigin: conversationOriginSchema.optional(),
       contributionId: z.uuid(),
       title: z.string().trim().min(1).max(160),
       purpose: z.string().trim().min(1).max(2000),

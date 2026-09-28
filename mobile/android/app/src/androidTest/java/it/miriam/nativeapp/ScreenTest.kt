@@ -18,14 +18,24 @@ class ScreenTest {
         compose.onNodeWithTag("content").performScrollToNode(hasTestTag(tag))
     }
     @Test fun loginSendBackgroundCatchUpLogout() {
+        compose.waitUntil(10000) { compose.onAllNodesWithTag("email").fetchSemanticsNodes().isNotEmpty() || compose.onAllNodesWithTag("logout").fetchSemanticsNodes().isNotEmpty() }
+        if(compose.onAllNodesWithTag("logout").fetchSemanticsNodes().isNotEmpty())compose.onNodeWithTag("logout").performClick()
         compose.waitUntil(10000) { compose.onAllNodesWithTag("email").fetchSemanticsNodes().isNotEmpty() }
         scroll("server"); compose.onNodeWithTag("server").performTextReplacement("http://10.0.2.2:3102")
         scroll("email"); compose.onNodeWithTag("email").performTextInput("native-android@example.test")
         scroll("password"); compose.onNodeWithTag("password").performTextInput("Native-test-only-2026!")
         scroll("login"); compose.onNodeWithTag("login").performClick()
         compose.enterWorkspace()
+        compose.onNodeWithTag("tools-open").performClick()
+        compose.onNodeWithTag("context-open").performScrollTo().performClick()
+        compose.onNodeWithText("Quello che è emerso").assertExists()
+        compose.onNodeWithTag("lens-close").performClick()
+        compose.onNodeWithTag("message").assertExists()
         val text = "Compose UI ${UUID.randomUUID()}"
         scroll("message"); compose.onNodeWithTag("message").performTextInput(text)
+        compose.activityRule.scenario.recreate()
+        compose.waitUntil(10000) { compose.onAllNodesWithTag("message").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("message").assertTextContains(text)
         scroll("send"); compose.onNodeWithTag("send").performClick()
         compose.waitUntil(10000) { compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty() }
         val context = InstrumentationRegistry.getInstrumentation().targetContext
@@ -34,7 +44,7 @@ class ScreenTest {
         compose.activityRule.scenario.moveToState(Lifecycle.State.CREATED)
         runBlocking {
             val api = Api(credential.base)
-            val w = api.call("workspaces", credential.token).rows("workspaces").first().getString("id")
+            val w = api.call("workspaces", credential.token).rows("workspaces").first { it.getString("name") == "Workspace android di verifica" }.getString("id")
             api.call("workspaces/$w/commands", credential.token, "POST", JSONObject().put("commandId", UUID.randomUUID().toString()).put("command", JSONObject().put("type", "message.send").put("content", background)))
         }
         compose.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)

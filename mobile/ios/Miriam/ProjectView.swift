@@ -15,12 +15,14 @@ struct ProjectSnapshot: Decodable {
 }
 struct ProjectGovernanceView:View {
   @Bindable var model:WorkspaceModel
+  var handoff:ConversationHandoff?=nil
   @State private var snapshot:ProjectSnapshot?
+  @State private var refreshRequest=UUID()
   var body:some View {
     List {
       Text("Goal, decisioni e mandati restano distinti. Ogni adozione richiede gli atti espliciti delle persone pertinenti.").font(.callout)
       if let state=snapshot {
-        Section("Goal e continuità") {ForEach(state.goals) {goal in GoalLifecycleRow(model:model,state:state,goal:goal,refresh:refresh)}}
+        Section("Goal e continuità") {ForEach(state.goals) {goal in GoalLifecycleRow(model:model,state:state,goal:goal,refresh:refresh,handoff:handoff?.kind == .goalChange && handoff?.target?.id == goal.id ? handoff : nil)}}
         Section("Cambiamenti proposti") {ForEach(state.goalProposals) {proposal in
           DisclosureGroup(proposal.content) {
             Text("\(proposal.mode) · \(proposal.status)").font(.caption);Text(proposal.reason)
@@ -30,7 +32,7 @@ struct ProjectGovernanceView:View {
           }
         }}
         Section("Decisioni, vincoli e impegni") {
-          ProjectActForm(model:model,state:state,refresh:refresh)
+          ProjectActForm(model:model,state:state,refresh:refresh,handoff:handoff?.kind == .goalChange ? nil : handoff)
           ForEach(state.acts) {act in
             DisclosureGroup(act.content) {
               Text("\(kindLabel(act.kind)) · \(act.status)").font(.caption)
@@ -49,17 +51,34 @@ struct ProjectGovernanceView:View {
       if !model.error.isEmpty {Text(model.error).foregroundStyle(.red)}
     }.navigationTitle("Decisioni e authority").task{await refresh()}.refreshable{await refresh()}
   }
-  func refresh() async {let raw=await model.workspaceRead("project");snapshot=try? JSONDecoder().decode(ProjectSnapshot.self,from:Data(raw.utf8))}
+  func refresh() async {
+    let request=UUID(),boundary=model.mediaBoundary
+    refreshRequest=request
+    let raw=await model.workspaceRead("project")
+    guard refreshRequest == request,!Task.isCancelled else {return}
+    guard boundary == model.mediaBoundary else {snapshot=nil;return}
+    // Keep mounted drafts on a transient read failure; the model presents the error.
+    if let next=try? JSONDecoder().decode(ProjectSnapshot.self,from:Data(raw.utf8)) {snapshot=next}
+  }
 }
 private func kindLabel(_ kind:String)->String {["decision":"Decisione","constraint":"Vincolo","commitment":"Impegno"][kind] ?? kind}
 private struct GoalLifecycleRow:View {
   @Bindable var model:WorkspaceModel;let state:ProjectSnapshot;let goal:ProjectSnapshot.Goal;let refresh:() async->Void
+  var handoff:ConversationHandoff?=nil
+  @State private var expanded=false
   @State private var mode="revise";@State private var content="";@State private var reason="";@State private var people:Set<String>=[];@State private var blockers:Set<String>=[];@State private var previousSubgoal=false
+  @State private var baseVersion:Int?
+  @State private var baseContent=""
+  private var stale:Bool {baseVersion != nil && baseVersion != goal.version}
   var body:some View {
-    DisclosureGroup(goal.content) {
+    DisclosureGroup(goal.content,isExpanded:Binding(get:{expanded},set:{expanded=$0;if $0 {prepareBase()}})) {
       Text("v\(goal.version) · \(goal.status)" + (goal.currentPrimary ? " · Goal principale" : "")).font(.caption)
       DisclosureGroup("Storia del Goal") {ForEach(goal.versions,id:\.version) {version in Text("v\(version.version) · \(state.name(version.actor)) · \(version.createdAt)").font(.caption);Text(version.content);Text(version.reason)}}
       if goal.status=="active" {
+        if stale {
+          Text("La bozza si riferisce alla versione \(baseVersion ?? 0). Il Goal è cambiato: rileggilo prima di continuare.").font(.caption).foregroundStyle(.orange)
+          if handoff == nil {Button("Usa la versione attuale per questa bozza"){baseVersion=goal.version;baseContent=goal.content}}
+        }
         Picker("Cambiamento",selection:$mode) {Text("Nuova versione, stessa iniziativa").tag("revise");Text("Nuovo Goal sostitutivo").tag("replace");Text("Risultato subordinato").tag("subgoal");Text("Completa").tag("complete");Text("Abbandona").tag("abandon")}
         if !["complete","abandon"].contains(mode) {TextField("Contenuto proposto",text:$content,axis:.vertical)}
         TextField("Motivazione",text:$reason,axis:.vertical)
@@ -68,24 +87,60 @@ private struct GoalLifecycleRow:View {
         ForEach(state.members.filter{$0.active && $0.eligible}) {person in Toggle(person.name,isOn:Binding(get:{people.contains(person.id)},set:{if $0 {people.insert(person.id)} else {people.remove(person.id)}}))}
         Text("Gli obblighi rimangono validi. Indica quelli incompatibili che impediscono questa transizione.").font(.caption)
         ForEach(state.acts.filter{$0.status=="effective" && $0.actId != nil}) {act in Toggle(act.content,isOn:Binding(get:{blockers.contains(act.actId!)},set:{if $0 {blockers.insert(act.actId!)} else {blockers.remove(act.actId!)}}))}
-        Button("Proponi il cambiamento") {Task{await model.workspaceCommand(["type":"goal.propose","goalId":goal.id,"expectedVersion":goal.version,"mode":mode,"content":["complete","abandon"].contains(mode) ? goal.content : content,"reason":reason,"previousBecomesSubgoal":mode=="replace" && previousSubgoal,"affectedPeople":Array(people).sorted(),"blockingActIds":Array(blockers).sorted(),"preserveExistingObligations":true],label:"Proposta sul Goal");await refresh()}}.disabled(model.busy || reason.isEmpty || (!["complete","abandon"].contains(mode) && content.isEmpty))
+        Button("Proponi il cambiamento"){propose()}.disabled(model.busy || baseVersion == nil || stale || reason.isEmpty || (!["complete","abandon"].contains(mode) && content.isEmpty) || (handoff.map{!model.canApplyHandoff($0)} ?? false))
       }
-    }
+    }.task(id:handoff?.id){if let handoff {prepareBase();expanded=true;content=handoff.suggestedText;reason=handoff.summary}}
+  }
+  private func prepareBase() {
+    guard baseVersion == nil else {return}
+    baseVersion=handoff?.target?.version ?? goal.version
+    baseContent=goal.versions.first(where:{$0.version == baseVersion})?.content ?? goal.content
+  }
+  private func propose() {
+    guard let baseVersion,!stale else {return}
+    let boundary=model.mediaBoundary
+    let body:[String:Any]=["type":"goal.propose","goalId":goal.id,"expectedVersion":baseVersion,"mode":mode,"content":["complete","abandon"].contains(mode) ? baseContent : content,"reason":reason,"previousBecomesSubgoal":mode=="replace" && previousSubgoal,"affectedPeople":Array(people).sorted(),"blockingActIds":Array(blockers).sorted(),"preserveExistingObligations":true]
+    Task {guard boundary == model.mediaBoundary else {return};await model.handoffCommand(body,handoff:handoff,label:"Proposta sul Goal");if boundary == model.mediaBoundary {await refresh()}}
   }
 }
 private struct ProjectActForm:View {
   @Bindable var model:WorkspaceModel;let state:ProjectSnapshot;let refresh:() async->Void
+  var handoff:ConversationHandoff?=nil
+  @State private var expanded=false
   @State private var kind="decision";@State private var content="";@State private var reason="";@State private var goal="";@State private var operation="establish";@State private var previous="";@State private var people:Set<String>=[]
+  @State private var goalVersion:Int?
+  private var goalStale:Bool {!goal.isEmpty && !state.goals.contains(where:{$0.id == goal && $0.version == goalVersion})}
   var body:some View {
-    DisclosureGroup("Prepara una proposta") {
+    DisclosureGroup("Prepara una proposta",isExpanded:$expanded) {
       Picker("Tipo",selection:$kind) {Text("Decisione").tag("decision");Text("Vincolo").tag("constraint");Text("Impegno").tag("commitment")}
-      Picker("Operazione",selection:$operation) {Text("Stabilisci").tag("establish");Text("Sostituisci").tag("replace");Text("Revoca").tag("revoke")}
-      if operation != "establish" {Picker("Atto precedente",selection:$previous) {Text("Scegli").tag("");ForEach(state.acts.filter{$0.status=="effective" && $0.actId != nil}) {Text($0.content).tag($0.actId!)}}}
+      Picker("Operazione",selection:$operation) {Text("Stabilisci").tag("establish");Text("Sostituisci").tag("replace");Text("Revoca").tag("revoke")}.disabled(handoff != nil)
+      if operation != "establish" {Picker("Atto precedente",selection:$previous) {Text("Scegli").tag("");ForEach(state.acts.filter{$0.status=="effective" && $0.actId != nil}) {Text($0.content).tag($0.actId!)}}.disabled(handoff != nil)}
       TextField("Contenuto esatto",text:$content,axis:.vertical);TextField("Motivazione",text:$reason,axis:.vertical)
-      Picker("Goal collegato",selection:$goal) {Text("Nessuno").tag("");ForEach(state.goals) {Text($0.content).tag($0.id)}}
+      Picker("Goal collegato",selection:Binding(get:{goal},set:{selectGoal($0)})) {Text("Nessuno").tag("");ForEach(state.goals) {Text($0.content).tag($0.id)}}
+      if let goalVersion,!goal.isEmpty {Text("Goal selezionato · v\(goalVersion)").font(.caption)}
+      if goalStale {
+        Text("Il Goal collegato è cambiato. La selezione conserva la versione precedente.").font(.caption).foregroundStyle(.orange)
+        Button("Rileggi e usa il Goal attuale"){selectGoal(goal)}
+      }
       ForEach(state.members.filter{$0.active && $0.eligible}) {person in Toggle(person.name,isOn:Binding(get:{people.contains(person.id)},set:{if $0 {people.insert(person.id)} else {people.remove(person.id)}}))}
-      Button("Proponi, senza adottare") {Task {var body:[String:Any]=["type":"project.propose","kind":kind,"operation":operation,"content":content,"reason":reason,"people":Array(people).sorted(),"goal":NSNull()];if let g=state.goals.first(where:{$0.id==goal}) {body["goal"]=["id":g.id,"version":g.version]};if operation != "establish" {body["replacesActId"]=previous};await model.workspaceCommand(body,label:"Proposta: " + content);await refresh()}}.disabled(model.busy || content.isEmpty || reason.isEmpty || people.isEmpty || (operation != "establish" && previous.isEmpty))
+      Button("Proponi, senza adottare"){propose()}.disabled(model.busy || goalStale || content.isEmpty || reason.isEmpty || people.isEmpty || (operation != "establish" && previous.isEmpty) || (handoff.map{!model.canApplyHandoff($0)} ?? false))
+    }.task(id:handoff?.id){
+      if let handoff {
+        expanded=true;content=handoff.suggestedText;reason=handoff.summary
+        operation=handoff.kind == .projectReplace ? "replace" : handoff.kind == .projectRevoke ? "revoke" : "establish"
+        if let target=handoff.target,let old=state.acts.first(where:{$0.proposalId == target.id && $0.status == "effective"}) {previous=old.actId ?? "";kind=old.kind;goal=old.goalId ?? "";goalVersion=old.goalVersion}
+      }
     }
+  }
+  private func selectGoal(_ id:String){goal=id;goalVersion=state.goals.first(where:{$0.id == id})?.version}
+  private func propose() {
+    guard !goalStale else {return}
+    let boundary=model.mediaBoundary
+    var body:[String:Any]=["type":"project.propose","kind":kind,"operation":operation,"content":content,"reason":reason,"people":Array(people).sorted(),"goal":NSNull()]
+    if !goal.isEmpty,let goalVersion {body["goal"]=["id":goal,"version":goalVersion]}
+    if operation != "establish" {body["replacesActId"]=previous}
+    let label="Proposta: " + content
+    Task {guard boundary == model.mediaBoundary else {return};await model.handoffCommand(body,handoff:handoff,label:label);if boundary == model.mediaBoundary {await refresh()}}
   }
 }
 private struct ProjectApprovals:View {
@@ -105,15 +160,37 @@ private struct ProjectApprovals:View {
 private struct MandateForm:View {
   @Bindable var model:WorkspaceModel;let state:ProjectSnapshot;let refresh:() async->Void
   @State private var holder="";@State private var target="";@State private var capability="goal.change";@State private var reason=""
+  @State private var targetVersion:Int?
+  private var targetStale:Bool {
+    let parts=target.split(separator:":").map(String.init)
+    guard parts.count == 2 else {return !target.isEmpty}
+    if parts[0] == "goal" {return !state.goals.contains(where:{$0.id == parts[1] && $0.version == targetVersion})}
+    return !state.acts.contains(where:{$0.actId == parts[1] && $0.status == "effective"})
+  }
   var body:some View {
     DisclosureGroup("Delega la tua posizione entro uno scope") {
       Picker("Destinatario",selection:$holder) {Text("Scegli persona").tag("");ForEach(state.members.filter{$0.active && $0.eligible}) {Text($0.name).tag($0.id)}}
-      Picker("Scope esatto",selection:$target) {Text("Scegli oggetto").tag("");ForEach(state.goals) {Text("Goal: " + $0.content).tag("goal:"+$0.id)};ForEach(state.acts.filter{$0.actId != nil && $0.status=="effective"}) {Text("Atto: " + $0.content).tag("act:"+$0.actId!)}}
+      Picker("Scope esatto",selection:Binding(get:{target},set:{selectTarget($0)})) {Text("Scegli oggetto").tag("");ForEach(state.goals) {Text("Goal: " + $0.content).tag("goal:"+$0.id)};ForEach(state.acts.filter{$0.actId != nil && $0.status=="effective"}) {Text("Atto: " + $0.content).tag("act:"+$0.actId!)}}
+      if let targetVersion {Text("Scope selezionato · v\(targetVersion)").font(.caption)}
+      if targetStale {Text("Lo scope è cambiato. Rileggi l’oggetto prima di offrire il mandato.").font(.caption).foregroundStyle(.orange);Button("Usa lo scope attuale"){selectTarget(target)}}
       Picker("Capacità",selection:$capability) {ForEach(["goal.change","goal.conclude","goal.subgoal","act.create","act.replace","act.revoke"],id:\.self) {Text($0).tag($0)}}
       TextField("Motivazione",text:$reason,axis:.vertical)
       Text("La delega, senza scadenza, riguarda soltanto la tua rappresentanza sull’oggetto/versione indicati e richiede accettazione. Non concede poteri sul Workspace.").font(.caption)
-      Button("Offri questo mandato") {let parts=target.split(separator:":").map(String.init);guard parts.count==2 else{return};let version=state.goals.first{$0.id==parts[1]}?.version ?? 1;Task{await model.workspaceCommand(["type":"mandate.offer","holderId":holder,"scope":["kind":parts[0],"id":parts[1],"version":version],"capability":capability,"expiresAt":NSNull(),"reason":reason,"representSelf":true],label:"Offerta di mandato");await refresh()}}.disabled(model.busy || holder.isEmpty || target.isEmpty || reason.isEmpty)
+      Button("Offri questo mandato"){offer()}.disabled(model.busy || targetStale || targetVersion == nil || holder.isEmpty || target.isEmpty || reason.isEmpty)
     }
+  }
+  private func selectTarget(_ value:String) {
+    target=value
+    let parts=value.split(separator:":").map(String.init)
+    guard parts.count == 2 else {targetVersion=nil;return}
+    targetVersion=parts[0] == "goal" ? state.goals.first(where:{$0.id == parts[1]})?.version : 1
+  }
+  private func offer() {
+    let parts=target.split(separator:":").map(String.init)
+    guard parts.count == 2,let targetVersion,!targetStale else {return}
+    let boundary=model.mediaBoundary
+    let body:[String:Any]=["type":"mandate.offer","holderId":holder,"scope":["kind":parts[0],"id":parts[1],"version":targetVersion],"capability":capability,"expiresAt":NSNull(),"reason":reason,"representSelf":true]
+    Task {guard boundary == model.mediaBoundary else {return};await model.workspaceCommand(body,label:"Offerta di mandato");if boundary == model.mediaBoundary {await refresh()}}
   }
 }
 private struct MandateRow:View {

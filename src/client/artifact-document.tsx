@@ -2,8 +2,198 @@
 "use client";
 import { useState } from "react";
 import type { ArtifactBlock } from "@/contracts/artifact-document";
+import type { ConversationHandoff } from "@/contracts/conversation-handoff";
 import type { Command } from "@/contracts/commands";
 import type { Snapshot } from "./types";
+
+export type ArtifactInformationReference = { id: string; version: number };
+
+export function staleArtifactInformation(
+  selected: ArtifactInformationReference[],
+  information: Snapshot["information"],
+) {
+  return selected.filter(
+    (ref) =>
+      !information.some(
+        (item) => item.id === ref.id && item.current_version === ref.version,
+      ),
+  );
+}
+
+export function selectArtifactInformation(
+  selected: ArtifactInformationReference[],
+  reference: ArtifactInformationReference,
+) {
+  return [...selected.filter((item) => item.id !== reference.id), reference];
+}
+
+export function ArtifactInformationSelection({
+  state,
+  selected,
+  onChange,
+  allowHistorical = false,
+}: {
+  state: Snapshot;
+  selected: ArtifactInformationReference[];
+  onChange: (selected: ArtifactInformationReference[]) => void;
+  allowHistorical?: boolean;
+}) {
+  const stale = staleArtifactInformation(selected, state.information);
+  return (
+    <>
+      {stale.length > 0 && (
+        <div role="status" className="processing">
+          <p>
+            {allowHistorical
+              ? "Alcuni riferimenti selezionati non sono correnti. La bozza conserva quelle versioni come riferimenti storici. Puoi mantenerle oppure esaminare e selezionare esplicitamente le versioni correnti."
+              : "Alcuni riferimenti selezionati sono cambiati. La tua selezione non è stata aggiornata: esamina e seleziona la versione corrente, oppure rimuovi il riferimento prima di salvare."}
+          </p>
+          {stale.map((ref) => {
+            const item = state.information.find((i) => i.id === ref.id);
+            const historical = state.versions.find(
+              (v) => v.information_id === ref.id && v.version === ref.version,
+            );
+            return (
+              <p key={ref.id}>
+                {item?.subject ?? "Informazione non disponibile"} · selezionata
+                v{ref.version}
+                {historical ? `: ${historical.content}` : ""}{" "}
+                <button
+                  type="button"
+                  className="quiet"
+                  onClick={() =>
+                    onChange(selected.filter((i) => i.id !== ref.id))
+                  }
+                >
+                  Rimuovi riferimento v{ref.version}
+                </button>
+              </p>
+            );
+          })}
+        </div>
+      )}
+      {state.information.map((item) => (
+        <label className="check" key={item.id}>
+          <input
+            type="checkbox"
+            checked={selected.some(
+              (ref) =>
+                ref.id === item.id && ref.version === item.current_version,
+            )}
+            onChange={(e) =>
+              onChange(
+                e.target.checked
+                  ? selectArtifactInformation(selected, {
+                      id: item.id,
+                      version: item.current_version,
+                    })
+                  : selected.filter((ref) => ref.id !== item.id),
+              )
+            }
+          />
+          {item.subject} · v{item.current_version}: {item.content}
+        </label>
+      ))}
+    </>
+  );
+}
+
+export function useArtifactEditBase(state: Snapshot, artifactId?: string) {
+  const current = state.artifactVersions.find(
+    (v) =>
+      v.artifact_id === artifactId &&
+      v.version ===
+        state.artifacts.find((a) => a.id === artifactId)?.current_draft_version,
+  );
+  // A refreshed snapshot is not permission to rebase the member's unsaved draft.
+  const [base, setBase] = useState(current);
+  const stale =
+    !!artifactId && (!base || !current || base.version !== current.version);
+  return { base, current, stale, setBase };
+}
+
+export function ArtifactRevisionReview({
+  state,
+  base,
+  current,
+  onReviewed,
+}: {
+  state: Snapshot;
+  base: Snapshot["artifactVersions"][number] | undefined;
+  current: Snapshot["artifactVersions"][number] | undefined;
+  onReviewed: () => void;
+}) {
+  return (
+    <div role="status" className="processing">
+      <p>
+        La tua bozza resta basata sulla v{base?.version ?? "non disponibile"}.
+        {current
+          ? ` È ora disponibile la v${current.version}.`
+          : " Il documento corrente non è disponibile."}{" "}
+        Il tuo testo è conservato. Prima di salvare, confronta le modifiche:
+        usare una nuova base non le incorpora automaticamente nella tua bozza.
+      </p>
+      {current && (
+        <details>
+          <summary>
+            Confronta con la versione corrente · v{current.version}
+          </summary>
+          <h4>{current.title}</h4>
+          {current.purpose && <p>{current.purpose}</p>}
+          <ArtifactBody
+            blocks={current.blocks}
+            body={current.body}
+            workspace={state.workspace.id}
+          />
+          <p className="hint">
+            Riferimenti della v{current.version}: la tua selezione rimane
+            distinta e non viene sostituita durante il confronto.
+          </p>
+          <ul>
+            {state.artifactInformation
+              .filter(
+                (r) =>
+                  r.artifact_id === current.artifact_id &&
+                  r.artifact_version === current.version,
+              )
+              .map((r) => (
+                <li key={r.information_id}>
+                  {state.information.find((i) => i.id === r.information_id)
+                    ?.subject ?? "Informazione accettata"}{" "}
+                  · v{r.information_version}:{" "}
+                  {state.versions.find(
+                    (v) =>
+                      v.information_id === r.information_id &&
+                      v.version === r.information_version,
+                  )?.content ??
+                    "contenuto storico consultabile nei riferimenti del documento"}
+                </li>
+              ))}
+            {state.artifactSources
+              .filter(
+                (r) =>
+                  r.artifact_id === current.artifact_id &&
+                  r.artifact_version === current.version,
+              )
+              .map((r) => (
+                <li key={r.source_id}>
+                  Fonte:{" "}
+                  {state.sources.find((s) => s.id === r.source_id)?.title ??
+                    state.messages.find((m) => m.id === r.source_id)?.content ??
+                    r.source_id}
+                </li>
+              ))}
+          </ul>
+          <button type="button" className="quiet" onClick={onReviewed}>
+            Ho confrontato: usa v{current.version} come base e conserva la mia
+            bozza
+          </button>
+        </details>
+      )}
+    </div>
+  );
+}
+
 export function ArtifactBody({
   blocks,
   body,
@@ -75,6 +265,7 @@ export function ArtifactDocumentEditor({
   command,
   action,
   onSaved,
+  handoff,
 }: {
   state: Snapshot;
   artifactId?: string;
@@ -82,33 +273,42 @@ export function ArtifactDocumentEditor({
   command: (c: Command) => Promise<unknown>;
   action: (fn: () => Promise<void>) => Promise<void>;
   onSaved: () => void;
+  handoff?: ConversationHandoff;
 }) {
-  const current = state.artifactVersions.find(
-    (v) =>
-      v.artifact_id === artifactId &&
-      v.version ===
-        state.artifacts.find((a) => a.id === artifactId)?.current_draft_version,
+  const { base, current, stale, setBase } = useArtifactEditBase(
+    state,
+    artifactId,
   );
-  const [title, setTitle] = useState(current?.title ?? ""),
-    [purpose, setPurpose] = useState(current?.purpose ?? ""),
+  const [title, setTitle] = useState(
+      base?.title ??
+        (handoff ? [...handoff.summary].slice(0, 160).join("") : ""),
+    ),
+    [purpose, setPurpose] = useState(base?.purpose ?? handoff?.summary ?? ""),
     [blocks, setBlocks] = useState<ArtifactBlock[]>(
-      current?.blocks ?? [{ type: "paragraph", text: current?.body ?? "" }],
+      base?.blocks ?? [
+        {
+          type: "paragraph",
+          text: base?.body ?? handoff?.suggestedText ?? "",
+        },
+      ],
     );
   const initialInfo = state.artifactInformation
     .filter(
       (r) =>
-        r.artifact_id === artifactId && r.artifact_version === current?.version,
+        r.artifact_id === artifactId && r.artifact_version === base?.version,
     )
-    .map((r) => r.information_id);
-  const [selected, setSelected] = useState<string[]>(initialInfo),
+    .map((r) => ({ id: r.information_id, version: r.information_version }));
+  const [selected, setSelected] =
+      useState<ArtifactInformationReference[]>(initialInfo),
     [sourceIds, setSources] = useState<string[]>(
-      state.artifactSources
-        .filter(
-          (r) =>
-            r.artifact_id === artifactId &&
-            r.artifact_version === current?.version,
-        )
-        .map((r) => r.source_id),
+      handoff?.sourceIds ??
+        state.artifactSources
+          .filter(
+            (r) =>
+              r.artifact_id === artifactId &&
+              r.artifact_version === base?.version,
+          )
+          .map((r) => r.source_id),
     );
   const update = (index: number, b: ArtifactBlock) =>
     setBlocks((old) => old.map((x, i) => (i === index ? b : x)));
@@ -132,25 +332,42 @@ export function ArtifactDocumentEditor({
           new FormData(e.currentTarget).get("reason") ?? "Prima bozza",
         );
         void action(async () => {
+          if (handoff && handoff.status !== "ready")
+            throw new Error(
+              "La proposta non è più applicabile. Rivalutala o esci dal percorso prima di preparare una nuova bozza.",
+            );
+          if (stale)
+            throw new Error(
+              "Il documento è cambiato: confronta la versione corrente prima di salvare. La tua bozza è conservata.",
+            );
           await command({
             type: "artifact.compose",
             ...(artifactId
-              ? { artifactId, expectedVersion: current!.version }
+              ? { artifactId, expectedVersion: base!.version }
               : {}),
             title,
             purpose,
             blocks,
-            information: state.information
-              .filter((i) => selected.includes(i.id))
-              .map((i) => ({ id: i.id, version: i.current_version })),
+            information: selected,
             sourceIds,
             reason,
             nonOperative: true,
+            ...(handoff
+              ? { conversationOrigin: { handoffId: handoff.id } }
+              : {}),
           });
           onSaved();
         });
       }}
     >
+      {stale && (
+        <ArtifactRevisionReview
+          state={state}
+          base={base}
+          current={current}
+          onReviewed={() => setBase(current)}
+        />
+      )}
       <label>
         Titolo
         <input
@@ -167,7 +384,7 @@ export function ArtifactDocumentEditor({
           maxLength={2000}
           value={purpose}
           onChange={(e) => setPurpose(e.target.value)}
-          placeholder="Per esempio: confrontare tre locali"
+          placeholder="Per esempio: confrontare tre ipotesi per la beta di RIMIAM"
         />
       </label>
       {blocks.map((b, i) => (
@@ -436,22 +653,12 @@ export function ArtifactDocumentEditor({
       </div>
       <details>
         <summary>Collega fonti e informazioni accettate</summary>
-        {state.information.map((i) => (
-          <label className="check" key={i.id}>
-            <input
-              type="checkbox"
-              checked={selected.includes(i.id)}
-              onChange={(e) =>
-                setSelected((old) =>
-                  e.target.checked
-                    ? [...old, i.id]
-                    : old.filter((x) => x !== i.id),
-                )
-              }
-            />
-            {i.subject} · v{i.current_version}
-          </label>
-        ))}
+        <ArtifactInformationSelection
+          state={state}
+          selected={selected}
+          onChange={setSelected}
+          allowHistorical
+        />
         {state.sources.map((s) => (
           <label className="check" key={s.id}>
             <input
@@ -469,7 +676,7 @@ export function ArtifactDocumentEditor({
           </label>
         ))}
       </details>
-      {current && (
+      {base && (
         <label>
           Motivo della revisione
           <input name="reason" required maxLength={4000} />
@@ -479,7 +686,13 @@ export function ArtifactDocumentEditor({
         Salva una bozza condivisa, con storia e fonti. Non adotta il contenuto
         né modifica impegni, decisioni o permessi.
       </p>
-      <button disabled={busy}>Salva bozza</button>
+      {staleArtifactInformation(selected, state.information).length > 0 && (
+        <p className="processing">
+          La bozza conserva riferimenti storici. Puoi esaminarli e aggiornarli
+          esplicitamente in «Collega fonti e informazioni accettate».
+        </p>
+      )}
+      <button disabled={busy || stale}>Salva bozza</button>
     </form>
   );
 }

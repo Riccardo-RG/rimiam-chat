@@ -12,6 +12,7 @@ import {
 import { z } from "zod";
 import { voiceMessagesSchema } from "../contracts/voice";
 import type { Command } from "../contracts/commands";
+import type { ConversationReference } from "../contracts/activity";
 import { api, errorText } from "./api";
 import { SpeechPlayback } from "./speech-playback";
 
@@ -61,6 +62,10 @@ export function ConversationVoice({
   command,
   messages,
   children,
+  workstreamFocus,
+  focusLabel,
+  focusWritable = true,
+  reference,
 }: {
   workspace: string;
   actor: string;
@@ -73,6 +78,10 @@ export function ConversationVoice({
     actor_kind: string;
   }[];
   children: ReactNode;
+  workstreamFocus?: { workstreamId: string; version: number };
+  focusLabel?: string;
+  focusWritable?: boolean;
+  reference?: { reference: ConversationReference; title: string };
 }) {
   const [voices, setVoices] = useState<Voice[]>([]),
     [consent, setConsent] = useState(false),
@@ -82,6 +91,18 @@ export function ConversationVoice({
     [error, setError] = useState(""),
     [dialog, setDialog] = useState(false),
     [pending, setPending] = useState<string | null>(null);
+  const [clipFocus, setClipFocus] = useState<{
+    workstreamId: string;
+    version: number;
+    label?: string;
+  }>();
+  const [clipReference, setClipReference] = useState<typeof reference>();
+  const focusKey = workstreamFocus
+    ? `${workstreamFocus.workstreamId}:${workstreamFocus.version}`
+    : "";
+  const lastFocus = useRef(focusKey);
+  const referenceKey = JSON.stringify(reference?.reference ?? null);
+  const lastReference = useRef(referenceKey);
   const recorder = useRef<MediaRecorder | null>(null),
     stream = useRef<MediaStream | null>(null),
     speech = useRef<SpeechPlayback | null>(null),
@@ -109,6 +130,20 @@ export function ConversationVoice({
     speech.current?.stop();
     setPending(null);
   }
+  const checkFocus = useEffectEvent(() => {
+    if (
+      dialogRef.current &&
+      (lastFocus.current !== focusKey ||
+        lastReference.current !== referenceKey ||
+        !focusWritable)
+    )
+      end();
+    lastFocus.current = focusKey;
+    lastReference.current = referenceKey;
+  });
+  useEffect(() => {
+    checkFocus();
+  }, [focusKey, focusWritable, referenceKey]);
   const receiveVoices = useEffectEvent((currentVoices: Voice[]) => {
     if (!pending || !dialogRef.current) return;
     const voice = currentVoices.find((v) => v.sourceId === pending);
@@ -192,7 +227,12 @@ export function ConversationVoice({
     // Scope is deliberately tied to the authenticated Workspace, not visual rerenders.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspace, actor]);
-  async function send(blob: Blob, mode: "message" | "miriam") {
+  async function send(
+    blob: Blob,
+    mode: "message" | "miriam",
+    focus: typeof clipFocus,
+    capturedReference: typeof reference,
+  ) {
     if (disabled || !consent) return;
     const token = generation.current;
     setBusy(true);
@@ -202,19 +242,32 @@ export function ConversationVoice({
       if (bytes.length > 8388608) throw new Error("DOCUMENT_TOO_LARGE");
       let binary = "";
       for (const b of bytes) binary += String.fromCharCode(b);
+      if (!mounted.current || token !== generation.current) return;
       const result = await command({
         type: "voice.send",
         filename: `Voce.${blob.type.includes("mp4") ? "m4a" : "webm"}`,
         bytesBase64: btoa(binary),
         mode,
         allowModelProcessing: true,
+        ...(capturedReference
+          ? { reference: capturedReference.reference }
+          : {}),
+        ...(focus
+          ? {
+              workstreamFocus: {
+                workstreamId: focus.workstreamId,
+                version: focus.version,
+              },
+            }
+          : {}),
       });
       if (mounted.current && token === generation.current) {
         setClip(null);
+        setClipReference(undefined);
         if (mode === "miriam") setPending(String(result.sourceId));
       }
     } catch (e) {
-      if (mounted.current) {
+      if (mounted.current && token === generation.current) {
         setError(errorText(e));
         end();
       }
@@ -227,10 +280,16 @@ export function ConversationVoice({
       setError("Termina la chiamata prima di avviare il dialogo vocale.");
       return;
     }
-    if (disabled || !consent || recorder.current) return;
+    if (disabled || !consent || !focusWritable || recorder.current) return;
     const token = ++generation.current;
+    const capturedFocus = workstreamFocus
+      ? { ...workstreamFocus, label: focusLabel }
+      : undefined;
+    const capturedReference = reference;
     setError("");
     setClip(null);
+    setClipFocus(undefined);
+    setClipReference(undefined);
     speech.current?.stop();
     window.dispatchEvent(
       new CustomEvent("miriam:microphone", { detail: "voice" }),
@@ -266,10 +325,16 @@ export function ConversationVoice({
         if (!mounted.current || token !== generation.current) return;
         const blob = new Blob(chunks, { type });
         setRecording(false);
-        if (asDialog && dialogRef.current) void send(blob, "miriam");
-        else setClip(blob);
+        if (asDialog && dialogRef.current)
+          void send(blob, "miriam", capturedFocus, capturedReference);
+        else {
+          setClipFocus(capturedFocus);
+          setClipReference(capturedReference);
+          setClip(blob);
+        }
       };
       r.onerror = () => {
+        if (!mounted.current || token !== generation.current) return;
         setError("Registrazione interrotta: riprova.");
         end();
       };
@@ -324,7 +389,18 @@ export function ConversationVoice({
       }}
     >
       {children}
-      <div className="voice-composer">
+      <details className="voice-composer">
+        <summary>
+          {dialog
+            ? "Dialogo vocale con RIMIAM attivo"
+            : recording
+              ? "Registrazione vocale in corso"
+              : clip
+                ? "Messaggio vocale pronto da inviare"
+                : "Voce · messaggio o dialogo con RIMIAM"}
+          {busy || pending ? " · in elaborazione" : ""}
+          {error ? " · richiede attenzione" : ""}
+        </summary>
         <label>
           <input
             type="checkbox"
@@ -336,21 +412,60 @@ export function ConversationVoice({
           servizio configurato.
         </label>
         <button
-          disabled={disabled || !consent || busy || dialog}
+          disabled={
+            disabled ||
+            !consent ||
+            busy ||
+            dialog ||
+            (!recording && !focusWritable)
+          }
           onClick={() => (recording ? stopCapture() : void start())}
         >
           {recording ? "Ferma nota vocale" : "Registra messaggio vocale"}
         </button>
         {clip && (
-          <button
-            disabled={busy || disabled}
-            onClick={() => void send(clip, "message")}
-          >
-            Invia messaggio vocale
-          </button>
+          <>
+            <p className="hint">
+              {clipFocus
+                ? `Registrato per il filone ${clipFocus.label ?? "selezionato"} · v${clipFocus.version}. L’invio conserva questo riferimento.`
+                : "Registrato per la conversazione dello Workspace."}
+            </p>
+            {clipReference && (
+              <p className="hint">
+                Riferimento conservato: {clipReference.title} · versione{" "}
+                {clipReference.reference.version}. La registrazione resta
+                riferita a questo passaggio.
+              </p>
+            )}
+            <button
+              disabled={busy || disabled}
+              onClick={() =>
+                void send(clip, "message", clipFocus, clipReference)
+              }
+            >
+              Invia messaggio vocale
+            </button>
+            <button
+              className="quiet"
+              disabled={busy}
+              onClick={() => {
+                setClip(null);
+                setClipFocus(undefined);
+                setClipReference(undefined);
+              }}
+            >
+              Scarta registrazione locale
+            </button>
+          </>
         )}
         <button
-          disabled={disabled || !consent || busy || (recording && !dialog)}
+          disabled={
+            disabled ||
+            !consent ||
+            busy ||
+            (recording && !dialog) ||
+            (!dialog && !focusWritable)
+          }
           onClick={() => {
             if (dialog) end();
             else {
@@ -378,7 +493,7 @@ export function ConversationVoice({
           </p>
         )}
         {error && <p role="alert">{error}</p>}
-      </div>
+      </details>
     </VoiceContext.Provider>
   );
 }

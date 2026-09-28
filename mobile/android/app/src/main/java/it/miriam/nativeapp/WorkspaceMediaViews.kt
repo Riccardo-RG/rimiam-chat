@@ -13,17 +13,23 @@ import androidx.compose.runtime.*
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 
-@Composable fun ConversationVoiceControls(model:WorkspaceModel) {
+@Composable fun ConversationVoiceControls(model:WorkspaceModel,reference:ConversationReference?=null) {
     val state by model.ui.collectAsState();val media=model.media;var dialogue by remember{mutableStateOf(false)};var permissionError by remember{mutableStateOf("")}
-    val permission=rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()){allowed->if(allowed)media.start(model,dialogue)else permissionError="Consenti l’accesso al microfono nelle impostazioni."}
+    var requestedBinding by remember{mutableStateOf<VoiceCaptureBinding?>(null)}
+    val permission=rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()){allowed->if(allowed)media.start(model,dialogue,requestedBinding)else permissionError="Consenti l’accesso al microfono nelle impostazioni."}
     LifecycleEventEffect(Lifecycle.Event.ON_STOP){media.endDialog();media.discard();media.stopPlayback()}
     Column {
         Text("Voce e dialogo con RIMIAM",style=MaterialTheme.typography.titleSmall)
         Switch(checked=media.consent,onCheckedChange={media.consent=it},enabled=!media.recording&&!media.dialog)
         Text("Condivido l’audio nel Workspace e autorizzo la trascrizione con il servizio configurato.",style=MaterialTheme.typography.bodySmall)
-        OutlinedButton(onClick={if(media.recording)media.stopCapture()else{dialogue=false;permission.launch(Manifest.permission.RECORD_AUDIO)}},enabled=media.consent&&!media.inCall&&!media.dialog){Text(if(media.recording)"Ferma nota vocale"else"Registra messaggio vocale")}
+        if(media.clip==null)reference?.let {ReferenceLink(it,"Riferimento della prossima nota · ${referenceKindLabel(it.kind)} v${it.version}")}
+        media.clipBinding?.let {binding->Text(binding.focus?.let {"Audio acquisito nel filone ${it.workstreamId.take(8)} · v${it.version}"} ?: "Audio acquisito nella conversazione completa",style=MaterialTheme.typography.bodySmall)}
+        media.clipBinding?.reference?.let {ReferenceLink(it,"Riferimento catturato nell’audio · ${referenceKindLabel(it.kind)} v${it.version}")}
+        if(media.clipBinding?.reference!=null && media.clipBinding?.reference!=reference)Text("La nota conserva il riferimento iniziale, anche se la bozza di testo ora ne usa un altro.",style=MaterialTheme.typography.bodySmall)
+        OutlinedButton(onClick={if(media.recording)media.stopCapture()else{dialogue=false;requestedBinding=media.captureBinding(model,reference);permission.launch(Manifest.permission.RECORD_AUDIO)}},enabled=media.consent&&!media.inCall&&!media.dialog&&(media.recording||state.focusIsCurrent())){Text(if(media.recording)"Ferma nota vocale"else"Registra messaggio vocale")}
         if(media.clip!=null&&!media.recording)TextButton(onClick={media.send(model,"message")},enabled=media.consent&&!state.busy){Text("Invia messaggio vocale")}
-        Button(onClick={if(media.dialog)media.endDialog()else{dialogue=true;permission.launch(Manifest.permission.RECORD_AUDIO)}},enabled=media.consent&&!media.inCall&&!state.busy){Text(if(media.dialog)"Termina dialogo vocale"else"Parla con RIMIAM")}
+        if(media.clip!=null&&!media.recording&&!media.dialog)TextButton(onClick={media.discard()}){Text("Scarta la nota locale")}
+        Button(onClick={if(media.dialog)media.endDialog()else{dialogue=true;requestedBinding=media.captureBinding(model,reference);permission.launch(Manifest.permission.RECORD_AUDIO)}},enabled=media.consent&&!media.inCall&&(media.dialog||(!state.busy&&state.focusIsCurrent()))){Text(if(media.dialog)"Termina dialogo vocale"else"Parla con RIMIAM")}
         if(media.dialog)Text(if(media.recording)"Ti ascolto: una pausa invia il turno."else"Trascrizione e risposta in preparazione. Le azioni richiedono i normali controlli di conferma.")
         if(permissionError.isNotEmpty())Text(permissionError,color=MaterialTheme.colorScheme.error)
         if(media.error.isNotEmpty())Text(media.error,color=MaterialTheme.colorScheme.error)

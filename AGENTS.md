@@ -58,6 +58,7 @@ These are defaults, not a final architecture decision:
 - Build vertically in usable, testable slices. Future requirements should influence boundaries, not inflate current scope.
 - Account registration/session/invitation/recovery UX is BUILD work; external provider delivery/credentials are WIRE. Authentication does not grant Workspace membership, Goal adherence or authority.
 - Treat AI model output as untrusted structured input; validate it before it changes domain state or triggers actions.
+- Write model-facing prompts and agent operating instructions in English. This does not change user-facing language: preserve requested response languages, original source text, examples and exact protocol values. Product documentation and approved ADR wording are not subject to this language rule.
 - Make asynchronous processing idempotent wherever retries are possible.
 - Use migrations for persistent schema changes. Avoid opaque JSON blobs for stable domain concepts.
 - Enforce workspace authorization server-side.

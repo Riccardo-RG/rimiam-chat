@@ -9,6 +9,7 @@ import {
 } from "./command-journal";
 
 const descriptions: Record<PendingCommand["command"]["type"], string> = {
+  "beta.feedback.add": "Salvataggio del feedback beta",
   "voice.send": "Condividi messaggio vocale",
   "call.join": "Entra nella chiamata",
   "call.leave": "Lascia la chiamata",
@@ -23,6 +24,7 @@ const descriptions: Record<PendingCommand["command"]["type"], string> = {
   "attention.aligned": "Segna il punto di allineamento personale",
   "attention.preference": "Preferenza d’intervento di Miriam",
   "workstream.save": "Organizzazione di un filone di lavoro",
+  "workstream.transition": "Cambio di stato del filone",
   "workstream.link": "Collegamento semantico a un filone",
   "mandate.offer": "Proposta di mandato circoscritto",
   "mandate.respond": "Risposta al mandato",

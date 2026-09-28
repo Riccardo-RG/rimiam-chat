@@ -153,6 +153,81 @@ for (const user of nativeUsers) {
       );
   }
 }
+// A shared, deterministic provenance fixture for the pre-design native boundary checks.
+if (
+  !(
+    await pool.query(
+      "SELECT 1 FROM workspace WHERE name='Pre-design provenance fixture' AND created_by=$1",
+      [ios.id],
+    )
+  ).rowCount
+) {
+  const w = (
+    await createWorkspace(
+      ios.id,
+      "Pre-design provenance fixture",
+      randomUUID(),
+      "Confrontiamo i costi; questa è un’introduzione, non un Goal.",
+    )
+  ).id;
+  const invitation = await execute(ios.id, w, randomUUID(), {
+    type: "invitation.create",
+    email: android.email,
+    fullHistoryDisclosed: true,
+  });
+  await acceptInvitation(android.id, invitation.token, true);
+  const { processInterpretation } =
+    await import("../src/server/interpretation");
+  let informationId: string | undefined;
+  for (const amount of [3000, 3500]) {
+    const m = await execute(ios.id, w, randomUUID(), {
+      type: "message.send",
+      content: `Il locale costa circa ${amount} euro.`,
+    });
+    await processInterpretation(m.interpretationId, {
+      async interpret(c) {
+        return {
+          needsMore: [],
+          proposals: [
+            {
+              subject: "Stima affitto",
+              content: c.trigger.content,
+              classification: "descriptive",
+              origin: "inferred",
+              qualification: "Ipotesi di test non verificata",
+              sourceIds: [c.trigger.id],
+            },
+          ],
+        };
+      },
+    });
+    const candidate = (
+      await pool.query("SELECT id FROM candidate WHERE interpretation_id=$1", [
+        m.interpretationId,
+      ])
+    ).rows[0].id;
+    const result = await execute(
+      android.id,
+      w,
+      randomUUID(),
+      informationId
+        ? {
+            type: "information.correct",
+            informationId,
+            expectedVersion: 1,
+            candidateId: candidate,
+            reason: "Nuova stima",
+            descriptiveOnly: true,
+          }
+        : {
+            type: "information.accept",
+            candidateId: candidate,
+            descriptiveOnly: true,
+          },
+    );
+    informationId = result.informationId;
+  }
+}
 await pool.end();
 const calendarWorker = spawn(
   process.execPath,
