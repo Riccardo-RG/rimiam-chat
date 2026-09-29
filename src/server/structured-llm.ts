@@ -1,9 +1,11 @@
 import {
   APICallError,
   generateText,
+  jsonSchema,
   NoObjectGeneratedError,
   NoOutputGeneratedError,
   Output,
+  zodSchema,
 } from "ai";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createOpenAI } from "@ai-sdk/openai";
@@ -34,6 +36,98 @@ export function parseStructuredOutput<T extends z.ZodTypeAny>(
   const result = schema.safeParse(output);
   requireThat(result.success, "AI_OUTPUT_PARSE_ERROR", 502);
   return result.data;
+}
+
+type ModelJsonSchema = Awaited<ReturnType<typeof zodSchema>["jsonSchema"]>;
+type ModelJsonDefinition = NonNullable<ModelJsonSchema["properties"]>[string];
+
+function acceptsNull(schema: ModelJsonDefinition): boolean {
+  if (typeof schema === "boolean") return schema;
+  return (
+    schema.type === "null" ||
+    (Array.isArray(schema.type) && schema.type.includes("null")) ||
+    schema.enum?.includes(null) === true ||
+    schema.anyOf?.some(acceptsNull) === true
+  );
+}
+
+function openAIRequiredFields(
+  schema: ModelJsonDefinition,
+): ModelJsonDefinition {
+  if (typeof schema === "boolean") return schema;
+  const result = { ...schema };
+  if (schema.properties) {
+    result.properties = Object.fromEntries(
+      Object.entries(schema.properties).map(([key, property]) => {
+        const converted = openAIRequiredFields(property);
+        return [
+          key,
+          !schema.required?.includes(key) && !acceptsNull(property)
+            ? { anyOf: [converted, { type: "null" }] }
+            : converted,
+        ];
+      }),
+    );
+    result.required = Object.keys(schema.properties);
+  }
+  if (schema.items)
+    result.items = Array.isArray(schema.items)
+      ? schema.items.map(openAIRequiredFields)
+      : openAIRequiredFields(schema.items);
+  if (schema.anyOf) result.anyOf = schema.anyOf.map(openAIRequiredFields);
+  return result;
+}
+
+// Current model schemas use anyOf for nullable values. Only the nulls introduced
+// for optional, non-nullable properties mean absence; existing nulls retain meaning.
+function restoreOptionalFields(
+  value: unknown,
+  schema: ModelJsonDefinition,
+): unknown {
+  if (typeof schema === "boolean" || value === null) return value;
+  if (schema.anyOf) {
+    const branches = schema.anyOf.filter((branch) => !acceptsNull(branch));
+    if (branches.length === 1) return restoreOptionalFields(value, branches[0]);
+  }
+  if (Array.isArray(value) && schema.items) {
+    const items = schema.items;
+    return value.map((item, index) =>
+      restoreOptionalFields(
+        item,
+        Array.isArray(items) ? (items[index] ?? true) : items,
+      ),
+    );
+  }
+  if (typeof value === "object" && !Array.isArray(value) && schema.properties) {
+    const result: Record<string, unknown> = { ...value };
+    for (const [key, property] of Object.entries(schema.properties)) {
+      if (!Object.hasOwn(result, key)) continue;
+      if (
+        result[key] === null &&
+        !schema.required?.includes(key) &&
+        !acceptsNull(property)
+      )
+        delete result[key];
+      else result[key] = restoreOptionalFields(result[key], property);
+    }
+    return result;
+  }
+  return value;
+}
+
+async function openAIOutputSchema<T extends z.ZodTypeAny>(schema: T) {
+  const original = await zodSchema(schema).jsonSchema;
+  return jsonSchema<z.output<T>>(
+    openAIRequiredFields(original) as ModelJsonSchema,
+    {
+      validate(value) {
+        const parsed = schema.safeParse(restoreOptionalFields(value, original));
+        return parsed.success
+          ? { success: true, value: parsed.data }
+          : { success: false, error: parsed.error };
+      },
+    },
+  );
 }
 
 function httpFailure(status: number): DomainError {
@@ -100,7 +194,12 @@ export function configuredStructuredModel(): StructuredModel | undefined {
             maxRetries: 0,
             maxOutputTokens,
             abortSignal: AbortSignal.timeout(timeoutMs),
-            output: Output.object({ schema }),
+            output: Output.object({
+              schema:
+                provider === "openai"
+                  ? await openAIOutputSchema(schema)
+                  : schema,
+            }),
             system,
             prompt,
           });
