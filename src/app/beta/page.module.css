@@ -1,0 +1,25 @@
+.page {
+  width: min(100%, 760px);
+  margin: 0 auto;
+  padding: 24px clamp(18px, 5vw, 40px) 48px;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 40px;
+}
+
+.page h2 {
+  margin-top: 28px;
+}
+
+.page article {
+  margin-bottom: 32px;
+}
+
+.page a {
+  overflow-wrap: anywhere;
+}

@@ -1,6 +1,7 @@
 import { conversationHandoffsSchema } from "./conversation-handoff.ts";
 import { betaFeedbackViewSchema } from "./beta-feedback.ts";
 import { aiUsageViewSchema } from "./ai-usage.ts";
+import { betaRulesViewSchema, acceptBetaRulesSchema } from "./beta-rules.ts";
 import { activitySchema, referenceDetailSchema } from "./activity.ts";
 import { callViewSchema } from "./calls.ts";
 import { voiceMessagesSchema } from "./voice.ts";
@@ -37,6 +38,8 @@ import {
 } from "./v1.ts";
 
 const schemas = {
+  BetaRules: betaRulesViewSchema,
+  AcceptBetaRules: acceptBetaRulesSchema,
   BetaFeedback: betaFeedbackViewSchema,
   AIUsage: aiUsageViewSchema,
   Handoffs: conversationHandoffsSchema,
@@ -171,6 +174,10 @@ export const openAPI = {
     ),
   },
   paths: {
+    "/beta-rules": {
+      get: operation("BetaRules"),
+      post: operation("BetaRules", "AcceptBetaRules"),
+    },
     "/workspaces/{workspaceId}/tasks": {
       get: operation("Tasks", undefined, [
         workspace,

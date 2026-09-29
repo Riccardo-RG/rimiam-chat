@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import { invitationDeliveryLabel } from "@/shared/invitation-delivery";
 import { WorkspaceLinks } from "@/client/workspace-links";
 import { WorkspaceCreation } from "@/client/workspace-create";
@@ -7,6 +8,7 @@ import { WorkspaceBetaFeedback } from "@/client/workspace-beta-feedback";
 import { feedbackFromComposer } from "@/shared/beta-feedback";
 import { AppearanceControl } from "@/client/appearance-control";
 import { BrandSignature } from "@/client/brand-signature";
+import { BetaNotice } from "@/client/beta-notice";
 import { useFocusedHistory } from "@/client/focused-history";
 import { useConversationScroll } from "@/client/conversation-scroll";
 import {
@@ -560,6 +562,9 @@ function WorkspaceApp({
         <div className="account">
           <AppearanceControl />
           <strong>{session.user.name}</strong>
+          <Link href="/beta" target="_blank" rel="noopener noreferrer">
+            Regole della beta ↗
+          </Link>
           <button
             className="quiet"
             onClick={() =>
@@ -593,6 +598,7 @@ function WorkspaceApp({
             </button>
           )}
         </header>
+        <BetaNotice actorId={session.user.id} />
         {error && (
           <div className="banner error" role="alert">
             {error}
@@ -2156,6 +2162,11 @@ function AuthForm({
           required
         />
       </label>
+      <p className="hint">
+        <Link href="/beta" target="_blank" rel="noopener noreferrer">
+          Regole della beta ↗
+        </Link>
+      </p>
       <button disabled={busy}>{signup ? "Registrati" : "Accedi"}</button>
       <button
         type="button"

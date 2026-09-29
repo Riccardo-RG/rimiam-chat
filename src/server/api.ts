@@ -1,6 +1,8 @@
 import { handoffs } from "./conversation-handoffs.ts";
 import { betaFeedbackView } from "./beta-feedback.ts";
 import { aiUsageView } from "./ai-usage.ts";
+import { betaRulesView, acceptBetaRules } from "./beta-rules.ts";
+import { acceptBetaRulesSchema } from "../contracts/beta-rules.ts";
 import { activity } from "./activity.ts";
 import { referenceDetail } from "./conversation-reference.ts";
 import { conversationReferenceSchema } from "../contracts/activity.ts";
@@ -85,6 +87,26 @@ export async function handleAPI(request: Request): Promise<Response> {
         result = sessionView(await nativeSession(request));
       else if (request.method === "DELETE") result = await logout(request);
       else throw new DomainError("METHOD_NOT_ALLOWED", 405);
+    } else if (url.pathname === "/api/v1/beta-rules") {
+      requireThat(
+        request.method === "GET" || request.method === "POST",
+        "METHOD_NOT_ALLOWED",
+        405,
+      );
+      const native = request.headers.has("authorization");
+      if (!native && request.method === "POST") assertOrigin(request);
+      const session = native
+        ? await nativeSession(request)
+        : await auth.api.getSession({ headers: request.headers });
+      requireThat(session, "AUTHENTICATION_REQUIRED", 401);
+      result =
+        request.method === "GET"
+          ? await betaRulesView(session.user.id, session.session.id)
+          : await acceptBetaRules(
+              session.user.id,
+              session.session.id,
+              acceptBetaRulesSchema.parse(await body(request)),
+            );
     } else {
       const a = await actor(request);
       const invitation = url.pathname.match(
