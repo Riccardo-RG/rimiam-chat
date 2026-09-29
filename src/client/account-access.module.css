@@ -1,0 +1,122 @@
+.card {
+  margin: 28px 0 20px;
+  padding: clamp(20px, 4vw, 30px);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--white);
+}
+.card h2 {
+  margin: 0 0 8px;
+}
+.intro,
+.help,
+.feedback,
+.links,
+.switch,
+.legal {
+  font-size: 0.9375rem;
+  line-height: 1.6;
+}
+.intro,
+.help,
+.legal {
+  color: var(--muted);
+}
+.intro {
+  margin: 0 0 20px;
+}
+.help {
+  margin: 4px 0 16px;
+}
+.card input {
+  font-size: 1rem;
+}
+.card button {
+  min-height: 44px;
+}
+.primary,
+.google {
+  width: 100%;
+  margin: 0;
+}
+.google {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: var(--white);
+  color: var(--ink);
+  border: 1px solid var(--line);
+}
+.google svg {
+  flex-shrink: 0;
+}
+.divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 0.875rem;
+  margin: 20px 0;
+}
+.divider::before,
+.divider::after {
+  content: "";
+  height: 1px;
+  flex: 1;
+  background: var(--line);
+}
+.password {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  margin: 7px 0 13px;
+}
+.password input {
+  min-width: 0;
+  flex: 1;
+  margin: 0;
+}
+.password button {
+  background: var(--soft);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  margin: 0;
+  padding-inline: 12px;
+  font-size: 0.875rem;
+}
+.links {
+  display: flex;
+  gap: 10px 20px;
+  flex-wrap: wrap;
+  margin: 18px 0;
+}
+.links a,
+.legal a {
+  text-underline-offset: 3px;
+}
+.switch {
+  margin: 20px 0 0;
+}
+.switch button {
+  background: transparent;
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  padding: 4px 6px;
+  margin: 0;
+}
+.feedback {
+  border-left: 3px solid var(--accent);
+  background: var(--soft);
+  padding: 12px 14px;
+  overflow-wrap: anywhere;
+}
+.error {
+  border-color: var(--danger);
+  background: var(--danger-surface);
+  color: var(--ink);
+}
+.legal {
+  margin: 20px 0 0;
+}

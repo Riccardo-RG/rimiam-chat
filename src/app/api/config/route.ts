@@ -1,7 +1,8 @@
-import { localMailEnabled } from "@/server/auth";
+import { localMailEnabled, googleSignInAvailable } from "@/server/auth";
 import { isStructuredModelConfigured } from "@/server/structured-llm";
 export function GET() {
   return Response.json({
+    googleSignInAvailable,
     interpretationMode: isStructuredModelConfigured()
       ? "provider"
       : "unconfigured",

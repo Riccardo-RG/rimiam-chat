@@ -9,6 +9,7 @@ import { feedbackFromComposer } from "@/shared/beta-feedback";
 import { AppearanceControl } from "@/client/appearance-control";
 import { BrandSignature } from "@/client/brand-signature";
 import { BetaNotice } from "@/client/beta-notice";
+import { AccountAccess } from "@/client/account-access";
 import { useFocusedHistory } from "@/client/focused-history";
 import { useConversationScroll } from "@/client/conversation-scroll";
 import {
@@ -38,7 +39,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import { accountReturnFromSearch } from "@/shared/account-navigation";
-import { createAuthClient } from "better-auth/react";
+import { auth } from "@/client/auth-client";
 import { newCommand, sendCommand } from "@/client/command-journal";
 import { PendingCommands } from "@/client/pending-commands";
 import { api, errors } from "@/client/api";
@@ -55,7 +56,6 @@ import type { ConversationHandoff } from "@/contracts/conversation-handoff";
 import { WorkspaceQuestions } from "@/client/workspace-questions";
 import { WorkspaceSources } from "@/client/workspace-sources";
 
-const auth = createAuthClient();
 function subscribeNavigation(listener: () => void) {
   window.addEventListener("popstate", listener);
   return () => window.removeEventListener("popstate", listener);
@@ -209,16 +209,22 @@ function WorkspaceApp({
   }, [requestedSource, focusedStream, snapshot]);
   const [mode, setMode] = useState("");
   const [localMail, setLocalMail] = useState(false);
+  const [googleSignInAvailable, setGoogleSignInAvailable] = useState(false);
   const accountReturn = useSyncExternalStore(
     subscribeNavigation,
     readAccountReturn,
     serverAccountReturn,
   );
   useEffect(() => {
-    void api<{ interpretationMode: string; localMail: boolean }>("/api/config")
+    void api<{
+      interpretationMode: string;
+      localMail: boolean;
+      googleSignInAvailable: boolean;
+    }>("/api/config")
       .then((c) => {
         setMode(c.interpretationMode);
         setLocalMail(c.localMail);
+        setGoogleSignInAvailable(c.googleSignInAvailable === true);
       })
       .catch(() => {});
   }, []);
@@ -456,65 +462,11 @@ function WorkspaceApp({
           Conversa con il tuo gruppo. Miriam aiuta a raccogliere ciò che emerge,
           conservando fonti, scelte e responsabilità.
         </p>
-        <AuthForm
-          busy={busy}
-          onSubmit={(data, signup) =>
-            action(async () => {
-              const result = signup
-                ? await auth.signUp.email({
-                    ...data,
-                    callbackURL: accountReturn,
-                  })
-                : await auth.signIn.email({
-                    email: data.email,
-                    password: data.password,
-                    callbackURL: accountReturn,
-                  });
-              if (result.error)
-                throw new Error(
-                  result.error.code === "EMAIL_NOT_VERIFIED"
-                    ? "Verifica il tuo indirizzo prima di entrare. Puoi reinviare la verifica dal link qui sotto."
-                    : result.error.code === "INVALID_EMAIL_OR_PASSWORD"
-                      ? "Email o password non corrette."
-                      : (result.error.message ?? "Accesso non riuscito"),
-                );
-              if (signup)
-                setNotice(
-                  localMail
-                    ? "Controlla la tua email per verificare l’account. In locale usa la casella di sviluppo."
-                    : "Controlla la tua email per verificare l’account. La richiesta di consegna è stata registrata.",
-                );
-            })
-          }
+        <AccountAccess
+          returnTo={accountReturn}
+          localMail={localMail}
+          googleAvailable={googleSignInAvailable}
         />
-        {accountReturn.includes("invite=") && (
-          <p className="hint">
-            Stai seguendo un invito. Accedi o registrati con l’indirizzo
-            destinatario: l’ingresso nello spazio richiederà poi la tua
-            accettazione esplicita.
-          </p>
-        )}
-        <p>
-          <a
-            href={`/account/recovery?returnTo=${encodeURIComponent(accountReturn)}`}
-          >
-            Password dimenticata?
-          </a>
-        </p>
-        <p>
-          <a
-            href={`/account/recovery?verify=1&returnTo=${encodeURIComponent(accountReturn)}`}
-          >
-            Reinvia verifica email
-          </a>
-        </p>
-        {notice && <p role="status">{notice}</p>}
-        {error && <p role="alert">{error}</p>}
-        {localMail && (
-          <a href="/local-mail" className="muted">
-            Casella email locale di sviluppo
-          </a>
-        )}
       </main>
     );
   return (
@@ -2111,70 +2063,5 @@ function Provenance({ candidate }: { candidate?: Candidate }) {
       ))}
       <small>{candidate.qualification}</small>
     </details>
-  );
-}
-function AuthForm({
-  busy,
-  onSubmit,
-}: {
-  busy: boolean;
-  onSubmit: (
-    data: { name: string; email: string; password: string },
-    signup: boolean,
-  ) => void;
-}) {
-  const [signup, setSignup] = useState(false);
-  return (
-    <form
-      className="auth-form"
-      onSubmit={(e) => {
-        e.preventDefault();
-        const data = new FormData(e.currentTarget);
-        onSubmit(
-          {
-            name: (data.get("name") as string) ?? "",
-            email: data.get("email") as string,
-            password: data.get("password") as string,
-          },
-          signup,
-        );
-      }}
-    >
-      <h2>{signup ? "Crea il tuo account" : "Accedi"}</h2>
-      {signup && (
-        <label>
-          Nome
-          <input name="name" autoComplete="name" required maxLength={100} />
-        </label>
-      )}
-      <label>
-        Email
-        <input name="email" type="email" autoComplete="email" required />
-      </label>
-      <label>
-        Password
-        <input
-          name="password"
-          type="password"
-          autoComplete={signup ? "new-password" : "current-password"}
-          minLength={12}
-          maxLength={128}
-          required
-        />
-      </label>
-      <p className="hint">
-        <Link href="/beta" target="_blank" rel="noopener noreferrer">
-          Regole della beta ↗
-        </Link>
-      </p>
-      <button disabled={busy}>{signup ? "Registrati" : "Accedi"}</button>
-      <button
-        type="button"
-        className="quiet"
-        onClick={() => setSignup(!signup)}
-      >
-        {signup ? "Ho già un account" : "Crea un account"}
-      </button>
-    </form>
   );
 }
