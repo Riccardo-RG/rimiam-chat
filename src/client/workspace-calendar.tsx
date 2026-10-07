@@ -1,4 +1,5 @@
 "use client";
+import { ProductHelp } from "./product-help";
 import { useEffect, useState } from "react";
 import { api } from "./api";
 import { CommitmentTime } from "./commitment-time";
@@ -77,6 +78,7 @@ export function WorkspaceCalendar({
   return (
     <section className="card source-work" aria-label="Calendario dello spazio">
       <h2>Calendario</h2>
+      <ProductHelp screen="calendar" />
       <p className="hint">
         Le proposte condividono con il Workspace il contenuto preciso, l’azione
         e il nome della risorsa esterna.

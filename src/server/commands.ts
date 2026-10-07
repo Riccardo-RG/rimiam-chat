@@ -32,6 +32,9 @@ import { attentionCommandSchema } from "../contracts/attention.ts";
 import { attentionCommand } from "./attention.ts";
 import { recordMessageFocus } from "./workstream-focus.ts";
 import { recordMessageReference } from "./conversation-reference.ts";
+import { requestedWorkstreamTitle } from "../shared/workstream-intent.ts";
+import { recordProductAssistance } from "./product-assistance.ts";
+import { createConversationWorkstream } from "./conversation-workstreams.ts";
 import { applyProject } from "./project-commands.ts";
 import {
   eligible,
@@ -280,7 +283,11 @@ export async function execute(
     const ws = await lockWorkspace(tx, w);
     await member(tx, w, actor, false, true);
     if (sessionId) await authenticatedSession(tx, actor, sessionId);
-    if (c.type === "message.send" && startObjective(c.content)) {
+    if (
+      c.type === "message.send" &&
+      !c.assistanceContext &&
+      (startObjective(c.content) || requestedWorkstreamTitle(c.content))
+    ) {
       await authenticatedSession(tx, actor, sessionId);
     }
     const hash = tokenHash(JSON.stringify(c));
@@ -458,13 +465,27 @@ async function apply(
         await recordMessageFocus(tx, w, messageId, actor, c.workstreamFocus);
       if (c.reference)
         await recordMessageReference(tx, w, messageId, c.reference);
+      if (c.assistanceContext)
+        await recordProductAssistance(tx, w, messageId, c.assistanceContext);
+      const streamTitle =
+        !c.assistanceContext && requestedWorkstreamTitle(c.content);
+      if (streamTitle) {
+        const operation = await createConversationWorkstream(
+          tx,
+          w,
+          actor,
+          messageId,
+          streamTitle,
+        );
+        return { messageId, ...operation };
+      }
       await tx.query(
         "INSERT INTO interpretation(id,workspace_id,source_id,status) VALUES($1,$2,$3,'queued')",
         [interpretationId, w, messageId],
       );
       await enqueue(tx, interpretationId);
       await changed(tx, w, c.type);
-      const objective = startObjective(c.content);
+      const objective = !c.assistanceContext && startObjective(c.content);
       const work = objective
         ? await createActiveWork(tx, w, objective, messageId, actor)
         : undefined;

@@ -1,4 +1,5 @@
 "use client";
+import { ProductHelp } from "./product-help";
 import { useEffect, useState } from "react";
 import type { AttentionView } from "@/contracts/attention";
 import type { Command } from "@/contracts/commands";
@@ -115,6 +116,7 @@ export function WorkspaceAttention({
     );
   return (
     <section aria-label="Current State">
+      <ProductHelp screen="workstreams" />
       {error && <p role="alert">{error}</p>}
       {view && (
         <>

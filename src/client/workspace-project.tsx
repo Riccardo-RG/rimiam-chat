@@ -1,4 +1,5 @@
 "use client";
+import { ProductHelp } from "./product-help";
 import { useEffect, useRef, useState } from "react";
 import { api } from "./api";
 import type { Command } from "@/contracts/commands";
@@ -344,6 +345,7 @@ export function WorkspaceProject({
       aria-label="Goal, decisioni e mandati"
     >
       <h2>Goal, decisioni e mandati</h2>
+      <ProductHelp screen="goal" />
       <p className="hint">
         Intenzione, adesione, rappresentanza e adozione di un atto sono
         distinte. Una proposta conserva il contenuto e le persone coinvolte

@@ -117,6 +117,11 @@ export function AccountAccess({
     setNotice("");
     setDismissedCallback(true);
   };
+  const chooseMode = (nextSignup: boolean) => {
+    if (nextSignup === signup) return;
+    setSignup(nextSignup);
+    clearFeedback();
+  };
   async function submit(method: "email" | "google", data?: FormData) {
     if (inFlight.current) return;
     inFlight.current = true;
@@ -171,8 +176,31 @@ export function AccountAccess({
       aria-labelledby="account-title"
       aria-busy={Boolean(busy)}
     >
+      <div
+        className={styles.mode}
+        role="group"
+        aria-label="Modalità di accesso"
+      >
+        <button
+          type="button"
+          aria-label="Accedi con un account esistente"
+          aria-pressed={!signup}
+          disabled={Boolean(busy)}
+          onClick={() => chooseMode(false)}
+        >
+          Accedi
+        </button>
+        <button
+          type="button"
+          aria-pressed={signup}
+          disabled={Boolean(busy)}
+          onClick={() => chooseMode(true)}
+        >
+          Crea un account
+        </button>
+      </div>
       <h2 id="account-title">
-        {signup ? "Crea il tuo account" : "Bentornato"}
+        {signup ? "Crea il tuo account" : "Bentornato."}
       </h2>
       <p className={styles.intro}>
         {googleAvailable
@@ -296,19 +324,6 @@ export function AccountAccess({
           Reinvia verifica email
         </Link>
       </div>
-      <p className={styles.switch}>
-        {signup ? "Hai già un account? " : "È la tua prima volta? "}
-        <button
-          type="button"
-          disabled={Boolean(busy)}
-          onClick={() => {
-            setSignup(!signup);
-            clearFeedback();
-          }}
-        >
-          {signup ? "Accedi" : "Crea un account"}
-        </button>
-      </p>
       <p className={styles.legal}>
         <Link href="/beta" target="_blank" rel="noopener noreferrer">
           Regole della beta ↗

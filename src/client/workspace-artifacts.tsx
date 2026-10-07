@@ -1,4 +1,5 @@
 "use client";
+import { ProductHelp } from "./product-help";
 import {
   ArtifactBody,
   ArtifactDocumentEditor,
@@ -35,6 +36,7 @@ export function WorkspaceArtifacts(props: Props) {
       <details open>
         <summary>Documenti e risultati</summary>
         <h2>Ciò che costruiamo insieme</h2>
+        <ProductHelp screen="artifacts" />
         {contributes && (
           <details open={!!handoff || undefined}>
             <summary>Nuovo documento</summary>

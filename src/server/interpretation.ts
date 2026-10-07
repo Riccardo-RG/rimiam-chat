@@ -10,6 +10,8 @@ import { DomainError, requireThat } from "./errors.ts";
 import { calendarContext } from "./calendar-state.ts";
 import { workContext } from "./tasks-context.ts";
 import { miriamSystemPrompt } from "./miriam-prompt.ts";
+import { productAssistanceContext } from "./product-assistance.ts";
+import { productCapabilities } from "./product-capabilities.ts";
 import { sharedWorkAvailable } from "./active-work-context.ts";
 import { organizeSources } from "./attention.ts";
 import {
@@ -111,6 +113,8 @@ export interface InterpretationContext {
   workstreams?: unknown[];
   workstreamFocus?: WorkstreamFocusContext | null;
   objectReference?: ReferenceDetail | null;
+  productCapabilities?: Awaited<ReturnType<typeof productCapabilities>>;
+  productAssistance?: Awaited<ReturnType<typeof productAssistanceContext>>;
   activeWork?: unknown[];
   artifacts?: unknown[];
   collaborationMode?: string;
@@ -332,6 +336,12 @@ export async function claimInterpretation(interpretationId: string) {
       context: {
         trigger,
         objectReference,
+        productCapabilities: await productCapabilities(
+          tx,
+          w,
+          trigger.kind === "message" ? trigger.author_id : null,
+        ),
+        productAssistance: await productAssistanceContext(tx, w, trigger.id),
         sources: [
           ...new Map(
             [...allSources, ...neighbours, ...referenceSources, ...focused].map(
@@ -394,7 +404,19 @@ export async function publishInterpretation(
   claim: NonNullable<Awaited<ReturnType<typeof claimInterpretation>>>,
   output: unknown,
 ) {
-  const parsed = parseStructuredOutput(outputSchema, output);
+  const validated = parseStructuredOutput(outputSchema, output);
+  // Explicit product help is response-only. Untrusted extraction/routing must not turn
+  // an explanation of a form into Workspace state, proposals or autonomous work.
+  const parsed = claim.context.productAssistance
+    ? {
+        ...validated,
+        proposals: [],
+        organization: [],
+        handoffs: [],
+        workIntent: null,
+        workControl: null,
+      }
+    : validated;
   requireThat(parsed.needsMore.length === 0, "MORE_CONTEXT_REQUIRED");
   const sources = new Set(claim.context.sources.map((s) => s.id));
   if (parsed.workControl) {
@@ -548,6 +570,7 @@ export async function publishInterpretation(
         )
       ).rowCount === 1;
     const mayIntervene =
+      Boolean(claim.context.productAssistance) ||
       explicitVoice ||
       directlyAddressesMiriam(claim.context.trigger.content) ||
       (await currentCollaborationMode(tx, ws.id)) !== "discreet";

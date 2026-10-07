@@ -1,4 +1,5 @@
 "use client";
+import { ProductHelp } from "./product-help";
 import { useState } from "react";
 import type { WorkspaceLink } from "@/contracts/workspace-links";
 import type { Command } from "@/contracts/commands";
@@ -21,6 +22,7 @@ export function WorkspaceLinks({
   return (
     <section>
       <h3>Spazi collegati</h3>
+      <ProductHelp screen="workspace_links" />
       <p className="hint">
         Collegamenti visibili solo a chi accede a entrambi gli spazi. Nessun
         contenuto o permesso viene ereditato.

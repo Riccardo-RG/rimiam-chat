@@ -1,4 +1,5 @@
 "use client";
+import { ProductHelp } from "./product-help";
 import { useEffect, useRef, useState } from "react";
 import { api, errors } from "./api";
 import type { Command } from "@/contracts/commands";
@@ -213,6 +214,7 @@ export function WorkspaceActiveWork({
   return (
     <section ref={section} aria-label="Active Work" className="work-presence">
       <h3>{resultsOnly ? "I contributi di RIMIAM" : "Il lavoro di RIMIAM"}</h3>
+      <ProductHelp screen="active_work" />
 
       {selectedWork && located?.id !== selectedWork && (
         <p role="status">Apertura del lavoro selezionato…</p>

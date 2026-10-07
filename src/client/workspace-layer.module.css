@@ -1,0 +1,8 @@
+.inline {
+  inset-inline: auto;
+  width: auto;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  color: inherit;
+}

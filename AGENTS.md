@@ -56,6 +56,7 @@ These are defaults, not a final architecture decision:
 - Prefer the simplest architecture that preserves product invariants, with a modular monolith initially. Avoid premature microservices and disposable demo architecture.
 - Do not introduce a generic multi-agent framework before it is needed, or full event sourcing without clear justification.
 - Build vertically in usable, testable slices. Future requirements should influence boundaries, not inflate current scope.
+- Temporary frontend scope (user instruction, 2026-09-29): after the app-awareness increment, change only the Web frontend during the current testing phase. Defer iOS/Android changes and parity work until the user confirms testing is finished; retain existing mobile work and track deferred alignment in [STATUS](docs/development/STATUS.md). ADR-0010 and common server/domain boundaries remain unchanged.
 - Account registration/session/invitation/recovery UX is BUILD work; external provider delivery/credentials are WIRE. Authentication does not grant Workspace membership, Goal adherence or authority.
 - Treat AI model output as untrusted structured input; validate it before it changes domain state or triggers actions.
 - Write model-facing prompts and agent operating instructions in English. This does not change user-facing language: preserve requested response languages, original source text, examples and exact protocol values. Product documentation and approved ADR wording are not subject to this language rule.

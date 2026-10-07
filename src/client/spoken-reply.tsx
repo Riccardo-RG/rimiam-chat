@@ -26,6 +26,12 @@ export function SpokenReply({ id, text }: { id: string; text: string }) {
       <button
         type="button"
         className="quiet"
+        aria-label={
+          speaking ? "Ferma lettura" : "Ascolta con la voce del dispositivo"
+        }
+        title={
+          speaking ? "Ferma lettura" : "Ascolta con la voce del dispositivo"
+        }
         onClick={() => {
           if (speaking) {
             playback?.stop(id);
@@ -45,7 +51,7 @@ export function SpokenReply({ id, text }: { id: string; text: string }) {
           });
         }}
       >
-        {speaking ? "Ferma lettura" : "Ascolta con la voce del dispositivo"}
+        {speaking ? "Ferma lettura" : "Ascolta"}
       </button>
       {error && <small role="status">{error}</small>}
     </>

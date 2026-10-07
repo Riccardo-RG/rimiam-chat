@@ -1,4 +1,5 @@
 "use client";
+import { ProductHelp } from "./product-help";
 import { humanCallActive } from "./call-audio-focus";
 import { useState, useRef, useEffect } from "react";
 import { newCommand, sendCommand } from "./command-journal";
@@ -90,6 +91,7 @@ export function WorkspaceSources({
             : ""}
         </summary>
         <h2>Fonti e ricerche</h2>
+        <ProductHelp screen="sources" />
         <p className="hint">
           Aggiungi materiale o cerca informazioni utili al Goal. Le fonti
           diventano riferimenti di lavoro soltanto dopo un’accettazione

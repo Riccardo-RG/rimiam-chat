@@ -1,3 +1,5 @@
+import { productAssistanceSchema } from "./product-assistance.ts";
+import { conversationOperationSchema } from "./conversation-operation.ts";
 import { z } from "zod";
 import { commandSchema } from "./commands.ts";
 import { workstreamFocusSchema } from "./attention.ts";
@@ -113,6 +115,8 @@ export const stateSchema = z.object({
   ),
 });
 export const messageSchema = z.object({
+  assistanceContext: productAssistanceSchema.nullable().optional(),
+  operationResult: conversationOperationSchema.nullable().optional(),
   id: z.uuid(),
   sequence: integer,
   content: z.string(),

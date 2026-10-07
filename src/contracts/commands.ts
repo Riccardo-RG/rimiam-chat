@@ -16,6 +16,7 @@ import { attentionCommandSchemas, workstreamFocusSchema } from "./attention.ts";
 import { artifactDocumentCommands } from "./artifact-document.ts";
 import { workspaceLinkCommandSchema } from "./workspace-links.ts";
 import { conversationReferenceSchema } from "./activity.ts";
+import { productAssistanceSchema } from "./product-assistance.ts";
 
 // Public command vocabulary. Domain authorization is enforced exclusively by application services.
 const selection = {
@@ -148,6 +149,7 @@ export const commandSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("message.send"),
+    assistanceContext: productAssistanceSchema.optional(),
     content: text,
     workstreamFocus: workstreamFocusSchema.optional(),
     reference: conversationReferenceSchema.optional(),

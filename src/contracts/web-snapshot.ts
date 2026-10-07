@@ -1,6 +1,8 @@
 import type { ConversationHandoff } from "./conversation-handoff.ts";
 import type { ConversationReference } from "./activity.ts";
 import type { ArtifactBlock } from "./artifact-document.ts";
+import type { ProductAssistance } from "./product-assistance.ts";
+import type { ConversationOperation } from "./conversation-operation.ts";
 // Legacy web projection contract; no imports from server implementation.
 export interface ArtifactVersion {
   workspace_id: string;
@@ -205,6 +207,8 @@ export interface Snapshot extends ArtifactSnapshot {
     reply_to_source_id: string | null;
     workstream_focus: { workstreamId: string; version: number } | null;
     reference: ConversationReference | null;
+    assistanceContext?: ProductAssistance | null;
+    operationResult?: ConversationOperation | null;
     author_name: string;
     created_at: string;
     sequence: number;

@@ -1,3 +1,8 @@
+import {
+  productAssistanceJoin,
+  productAssistanceProjection,
+  conversationOperationProjection,
+} from "./product-assistance.ts";
 import { readHandoffs } from "./conversation-handoffs.ts";
 import {
   messageReferenceJoin,
@@ -83,9 +88,9 @@ export async function snapshot(actor: string, w: string) {
     const messages = (
       await tx.query(
         `SELECT m.*,COALESCE(u.name,'Miriam') AS author_name,
-         COALESCE(r.source_ids,'{}'::uuid[]) AS citation_source_ids,${messageFocusProjection} AS workstream_focus,${messageReferenceProjection} AS reference
+         COALESCE(r.source_ids,CASE WHEN cwa.reply_message_id IS NOT NULL THEN ARRAY[cwa.source_message_id] END,'{}'::uuid[]) AS citation_source_ids,${messageFocusProjection} AS workstream_focus,${messageReferenceProjection} AS reference,${productAssistanceProjection} AS "assistanceContext",${conversationOperationProjection} AS "operationResult"
          FROM message m LEFT JOIN "user" u ON u.id=m.author_id
-         LEFT JOIN miriam_response r ON (r.workspace_id,r.message_id)=(m.workspace_id,m.id) ${messageFocusJoin} ${messageReferenceJoin}
+         LEFT JOIN miriam_response r ON (r.workspace_id,r.message_id)=(m.workspace_id,m.id) ${messageFocusJoin} ${messageReferenceJoin} ${productAssistanceJoin}
          WHERE m.workspace_id=$1 ORDER BY sequence`,
         [w],
       )

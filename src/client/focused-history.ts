@@ -55,6 +55,8 @@ export function useFocusedHistory(
               reply_to_source_id: m.replyToSourceId,
               workstream_focus: m.workstreamFocus ?? null,
               reference: m.reference ?? null,
+              assistanceContext: m.assistanceContext ?? null,
+              operationResult: m.operationResult ?? null,
             })),
           });
       })

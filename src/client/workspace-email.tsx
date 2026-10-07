@@ -1,4 +1,5 @@
 "use client";
+import { ProductHelp } from "./product-help";
 import { useEffect, useState } from "react";
 import { api } from "./api";
 import type { Command } from "@/contracts/commands";
@@ -100,6 +101,7 @@ export function WorkspaceEmail({
     <section className="card source-work" aria-label="Email dello spazio">
       <details onToggle={(e) => setOpen(e.currentTarget.open)}>
         <summary>Workspace Email</summary>
+        <ProductHelp screen="email" />
         <p>
           Mailbox, bozze e invii qui sono riservati a te. Solo i contenuti che
           condividi esplicitamente entrano nella storia dello spazio.

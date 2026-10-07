@@ -1,4 +1,5 @@
 "use client";
+import { ProductHelp } from "./product-help";
 import { useEffect, useRef, useState } from "react";
 import { api } from "./api";
 import type { Command } from "@/contracts/commands";
@@ -172,6 +173,7 @@ export function WorkspaceTasks({
       {open && (
         <>
           <h2>Lavoro e follow-up</h2>
+          <ProductHelp screen="tasks" />
           <p>
             Registrare lavoro, assumersene la responsabilità e prendere un
             impegno sono atti distinti. I promemoria non autorizzano azioni.

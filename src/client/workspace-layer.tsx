@@ -6,6 +6,7 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from "react";
+import styles from "./workspace-layer.module.css";
 
 const query = "(max-width: 1100px)";
 function subscribe(listener: () => void) {
@@ -19,12 +20,14 @@ export function WorkspaceLayer({
   close,
   docked = false,
   setDocked,
+  suspended = false,
 }: {
   title: string;
-  children: ReactNode;
+  children?: ReactNode;
   close: () => void;
   docked?: boolean;
   setDocked?: (docked: boolean) => void;
+  suspended?: boolean;
 }) {
   const compact = useSyncExternalStore(
     subscribe,
@@ -32,17 +35,29 @@ export function WorkspaceLayer({
     () => false,
   );
   const dialog = useRef<HTMLDialogElement>(null);
+  const presentationCloses = useRef(0);
   const headingId = useId();
   const heading = useRef<HTMLHeadingElement>(null);
   const modal = compact || !docked;
   useEffect(() => {
+    const element = dialog.current;
+    if (!element) return;
+    // Keep one DOM tree when presentation changes so local form drafts survive.
+    if (element.open) {
+      presentationCloses.current++;
+      element.close();
+    }
+    if (suspended) return;
     const prior = document.activeElement as HTMLElement | null;
-    if (modal) dialog.current?.showModal();
-    else heading.current?.focus();
+    if (modal) element.showModal();
+    else {
+      element.show();
+      heading.current?.focus();
+    }
     return () => {
       prior?.focus();
     };
-  }, [modal]);
+  }, [modal, suspended]);
   const content = (
     <>
       <header className="layer-header">
@@ -73,19 +88,18 @@ export function WorkspaceLayer({
       <div className="layer-body">{children}</div>
     </>
   );
-  return modal ? (
+  return (
     <dialog
       ref={dialog}
-      className="workspace-layer layer-dialog"
+      className={`workspace-layer ${modal ? "layer-dialog" : styles.inline}`}
       aria-labelledby={headingId}
       onCancel={close}
-      onClose={close}
+      onClose={() => {
+        if (presentationCloses.current) presentationCloses.current--;
+        else if (!suspended) close();
+      }}
     >
       {content}
     </dialog>
-  ) : (
-    <aside className="workspace-layer" aria-labelledby={headingId}>
-      {content}
-    </aside>
   );
 }

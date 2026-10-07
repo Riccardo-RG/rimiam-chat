@@ -1,5 +1,11 @@
 "use client";
 import Link from "next/link";
+import { WorkspaceIcon } from "@/client/workspace-icon";
+import {
+  initials,
+  messageDay,
+  messageTime,
+} from "@/client/conversation-presentation";
 import { invitationDeliveryLabel } from "@/shared/invitation-delivery";
 import { WorkspaceLinks } from "@/client/workspace-links";
 import { WorkspaceCreation } from "@/client/workspace-create";
@@ -32,6 +38,7 @@ import { WorkspaceEmail } from "@/client/workspace-email";
 import { WorkspaceTasks } from "@/client/workspace-tasks";
 import { WorkspaceActiveWork } from "@/client/workspace-active-work";
 import {
+  Fragment,
   useCallback,
   useEffect,
   useRef,
@@ -52,6 +59,17 @@ import {
   handoffDestination,
 } from "@/client/conversation-handoffs";
 import type { ConversationHandoff } from "@/contracts/conversation-handoff";
+import type { ProductAssistance } from "@/contracts/product-assistance";
+import {
+  assistanceForMessage,
+  type ProductHelpDraft,
+} from "@/client/product-help-draft";
+import {
+  ProductHelpProvider,
+  ProductHelp,
+  AssistanceReference,
+  assistanceQuestion,
+} from "@/client/product-help";
 
 import { WorkspaceQuestions } from "@/client/workspace-questions";
 import { WorkspaceSources } from "@/client/workspace-sources";
@@ -89,7 +107,8 @@ function WorkspaceApp({
   session: ReturnType<typeof auth.useSession>["data"];
   isPending: boolean;
 }) {
-  const [panel, setPanel] = useState("");
+  const [panel, setPanelState] = useState("");
+  const [navigationOpen, setNavigationOpen] = useState(false);
   const [lensDocked, setLensDocked] = useState(false);
   const [lensSection, setLensSection] = useState("lens");
   const [selectedWork, setSelectedWork] = useState("");
@@ -103,6 +122,14 @@ function WorkspaceApp({
     title: string;
   } | null>(null);
   const [messageDraft, setMessageDraft] = useState({ text: "", scope: "" });
+  const [composerAssistance, setComposerAssistance] =
+    useState<ProductHelpDraft | null>(null);
+  const [helpInConversation, setHelpInConversation] = useState(false);
+  function setPanel(next: string) {
+    setHelpInConversation(false);
+    setComposerAssistance(null);
+    setPanelState(next);
+  }
   const [feedbackMessage, setFeedbackMessage] = useState<{
     id: string;
     content: string;
@@ -178,6 +205,11 @@ function WorkspaceApp({
   const draftNeedsScope =
     !!messageDraft.text.trim() && messageDraft.scope !== messageScope;
   const feedbackDraft = feedbackFromComposer(messageDraft.text);
+  const assistanceContext = assistanceForMessage(
+    composerAssistance,
+    messageDraft,
+    messageScope,
+  );
   useEffect(() => {
     if (
       !handoff ||
@@ -344,6 +376,7 @@ function WorkspaceApp({
     return result;
   }
   function choose(w: string) {
+    setNavigationOpen(false);
     viewGeneration.current++;
     selected.current = w;
     revision.current = -1;
@@ -359,6 +392,8 @@ function WorkspaceApp({
     setSelectedHandoff(null);
     setSelectedReference(null);
     setComposerReference(null);
+    setComposerAssistance(null);
+    setHelpInConversation(false);
     setFeedbackMessage(null);
     chooseFocus(null);
     setWorkstreams([]);
@@ -369,6 +404,7 @@ function WorkspaceApp({
     window.history.replaceState(null, "", w ? `/?workspace=${w}` : "/");
   }
   function openPanel(next: string) {
+    setNavigationOpen(false);
     setPanel(next);
     if (next === "feedback") setFeedbackMessage(null);
     if (next) setLensSection(next);
@@ -383,6 +419,7 @@ function WorkspaceApp({
   }
   function chooseFocus(stream: AttentionView["workstreams"][number] | null) {
     readingGeneration.current++;
+    setComposerAssistance(null);
     setFocusedStream(stream);
   }
   function revealSource(id: string) {
@@ -413,6 +450,7 @@ function WorkspaceApp({
     }
   }
   function askReference(reference: ConversationReference, title: string) {
+    setComposerAssistance(null);
     setComposerReference({ reference, title });
     setMessageDraft((draft) =>
       draft.text
@@ -423,6 +461,17 @@ function WorkspaceApp({
           },
     );
     setPanel("");
+    requestAnimationFrame(() => document.getElementById("message")?.focus());
+  }
+  function askProduct(context: ProductAssistance) {
+    setComposerReference(null);
+    setComposerAssistance({ context, scope: messageScope });
+    setMessageDraft((draft) =>
+      draft.text
+        ? draft
+        : { text: assistanceQuestion(context), scope: messageScope },
+    );
+    setHelpInConversation(!!(panel || peopleFor || correctionFor));
     requestAnimationFrame(() => document.getElementById("message")?.focus());
   }
   const name = (id: string) =>
@@ -444,56 +493,109 @@ function WorkspaceApp({
   if (!session)
     return (
       <main className="welcome">
-        <AppearanceControl />
-        <button
-          className="wordmark brand-home"
-          onClick={() => choose("")}
-          aria-label="RIMIAM — Home"
-        >
-          <BrandSignature />
-        </button>
-        <p className="eyebrow">UNO SPAZIO PER COSTRUIRE INSIEME</p>
-        <h1>
-          Dall’idea,
-          <br />
-          al prossimo passo.
-        </h1>
-        <p>
-          Conversa con il tuo gruppo. Miriam aiuta a raccogliere ciò che emerge,
-          conservando fonti, scelte e responsabilità.
-        </p>
-        <AccountAccess
-          returnTo={accountReturn}
-          localMail={localMail}
-          googleAvailable={googleSignInAvailable}
-        />
+        <div className="welcome-intro">
+          <button
+            className="wordmark brand-home"
+            onClick={() => choose("")}
+            aria-label="RIMIAM — Home"
+          >
+            <BrandSignature />
+          </button>
+          <div className="welcome-story">
+            <p className="eyebrow">IL VOSTRO PROSSIMO PASSO, INSIEME</p>
+            <h1>
+              Le idee hanno bisogno
+              <br />
+              di uno spazio.
+            </h1>
+            <p>
+              Parlate, chiarite, costruite. Miriam tiene il filo, così potete
+              concentrarvi su ciò che conta.
+            </p>
+            <div className="welcome-principles">
+              <span>
+                <WorkspaceIcon name="chat" /> Una conversazione condivisa
+              </span>
+              <span>
+                <WorkspaceIcon name="context" /> Il contesto, sempre ritrovabile
+              </span>
+              <span>
+                <WorkspaceIcon name="spark" /> Miriam, al vostro fianco
+              </span>
+            </div>
+          </div>
+          <div className="welcome-footer">
+            <span>Uno spazio. Le vostre persone. Più continuità.</span>
+            <AppearanceControl />
+          </div>
+        </div>
+        <div className="welcome-access">
+          <AccountAccess
+            returnTo={accountReturn}
+            localMail={localMail}
+            googleAvailable={googleSignInAvailable}
+          />
+        </div>
       </main>
     );
-  return (
-    <div className="app-shell">
-      <aside className="sidebar">
-        <button
-          className="wordmark brand-home"
-          onClick={() => choose("")}
-          aria-label="RIMIAM — Home"
-        >
-          <BrandSignature />
-        </button>
+  const shell = (
+    <div
+      className="app-shell"
+      data-navigation={navigationOpen ? "open" : "closed"}
+    >
+      <a className="skip-link" href="#workspace-content">
+        Vai alla conversazione
+      </a>
+      <aside
+        className="sidebar"
+        id="workspace-navigation"
+        aria-label="Navigazione principale"
+        onKeyDown={(event) => {
+          if (event.key === "Escape" && navigationOpen) {
+            setNavigationOpen(false);
+            document.getElementById("navigation-toggle")?.focus();
+          }
+        }}
+      >
+        <div className="sidebar-brand-row">
+          <button
+            className="wordmark brand-home"
+            onClick={() => choose("")}
+            aria-label="RIMIAM — Home"
+          >
+            <BrandSignature />
+          </button>
+          <button
+            type="button"
+            className="mobile-navigation-close quiet"
+            aria-label="Chiudi navigazione"
+            onClick={() => {
+              setNavigationOpen(false);
+              document.getElementById("navigation-toggle")?.focus();
+            }}
+          >
+            <WorkspaceIcon name="close" />
+          </button>
+        </div>
         <button
           className={workspaceId ? "space" : "space selected"}
           onClick={() => choose("")}
         >
-          ⌂ Home
+          <WorkspaceIcon name="home" /> <span>Tutti gli spazi</span>
         </button>
-        <p className="eyebrow">I TUOI SPAZI</p>
-        <nav>
+        <p className="sidebar-section-heading">I tuoi spazi</p>
+        <nav aria-label="I tuoi spazi">
           {spaces.map((w) => (
             <button
               className={w.id === workspaceId ? "space selected" : "space"}
               key={w.id}
+              aria-current={w.id === workspaceId ? "page" : undefined}
               onClick={() => choose(w.id)}
             >
-              {w.name}
+              <span className="space-initial" aria-hidden="true">
+                {initials(w.name).slice(0, 1)}
+              </span>
+              <span>{w.name}</span>
             </button>
           ))}
         </nav>
@@ -509,11 +611,92 @@ function WorkspaceApp({
             });
           }}
         >
-          ＋ Nuovo spazio
+          <WorkspaceIcon name="plus" /> Nuovo spazio
         </button>
+        {snapshot && (
+          <div className="workspace-sidebar-context">
+            <p className="sidebar-section-heading">Nello spazio</p>
+            <nav
+              className="workspace-navigation"
+              aria-label="Viste dello spazio"
+            >
+              <button
+                className={!panel ? "space selected" : "space"}
+                aria-current={!panel ? "page" : undefined}
+                onClick={() => {
+                  setPanel("");
+                  setNavigationOpen(false);
+                }}
+              >
+                <WorkspaceIcon name="chat" /> Conversazione
+              </button>
+              {(
+                [
+                  ["context", "Contesto", "context"],
+                  ["work", "Lavoro", "work"],
+                  ["artifacts", "Documenti", "files"],
+                  ["attention", "Attività e filoni", "branch"],
+                ] as const
+              ).map(([id, label, icon]) => (
+                <button
+                  key={id}
+                  className={panel === id ? "space selected" : "space"}
+                  aria-current={panel === id ? "page" : undefined}
+                  onClick={() => openPanel(id)}
+                >
+                  <WorkspaceIcon name={icon} />
+                  {label}
+                </button>
+              ))}
+            </nav>
+            <details
+              className="sidebar-tools"
+              open={[
+                "sources",
+                "people",
+                "calendar",
+                "email",
+                "feedback",
+              ].includes(panel)}
+            >
+              <summary>
+                <WorkspaceIcon name="settings" /> Strumenti e persone
+              </summary>
+              <nav aria-label="Strumenti dello spazio">
+                {(
+                  [
+                    ["sources", "Fonti e ricerca", "files"],
+                    ["people", "Persone e accesso", "people"],
+                    ["calendar", "Calendario", "calendar"],
+                    ["email", "Email", "mail"],
+                    ["feedback", "Feedback beta", "chat"],
+                  ] as const
+                ).map(([id, label, icon]) => (
+                  <button
+                    key={id}
+                    className={panel === id ? "space selected" : "space"}
+                    aria-current={panel === id ? "page" : undefined}
+                    onClick={() => openPanel(id)}
+                  >
+                    <WorkspaceIcon name={icon} />
+                    {label}
+                  </button>
+                ))}
+              </nav>
+            </details>
+          </div>
+        )}
         <div className="account">
+          <div className="account-identity">
+            <span className="account-avatar" aria-hidden="true">
+              {initials(session.user.name)}
+            </span>
+            <div>
+              <strong>{session.user.name}</strong>
+              <small>Account personale</small>
+            </div>
+          </div>
           <AppearanceControl />
-          <strong>{session.user.name}</strong>
           <Link href="/beta" target="_blank" rel="noopener noreferrer">
             Regole della beta ↗
           </Link>
@@ -529,26 +712,77 @@ function WorkspaceApp({
       </aside>
       <main
         className="workspace"
+        id="workspace-content"
+        tabIndex={-1}
         data-view={workspaceId ? "conversation" : "home"}
       >
-        <header>
-          <div>
+        <header className="workspace-header">
+          <button
+            type="button"
+            className="mobile-navigation-toggle quiet"
+            id="navigation-toggle"
+            aria-label={
+              navigationOpen ? "Chiudi navigazione" : "Apri navigazione"
+            }
+            aria-controls="workspace-navigation"
+            aria-expanded={navigationOpen}
+            onClick={() => {
+              setNavigationOpen(!navigationOpen);
+              if (!navigationOpen)
+                requestAnimationFrame(() => {
+                  document
+                    .querySelector<HTMLButtonElement>(
+                      "#workspace-navigation button",
+                    )
+                    ?.focus();
+                });
+            }}
+          >
+            <WorkspaceIcon name={navigationOpen ? "close" : "menu"} />
+          </button>
+          <div className="workspace-heading">
             <p className="eyebrow">
-              {workspaceId ? "WORKSPACE CONDIVISO" : "IL TUO PUNTO DI PARTENZA"}
+              {workspaceId ? "LO SPAZIO CONDIVISO" : "RIMIAM"}
             </p>
             <h1>
-              {snapshot?.workspace.name ?? "Bentornato, " + session.user.name}
+              {snapshot?.workspace.name ??
+                (workspaceId ? "Apertura dello spazio…" : "I tuoi spazi")}
             </h1>
           </div>
-          {workspaceId && (
-            <button
-              className="lens-trigger"
-              aria-expanded={!!panel}
-              onClick={() => openPanel(panel ? "" : lensSection)}
-            >
-              Lo spazio <span aria-hidden="true">↗</span>
-            </button>
-          )}
+          <div className="workspace-header-actions">
+            {snapshot && (
+              <button
+                type="button"
+                className="people-trigger quiet"
+                onClick={() => openPanel("people")}
+                aria-label="Apri persone e accesso"
+              >
+                <span className="participant-stack" aria-hidden="true">
+                  {snapshot.members
+                    .filter((m) => m.active)
+                    .slice(0, 3)
+                    .map((m) => (
+                      <span key={m.user_id}>{initials(m.name)}</span>
+                    ))}
+                </span>
+                <span>
+                  {snapshot.members.filter((m) => m.active).length}{" "}
+                  {snapshot.members.filter((m) => m.active).length === 1
+                    ? "persona"
+                    : "persone"}
+                </span>
+              </button>
+            )}
+            {workspaceId && (
+              <button
+                className="lens-trigger"
+                aria-expanded={!!panel && !helpInConversation}
+                onClick={() => openPanel(panel ? "" : lensSection)}
+              >
+                <WorkspaceIcon name="context" /> <span>Esplora lo spazio</span>
+              </button>
+            )}
+          </div>
         </header>
         <BetaNotice actorId={session.user.id} />
         {error && (
@@ -610,29 +844,15 @@ function WorkspaceApp({
         )}
         {!workspaceId && !invitation && (
           <section className="product-home">
-            <div className="home-intro">
-              <p className="eyebrow">PERSONE, IDEE, CONTINUITÀ</p>
-              <h2>
-                Uno spazio per
-                <br />
-                farle crescere insieme.
-              </h2>
-              <p>
-                Conversa con le tue persone e con Miriam. Ritrovate ciò che
-                conta, costruite una comprensione comune e portate avanti il
-                vostro intento.
+            <div className="home-heading">
+              <p className="eyebrow">
+                BENTORNATO, {session.user.name.split(" ")[0]}
               </p>
-            </div>
-            <div className="mental-model" aria-label="Come funziona Miriam">
-              <span>
-                <b>01</b> Conversate
-              </span>
-              <span>
-                <b>02</b> Ritrovate il contesto
-              </span>
-              <span>
-                <b>03</b> Fate un passo avanti
-              </span>
+              <h2>Riprendi da qui.</h2>
+              <p>
+                Le tue persone, le conversazioni e ciò che state costruendo.
+                Ogni progetto ha il suo spazio.
+              </p>
             </div>
             <div className="home-spaces">
               <div className="section-title">
@@ -653,7 +873,7 @@ function WorkspaceApp({
                     </span>
                     <strong>{w.name}</strong>
                     <small>
-                      Apri la conversazione <span aria-hidden="true">↗</span>
+                      Apri la conversazione <WorkspaceIcon name="arrow" />
                     </small>
                   </button>
                 ))}
@@ -731,15 +951,21 @@ function WorkspaceApp({
                 </button>
               </div>
             )}
-            <div className="goal-compass">
-              <div>
-                <span className="eyebrow">IL NOSTRO INTENTO</span>
-                <h2>{goal?.content ?? "Da dove volete partire?"}</h2>
-              </div>
-              <button className="quiet" onClick={() => openPanel("goal")}>
-                {goal ? "Goal e adesioni ↗" : "Definisci il Goal"}
-              </button>
-            </div>
+            <button
+              type="button"
+              className="goal-compass"
+              onClick={() => openPanel("goal")}
+            >
+              <WorkspaceIcon name="goal" />
+              <span className="goal-compass-label">
+                {goal ? "Goal" : "Un punto di partenza"}
+              </span>
+              <span className="goal-compass-content">
+                {goal?.content ??
+                  "Il Goal può emergere dalla conversazione. Definiscilo quando siete pronti."}
+              </span>
+              <WorkspaceIcon name="chevron" />
+            </button>
             <div className="activity-bar">
               <WorkspaceActiveWork
                 inspectReference={inspectReference}
@@ -769,7 +995,7 @@ function WorkspaceApp({
             </div>
             <div
               className={
-                panel && lensDocked
+                panel && lensDocked && !helpInConversation
                   ? "workspace-stage with-layer"
                   : "workspace-stage"
               }
@@ -832,13 +1058,6 @@ function WorkspaceApp({
                     Una lettura di Miriam richiede attenzione ↗
                   </button>
                 ) : null}
-                <WorkspaceCall
-                  key={`call:${actor}:${workspaceId}`}
-                  workspace={workspaceId}
-                  actor={actor!}
-                  disabled={!canContribute}
-                  command={command}
-                />
                 <ConversationVoice
                   key={`voice:${actor}:${workspaceId}`}
                   workspace={workspaceId}
@@ -904,158 +1123,277 @@ function WorkspaceApp({
                         )}
                       </div>
                     )}
-                    {displayedMessages.length === 0 &&
+                    {focusedStream &&
+                      displayedMessages.length === 0 &&
                       !focusedHistory.loading &&
                       !focusedHistory.error && (
                         <p className="muted">
-                          Racconta da dove state partendo.
+                          Non ci sono messaggi collegati a questo filone.
                         </p>
                       )}
-                    {displayedMessages.map((m) => (
-                      <article
-                        key={m.id}
-                        id={`source-${m.id}`}
-                        tabIndex={-1}
-                        className={
-                          m.actor_kind === "miriam"
-                            ? "message miriam-message"
-                            : m.author_id === actor
-                              ? "message own"
-                              : "message"
-                        }
-                      >
-                        <div className="message-meta">
-                          <strong>
-                            {m.author_name}{" "}
-                            <span className="author-kind">
-                              {m.purpose === "workspace_welcome"
-                                ? "introduzione automatica"
-                                : m.purpose === "workspace_introduction"
-                                  ? "descrizione iniziale"
-                                  : m.actor_kind === "miriam"
-                                    ? "AI"
-                                    : "persona"}
-                            </span>
-                          </strong>
-                          <time>{time(m.created_at)}</time>
-                        </div>
-                        <p>{m.content}</p>
-                        <ConversationHandoffs
-                          items={handoffView.handoffs.filter(
-                            (h) => h.sourceMessageId === m.id,
-                          )}
-                          open={openHandoff}
-                        />
-                        {m.reference && (
-                          <button
-                            className="message-reference quiet"
-                            onClick={() => inspectReference(m.reference!)}
-                          >
-                            Riferimento di questo messaggio ↗
-                          </button>
+                    {displayedMessages.map((m, index) => (
+                      <Fragment key={m.id}>
+                        {(index === 0 ||
+                          messageDay(
+                            displayedMessages[index - 1].created_at,
+                          ) !== messageDay(m.created_at)) && (
+                          <div className="conversation-day">
+                            <span>{messageDay(m.created_at)}</span>
+                          </div>
                         )}
-                        <VoiceMessage id={m.id} />
-                        {m.actor_kind === "miriam" && (
-                          <SpokenReply
-                            id={`${actor}:${snapshot.workspace.id}:${m.id}`}
-                            text={m.content}
-                          />
-                        )}
-                        <details>
-                          <summary>
-                            {m.actor_kind === "miriam"
-                              ? "Fonti e origine"
-                              : "Fonte originale"}
-                          </summary>
-                          <small>
-                            Messaggio {m.sequence} ·{" "}
-                            {m.purpose === "workspace_welcome"
-                              ? "Introduzione deterministica, nessuna inferenza AI"
-                              : m.actor_kind === "miriam"
-                                ? "Contributo AI, non stato adottato"
-                                : "Atto umano originale"}
-                            <br />
-                            Conservato senza riscritture.
-                            {canContribute && (
+                        <article
+                          key={m.id}
+                          id={`source-${m.id}`}
+                          tabIndex={-1}
+                          className={
+                            m.actor_kind === "miriam"
+                              ? "message miriam-message"
+                              : m.author_id === actor
+                                ? "message own"
+                                : "message"
+                          }
+                        >
+                          <span className="message-avatar" aria-hidden="true">
+                            {m.actor_kind === "miriam" ? (
+                              <WorkspaceIcon name="spark" />
+                            ) : (
+                              initials(m.author_name)
+                            )}
+                          </span>
+                          <div className="message-main">
+                            <div className="message-meta">
+                              <strong>
+                                {m.author_name}{" "}
+                                <span className="author-kind">
+                                  {m.purpose === "workspace_welcome"
+                                    ? "introduzione automatica"
+                                    : m.purpose === "workspace_introduction"
+                                      ? "descrizione iniziale"
+                                      : m.operationResult
+                                        ? "riscontro dell’operazione"
+                                        : m.actor_kind === "miriam"
+                                          ? "AI"
+                                          : m.author_id === actor
+                                            ? "tu"
+                                            : null}
+                                </span>
+                              </strong>
+                              <time
+                                dateTime={m.created_at}
+                                title={time(m.created_at)}
+                              >
+                                {messageTime(m.created_at)}
+                              </time>
+                            </div>
+                            <p className="message-body">{m.content}</p>
+                            {m.operationResult?.workstreamId && (
                               <button
+                                type="button"
                                 className="quiet"
-                                aria-label={`Feedback sul messaggio ${m.sequence}`}
+                                disabled={
+                                  !workstreams.some(
+                                    (item) =>
+                                      item.id ===
+                                      m.operationResult?.workstreamId,
+                                  )
+                                }
                                 onClick={() => {
-                                  openPanel("feedback");
-                                  setFeedbackMessage({
-                                    id: m.id,
-                                    content: m.content,
-                                  });
+                                  const stream = workstreams.find(
+                                    (item) =>
+                                      item.id ===
+                                      m.operationResult?.workstreamId,
+                                  );
+                                  if (stream) focusConversation(stream);
                                 }}
                               >
-                                Feedback
+                                Apri il filone {m.operationResult.title} ↗
                               </button>
                             )}
-                            <button
-                              type="button"
-                              className="quiet"
-                              onClick={() => handoffView.loadSource(m.id)}
-                            >
-                              Carica i passi proposti per questo messaggio
-                            </button>
-                            {handoffView.sourceRead === m.id && (
-                              <span role="status">
-                                {handoffView.handoffs.some(
-                                  (h) => h.sourceMessageId === m.id,
-                                )
-                                  ? "Passi disponibili sotto il messaggio."
-                                  : "Nessun passo proposto per questo messaggio."}
-                              </span>
+                            <ConversationHandoffs
+                              items={handoffView.handoffs.filter(
+                                (h) => h.sourceMessageId === m.id,
+                              )}
+                              open={openHandoff}
+                            />
+                            {m.reference && (
+                              <button
+                                className="message-reference quiet"
+                                onClick={() => inspectReference(m.reference!)}
+                              >
+                                Riferimento di questo messaggio ↗
+                              </button>
                             )}
-                            {m.purpose === "workspace_welcome" &&
-                              m.reply_to_source_id && (
+                            <VoiceMessage id={m.id} />
+                            {m.actor_kind === "miriam" && (
+                              <SpokenReply
+                                id={`${actor}:${snapshot.workspace.id}:${m.id}`}
+                                text={m.content}
+                              />
+                            )}
+                            <details>
+                              <summary>
+                                {m.actor_kind === "miriam"
+                                  ? "Fonti e origine"
+                                  : "Fonte originale"}
+                              </summary>
+                              <small>
+                                Messaggio {m.sequence} ·{" "}
+                                {m.purpose === "workspace_welcome"
+                                  ? "Introduzione deterministica, nessuna inferenza AI"
+                                  : m.operationResult
+                                    ? "Riscontro deterministico del server, nessuna inferenza AI"
+                                    : m.actor_kind === "miriam"
+                                      ? "Contributo AI, non stato adottato"
+                                      : "Atto umano originale"}
+                                <br />
+                                Conservato senza riscritture.
+                                {m.assistanceContext && (
+                                  <AssistanceReference
+                                    context={m.assistanceContext}
+                                  />
+                                )}
+                                {m.operationResult?.workstreamVersion && (
+                                  <span>
+                                    {" "}
+                                    · Filone alla versione{" "}
+                                    {m.operationResult.workstreamVersion}
+                                  </span>
+                                )}
+                                {canContribute && (
+                                  <button
+                                    className="quiet"
+                                    aria-label={`Feedback sul messaggio ${m.sequence}`}
+                                    onClick={() => {
+                                      openPanel("feedback");
+                                      setFeedbackMessage({
+                                        id: m.id,
+                                        content: m.content,
+                                      });
+                                    }}
+                                  >
+                                    Feedback
+                                  </button>
+                                )}
                                 <button
                                   type="button"
                                   className="quiet"
-                                  onClick={() =>
-                                    revealSource(m.reply_to_source_id!)
-                                  }
+                                  onClick={() => handoffView.loadSource(m.id)}
                                 >
-                                  Descrizione iniziale di riferimento
+                                  Carica i passi proposti per questo messaggio
                                 </button>
-                              )}
-                            {m.citation_source_ids?.map((id) => {
-                              const source = snapshot.sources.find(
-                                  (s) => s.id === id,
-                                ),
-                                message = snapshot.messages.find(
-                                  (s) => s.id === id,
-                                );
-                              return (
-                                <span className="citation" key={id}>
-                                  <strong>
-                                    {source?.title ??
-                                      message?.author_name ??
-                                      "Fonte"}
-                                  </strong>
-                                  <span>
-                                    {source?.qualification ??
-                                      "Messaggio umano originale"}
+                                {handoffView.sourceRead === m.id && (
+                                  <span role="status">
+                                    {handoffView.handoffs.some(
+                                      (h) => h.sourceMessageId === m.id,
+                                    )
+                                      ? "Passi disponibili sotto il messaggio."
+                                      : "Nessun passo proposto per questo messaggio."}
                                   </span>
-                                  <span>
-                                    {source?.content ?? message?.content}
-                                  </span>
-                                  {message && (
+                                )}
+                                {m.purpose === "workspace_welcome" &&
+                                  m.reply_to_source_id && (
                                     <button
                                       type="button"
                                       className="quiet"
-                                      onClick={() => revealSource(id)}
+                                      onClick={() =>
+                                        revealSource(m.reply_to_source_id!)
+                                      }
                                     >
-                                      Vai al messaggio ↗
+                                      Descrizione iniziale di riferimento
                                     </button>
                                   )}
-                                </span>
-                              );
-                            })}
-                          </small>
-                        </details>
-                      </article>
+                                {m.citation_source_ids?.map((id) => {
+                                  const source = snapshot.sources.find(
+                                      (s) => s.id === id,
+                                    ),
+                                    message = snapshot.messages.find(
+                                      (s) => s.id === id,
+                                    );
+                                  return (
+                                    <span className="citation" key={id}>
+                                      <strong>
+                                        {source?.title ??
+                                          message?.author_name ??
+                                          "Fonte"}
+                                      </strong>
+                                      <span>
+                                        {source?.qualification ??
+                                          "Messaggio umano originale"}
+                                      </span>
+                                      <span>
+                                        {source?.content ?? message?.content}
+                                      </span>
+                                      {message && (
+                                        <button
+                                          type="button"
+                                          className="quiet"
+                                          onClick={() => revealSource(id)}
+                                        >
+                                          Vai al messaggio ↗
+                                        </button>
+                                      )}
+                                    </span>
+                                  );
+                                })}
+                              </small>
+                            </details>
+                          </div>
+                        </article>
+                      </Fragment>
                     ))}
+                    {!focusedStream &&
+                      !displayedMessages.some(
+                        (m) =>
+                          m.actor_kind === "human" &&
+                          m.purpose === "conversation",
+                      ) &&
+                      canContribute && (
+                        <div className="conversation-empty">
+                          <span className="conversation-empty-icon">
+                            <WorkspaceIcon name="chat" />
+                          </span>
+                          <h3>Cominciamo da una conversazione.</h3>
+                          <p>
+                            Condividi un’idea con il gruppo, oppure chiedi a
+                            Miriam una mano per il prossimo passo.
+                          </p>
+                          <div className="conversation-prompts">
+                            {[
+                              [
+                                "Facciamo il punto",
+                                "@Miriam aiutaci a fare il punto su ciò che abbiamo condiviso.",
+                              ],
+                              [
+                                "Troviamo il prossimo passo",
+                                "@Miriam quali aspetti dovremmo chiarire per trovare il prossimo passo?",
+                              ],
+                            ].map(([label, text]) => (
+                              <button
+                                type="button"
+                                key={label}
+                                className="prompt-button"
+                                disabled={
+                                  busy ||
+                                  !!messageDraft.text.trim() ||
+                                  !focusWritable
+                                }
+                                onClick={() => {
+                                  setMessageDraft({
+                                    text,
+                                    scope: messageScope,
+                                  });
+                                  requestAnimationFrame(() =>
+                                    document.getElementById("message")?.focus(),
+                                  );
+                                }}
+                              >
+                                {label}
+                                <WorkspaceIcon name="arrow" />
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                   </div>
                   <form
                     className="conversation-composer"
@@ -1064,6 +1402,8 @@ function WorkspaceApp({
                       if (draftNeedsScope || !focusWritable) return;
                       const sentDraft = messageDraft;
                       const sentReference = composerReference;
+                      const sentHelp = composerAssistance;
+                      const sentAssistance = assistanceContext;
                       const form = e.currentTarget;
                       const raw = new FormData(form).get("message") as string;
                       const feedback = feedbackFromComposer(raw);
@@ -1083,6 +1423,9 @@ function WorkspaceApp({
                           setNotice(
                             "Feedback salvato. Lo ritrovi in Feedback beta, con il report da scaricare.",
                           );
+                          setComposerAssistance((current) =>
+                            current === sentHelp ? null : current,
+                          );
                         });
                         return;
                       }
@@ -1090,11 +1433,15 @@ function WorkspaceApp({
                         (e.nativeEvent as SubmitEvent).submitter?.getAttribute(
                           "data-target",
                         ) === "miriam";
-                      const content = addressed ? addressMiriam(raw) : raw;
+                      const content =
+                        addressed || sentAssistance ? addressMiriam(raw) : raw;
                       void action(async () => {
                         await command({
                           type: "message.send",
                           content,
+                          ...(sentAssistance
+                            ? { assistanceContext: sentAssistance }
+                            : {}),
                           ...(sentReference
                             ? { reference: sentReference.reference }
                             : {}),
@@ -1116,9 +1463,28 @@ function WorkspaceApp({
                         setComposerReference((current) =>
                           current === sentReference ? null : current,
                         );
+                        setComposerAssistance((current) =>
+                          current === sentHelp ? null : current,
+                        );
                       });
                     }}
                   >
+                    {helpInConversation &&
+                      (panel || peopleFor || correctionFor) && (
+                        <button
+                          type="button"
+                          className="quiet"
+                          onClick={() => setHelpInConversation(false)}
+                        >
+                          Torna al modulo
+                        </button>
+                      )}
+                    {composerAssistance && feedbackDraft === null && (
+                      <AssistanceReference
+                        context={composerAssistance.context}
+                        remove={() => setComposerAssistance(null)}
+                      />
+                    )}
                     {composerReference && feedbackDraft === null && (
                       <div className="composer-reference">
                         <span>
@@ -1147,10 +1513,27 @@ function WorkspaceApp({
                       placeholder="Scrivi al gruppo o chiedi a Miriam…"
                       required
                       maxLength={12000}
-                      rows={3}
+                      rows={2}
+                      onKeyDown={(event) => {
+                        if (
+                          event.key === "Enter" &&
+                          (event.ctrlKey || event.metaKey) &&
+                          !event.nativeEvent.isComposing
+                        ) {
+                          event.preventDefault();
+                          const submit =
+                            event.currentTarget.form?.querySelector<HTMLButtonElement>(
+                              "[data-primary-send]",
+                            );
+                          if (submit && !submit.disabled)
+                            event.currentTarget.form?.requestSubmit(submit);
+                        }
+                      }}
                       value={messageDraft.text}
                       onChange={(event) => {
                         const text = event.target.value;
+                        if (!text.trim() || feedbackFromComposer(text) !== null)
+                          setComposerAssistance(null);
                         setMessageDraft((current) => ({
                           text,
                           scope:
@@ -1186,33 +1569,49 @@ function WorkspaceApp({
                         </button>
                       </p>
                     )}
-                    <button
-                      disabled={
-                        busy ||
-                        !canContribute ||
-                        !focusWritable ||
-                        draftNeedsScope ||
-                        (feedbackDraft !== null &&
-                          (!feedbackDraft || feedbackDraft.length > 6000))
-                      }
-                    >
-                      {feedbackDraft === null
-                        ? "Invia messaggio"
-                        : "Salva feedback"}
-                    </button>
-                    <button
-                      data-target="miriam"
-                      disabled={
-                        busy ||
-                        !canContribute ||
-                        !focusWritable ||
-                        draftNeedsScope ||
-                        feedbackDraft !== null
-                      }
-                    >
-                      Chiedi a Miriam
-                    </button>
+                    <div className="composer-toolbar">
+                      <span className="composer-hint">
+                        Visibile a tutto lo spazio{" "}
+                        <span aria-hidden="true">·</span> Ctrl / ⌘ + Invio
+                      </span>
+                      <div className="composer-actions">
+                        <button
+                          type="submit"
+                          className="quiet ask-miriam composer-ask"
+                          data-target="miriam"
+                          disabled={
+                            busy ||
+                            !canContribute ||
+                            !focusWritable ||
+                            draftNeedsScope ||
+                            feedbackDraft !== null ||
+                            !messageDraft.text.trim()
+                          }
+                        >
+                          <WorkspaceIcon name="spark" />
+                          Chiedi a Miriam
+                        </button>
+                        <button
+                          type="submit"
+                          data-primary-send
+                          className="composer-send"
+                          disabled={
+                            busy ||
+                            !canContribute ||
+                            !focusWritable ||
+                            draftNeedsScope ||
+                            !messageDraft.text.trim() ||
+                            (feedbackDraft !== null &&
+                              (!feedbackDraft || feedbackDraft.length > 6000))
+                          }
+                        >
+                          {feedbackDraft === null ? "Invia" : "Salva feedback"}
+                          <WorkspaceIcon name="send" />
+                        </button>
+                      </div>
+                    </div>
                   </form>
+                  <ProductHelp screen="conversation" />
                   {handoffView.error && (
                     <p className="hint" role="status">
                       I passi proposti non sono disponibili: {handoffView.error}{" "}
@@ -1222,14 +1621,22 @@ function WorkspaceApp({
                     </p>
                   )}
                 </ConversationVoice>
+                <WorkspaceCall
+                  key={`call:${actor}:${workspaceId}`}
+                  workspace={workspaceId}
+                  actor={actor!}
+                  disabled={!canContribute}
+                  command={command}
+                />
               </section>
               {panel && (
                 <WorkspaceLayer
+                  suspended={helpInConversation}
                   title={
                     {
                       lens: "Dentro il vostro spazio",
                       goal: "La direzione",
-                      attention: "Activity e filoni",
+                      attention: "Attività e filoni",
                       reference: "Il passaggio",
                       context: "Contesto condiviso",
                       work: "Lavoro e follow-up",
@@ -1239,7 +1646,7 @@ function WorkspaceApp({
                       calendar: "Calendario",
                       email: "Email",
                       sources: "Fonti e ricerca",
-                      artifacts: "Outputs",
+                      artifacts: "Documenti",
                       feedback: "Feedback beta",
                     }[panel] ?? "Dettagli"
                   }
@@ -1333,6 +1740,7 @@ function WorkspaceApp({
                         <section className="card">
                           <p className="eyebrow">SHARED CONTEXT</p>
                           <h2>Riferimenti accettati</h2>
+                          <ProductHelp screen="information" />
                           <p className="hint">
                             Informazioni descrittive adottate come riferimento
                             di lavoro. Non sono verità garantite o impegni del
@@ -1736,6 +2144,7 @@ function WorkspaceApp({
                       />
                       <details className="card">
                         <summary>Partecipanti e accesso</summary>
+                        <ProductHelp screen="people" />
                         <p className="hint">
                           Partecipazione, adesione al Goal e poteri di gestione
                           degli accessi sono distinti.
@@ -1906,9 +2315,11 @@ function WorkspaceApp({
             {peopleFor && (
               <WorkspaceLayer
                 title="Proponi impegno"
+                suspended={helpInConversation}
                 close={() => setPeopleFor(null)}
               >
                 <h2>Chi riguarda questo impegno?</h2>
+                <ProductHelp screen="commitments" field="people" />
                 <p>{peopleFor.content}</p>
                 <p>
                   Il tuo atto proporrà il testo. Ciascuna persona nominata dovrà
@@ -1961,9 +2372,11 @@ function WorkspaceApp({
             {correctionFor && (
               <WorkspaceLayer
                 title="Correzione"
+                suspended={helpInConversation}
                 close={() => setCorrectionFor(null)}
               >
                 <h2>Correggi il riferimento di lavoro</h2>
+                <ProductHelp screen="information" field="reason" />
                 <p>
                   Prima:{" "}
                   {
@@ -2042,6 +2455,11 @@ function WorkspaceApp({
         )}
       </main>
     </div>
+  );
+  return (
+    <ProductHelpProvider ask={canContribute ? askProduct : null}>
+      {shell}
+    </ProductHelpProvider>
   );
 }
 
