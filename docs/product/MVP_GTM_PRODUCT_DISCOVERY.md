@@ -1,6 +1,6 @@
 # RIMIAM GTM / Product Discovery Canon (MVP-aligned)
 
-Last updated: 2026-09-13 (alignment with approved ADR-0015 and current foundation closure; no new product or commercial approval).
+Last editorial update: 2026-10-07 (current delivery references; approved scope remains through ADR-0015, with no new product or commercial approval).
 
 ## Scope and intent
 
@@ -8,7 +8,7 @@ This document is the canonical place for product-discovery direction, GTM assump
 
 Repository naming used here remains **MIRIAM** for paths and packages; user-facing product naming is **RIMIAM**.
 
-Current delivery status: the local MVP foundation is closed, including voice/calling. This is not a claim of live-provider availability, release readiness or validated product-market fit. [STATUS](../development/STATUS.md) owns implementation/verification evidence; [DEPLOY_EXTERNAL_SERVICES](../development/DEPLOY_EXTERNAL_SERVICES.md) owns provisioning and live checks. Next sequence: provider activation → controlled cross-client/behavioral validation → Claude Design. GTM promises must distinguish implemented capability from activated and validated experience.
+Current delivery status: the local MVP foundation is closed, including voice/calling. This is not a claim of live-provider availability, release readiness or validated product-market fit. [STATUS](../development/STATUS.md) owns implementation/verification evidence; [DEPLOY_EXTERNAL_SERVICES](../development/DEPLOY_EXTERNAL_SERVICES.md) owns provisioning and live checks. Follow STATUS for the current sequence: the Web redesign is implemented, native presentation alignment is temporarily deferred during Web testing, and an additional Claude Design pass is not a prerequisite. GTM promises must distinguish implemented capability from activated and validated experience.
 
 ## DECIDED GTM DIRECTION
 

@@ -1,4 +1,4 @@
-# MIRIAM — product experience completion
+# RIMIAM — product experience completion
 
 ## Current Web refinement — 2026-10-07
 

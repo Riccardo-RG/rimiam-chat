@@ -1,14 +1,10 @@
-# ALLINAGENT — MVP Product Specification & Decision Log
+# RIMIAM — Specifica MVP canonica e Decision Log
 
-**Versione 0.1 · 8 settembre 2026**
+**Specifica consolidata vigente · origine: v0.1, 8 settembre 2026 · revisione editoriale: 7 ottobre 2026.**
+
+Il nome del file `MVP_SPEC_v0.1.md` è mantenuto stabile per i riferimenti: il contenuto incorpora le decisioni approvate successive, fino ad ADR-0015. Non è una fotografia immutata della prima versione né il numero di release dell’app. Il [draft v0.2](MVP_SPEC_v0.2_DRAFT.md) è materiale di evoluzione conservato come fonte, non una specifica sostitutiva adottata; la [riconciliazione](MVP_V0.2_RECONCILIATION.md) ne delimita l’uso. Le decisioni integrali e la loro provenance restano negli [ADR](../decisions/); la policy operativa B2 approvata è conservata integralmente nel [§14.1](#141-policy-operativa-b2-approvata).
 
 Fonte originaria: `Allinagent_MVP_Product_Decision_Log_v0.1.docx`. Il DOCX rimane la fonte storica della versione iniziale; questa specifica canonica incorpora gli aggiornamenti approvati indicati di seguito.
-
-**Revisione documentale 1 · 8 settembre 2026:** incorporata esclusivamente la [Decisione 1 — Prima authority, Goal iniziale e setup progressivo (ADR-0001)](../decisions/ADR-0001-prima-authority-goal-iniziale-setup-progressivo.md), stato **APPROVED DECISION**, su approvazione formale dell’utente in questa conversazione Codex. Il record conserva il testo esatto approvato, inclusa la correzione del punto 2, provenance, motivazione e supersessioni. Il percorso della specifica resta stabile; le altre decisioni non sono modificate da questa revisione.
-
-**Revisione documentale 2 · 9 settembre 2026:** incorporata la [Decisione 2 — Affermazioni attribuite, informazioni accettate e impegni (ADR-0002)](../decisions/ADR-0002-affermazioni-attribuite-informazioni-accettate-impegni.md), **APPROVED DECISION**. L’ADR contiene i 12 punti approvati, con il solo punto 4 sostitutivo, provenance, motivazione e supersessioni. ADR-0001 resta invariato; questa revisione non approva altre decisioni o implementazioni.
-
-**Revisione documentale 3 · 9 settembre 2026:** incorporata la [Decisione 3 — Lifecycle del Goal, continuità e relazioni (ADR-0003)](../decisions/ADR-0003-lifecycle-goal-continuita-relazioni.md), **APPROVED DECISION**. Testo completo e provenance nell’ADR: 12 punti con il solo punto 2 sostitutivo. ADR-0001 e ADR-0002 restano invariati; nessun’altra decisione o implementazione è approvata da questo atto.
 
 Documento consolidato delle decisioni di prodotto prese durante la fase di discovery. Definisce la tesi dell'MVP, il modello del workspace, il comportamento di Miriam, la governance del Context, l'authority, l'Active Work e il modello multi-actor.
 
@@ -16,7 +12,7 @@ Documento consolidato delle decisioni di prodotto prese durante la fase di disco
 
 ## Stato del documento
 
-**Allineamento documentale · 13 settembre 2026:** scope approvato fino ad ADR-0015; foundation implementativa locale chiusa. Le registrazioni datate sotto conservano il perimetro dei rispettivi atti, non indicano lavoro ancora da autorizzare o costruire. Stato e prove correnti: [STATUS](../development/STATUS.md); posizionamento e ipotesi commerciali: [GTM / Product Discovery](MVP_GTM_PRODUCT_DISCOVERY.md). Attivazione dei servizi, verifiche live e su dispositivi, Claude Design e rilascio restano fasi successive: foundation chiusa non significa MVP già validato con utenti reali.
+**Allineamento documentale · 7 ottobre 2026:** scope approvato fino ad ADR-0015. Questa specifica definisce il prodotto richiesto, non certifica disponibilità live o qualità già validata. [STATUS](../development/STATUS.md) conserva lo stato implementativo, le prove e i limiti correnti; la [guida servizi](../development/DEPLOY_EXTERNAL_SERVICES.md) distingue attivazione e verifiche esterne. Il redesign web è già implementato; Claude Design non è una fase obbligatoria ancora da eseguire. L’allineamento delle app native è temporaneamente differito durante i test web. Le registrazioni datate nel Decision Log conservano il perimetro dei rispettivi atti, non il backlog corrente. Posizionamento e ipotesi commerciali: [GTM / Product Discovery](MVP_GTM_PRODUCT_DISCOVERY.md).
 
 - MVP concept: definito.
 - MVP scope: definito, inclusi messaggi vocali, dialogo vocale con RIMIAM e chiamate audio umane entro [ADR-0015](../decisions/ADR-0015-voce-chiamate-consenso-registrazione.md).
@@ -31,7 +27,7 @@ Documento consolidato delle decisioni di prodotto prese durante la fase di disco
 
 ## 1. Executive Summary
 
-Allinagent è un workspace collaborativo AI-native, goal-oriented, nel quale più persone lavorano insieme con Miriam, un'intelligenza AI nativa dello spazio. La conversazione rimane la superficie primaria, ma il sistema trasforma continuamente l'attività del gruppo in uno Shared State persistente, verificabile, correggibile e azionabile.
+RIMIAM è un workspace collaborativo AI-native, goal-oriented, nel quale più persone lavorano insieme con Miriam, un'intelligenza AI nativa dello spazio. La conversazione rimane la superficie primaria, ma il sistema trasforma continuamente l'attività del gruppo in uno Shared State persistente, verificabile, correggibile e azionabile.
 
 > Goal → Conversation → Understanding → Shared Context → Decisions → Artifacts / Tasks → Actions → nuovo State → progresso verso il Goal
 
@@ -45,7 +41,7 @@ I due pilastri sono: continuità del contesto + continuità dell'azione.
 
 ### 1.2 Scenario narrativo principale
 
-Due o più persone vogliono avviare un'attività insieme: per esempio un cocktail bar, un e-commerce, una palestra, un ristorante, un brand o una startup. Lo scenario di riferimento per sviluppo e test è: due amici vogliono aprire un cocktail bar a Perugia.
+Due o più persone vogliono avviare un'attività insieme: per esempio un cocktail bar, un e-commerce, una palestra, un ristorante, un brand o una startup. Lo scenario illustrativo corrente per il design è: due persone vogliono sviluppare insieme la startup RIMIAM. Gli esempi precedenti, incluso il cocktail bar, restano casi di dominio validi e non definiscono un tipo obbligatorio di Workspace.
 
 Oggi userebbero chat, motori di ricerca, Drive, note, calendario e ChatGPT. Nell'MVP hanno un unico spazio che comprende cosa stanno costruendo e li aiuta a farlo avanzare.
 
@@ -544,7 +540,13 @@ Questa approvazione chiude B2 per la pianificazione implementativa, non approva 
 
 ## 17. Decision Log consolidato
 
-Le sezioni precedenti costituiscono la specifica consolidata. Questa sezione elenca le decisioni principali in forma compatta per tracciabilità.
+Le sezioni precedenti costituiscono la specifica consolidata. Questa sezione conserva le decisioni principali e le registrazioni storiche per tracciabilità; i testi completi delle decisioni ADR restano nei rispettivi record, mentre la policy operativa B2 è conservata integralmente nel §14.1. Espressioni come «nessuna implementazione autorizzata» o «B2 ancora aperta» descrivono il perimetro alla data dell’atto, non annullano approvazioni successive. L’[indice tematico degli ADR](../development/CODEMAP.md#topic--approved-adr--canonical-reference) guida alle decisioni applicabili; [STATUS](../development/STATUS.md) descrive l’avanzamento attuale.
+
+**Revisione documentale 1 · 8 settembre 2026:** incorporata esclusivamente la [Decisione 1 — Prima authority, Goal iniziale e setup progressivo (ADR-0001)](../decisions/ADR-0001-prima-authority-goal-iniziale-setup-progressivo.md), stato **APPROVED DECISION**, su approvazione formale dell’utente in questa conversazione Codex. Il record conserva il testo esatto approvato, inclusa la correzione del punto 2, provenance, motivazione e supersessioni. Il percorso della specifica resta stabile; le altre decisioni non sono modificate da questa revisione.
+
+**Revisione documentale 2 · 9 settembre 2026:** incorporata la [Decisione 2 — Affermazioni attribuite, informazioni accettate e impegni (ADR-0002)](../decisions/ADR-0002-affermazioni-attribuite-informazioni-accettate-impegni.md), **APPROVED DECISION**. L’ADR contiene i 12 punti approvati, con il solo punto 4 sostitutivo, provenance, motivazione e supersessioni. ADR-0001 resta invariato; questa revisione non approva altre decisioni o implementazioni.
+
+**Revisione documentale 3 · 9 settembre 2026:** incorporata la [Decisione 3 — Lifecycle del Goal, continuità e relazioni (ADR-0003)](../decisions/ADR-0003-lifecycle-goal-continuita-relazioni.md), **APPROVED DECISION**. Testo completo e provenance nell’ADR: 12 punti con il solo punto 2 sostitutivo. ADR-0001 e ADR-0002 restano invariati; nessun’altra decisione o implementazione è approvata da questo atto.
 
 ### MVP Hypothesis
 
@@ -724,13 +726,17 @@ Le sezioni precedenti costituiscono la specifica consolidata. Questa sezione ele
 
 **APPROVED · 2026-09-10.** Modello richiesto dal brief Calendar BUILD, registrato in [ADR-0011](../decisions/ADR-0011-calendar-stato-temporale-osservazioni-azioni.md); sintesi nel §13. Non approva un provider né autorizza WIRE o Workspace Email.
 
+### Workspace Email — privacy, bozze e invio autorizzato
+
+**APPROVED · 2026-09-10.** Modello richiesto dal brief `937d13d3-a684-4e7f-88c2-5cba858f859a/pasted-text.txt`, registrato in [ADR-0012](../decisions/ADR-0012-workspace-email-privacy-bozze-invio.md); sintesi nel §13. Nessun provider o WIRE approvato/attivato.
+
 ### Voce e chiamate — consenso e fonti
 
 **APPROVED, 2026-09-13:** [ADR-0015](../decisions/ADR-0015-voce-chiamate-consenso-registrazione.md) registra l’estensione audio di §§2.5/15 e la regola completa del consenso personale a registrazione, trascrizione e storia condivisa. Analisi post-call separatamente richiesta; nessuna adozione o authority implicita.
 
 ## 18. Ordine di costruzione raccomandato
 
-L’elenco seguente conserva l’ordine raccomandato nella discovery iniziale, non il backlog attuale. Lo scope si è esteso attraverso le approvazioni successive, inclusa ADR-0015. Il [checkpoint corrente](../development/STATUS.md) registra la foundation locale chiusa e la sequenza successiva: attivazione provider → verifica reale cross-client e comportamentale → Claude Design. Il principio di implementazione per vertical slice utilizzabili resta valido.
+L’elenco seguente conserva l’ordine raccomandato nella discovery iniziale, non il backlog attuale. Lo scope si è esteso attraverso le approvazioni successive, inclusa ADR-0015. Per avanzamento reale, servizi attivi, verifiche ancora necessarie e prossimo passo usare esclusivamente il [checkpoint corrente](../development/STATUS.md); l’ordine storico qui sotto non prescrive una nuova fase di design o BUILD. Il principio di implementazione per vertical slice utilizzabili resta valido.
 
 1. Workspace multi-user + Goal + Conversation realtime.
 2. Context Engine incrementale + Shared Context strutturato + provenance/versioning + Correction Loop.
@@ -777,8 +783,3 @@ Questa direzione non implica supervisione runtime di ogni risposta da parte di u
 > “Miriam non aspetta semplicemente di rispondere: lavora dentro lo stesso stato vivo in cui lavora il gruppo.”
 
 > “Agents are replaceable; workspace memory is durable.”
-
-
-### Workspace Email — privacy, bozze e invio autorizzato
-
-**APPROVED · 2026-09-10.** Modello richiesto dal brief `937d13d3-a684-4e7f-88c2-5cba858f859a/pasted-text.txt`, registrato in [ADR-0012](../decisions/ADR-0012-workspace-email-privacy-bozze-invio.md); sintesi nel §13. Nessun provider o WIRE approvato/attivato.

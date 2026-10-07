@@ -1,4 +1,6 @@
-# Allinagent Architecture Proposal v0.2
+# RIMIAM — Architecture Proposal v0.2
+
+**Reading note · 2026-10-07:** originally titled “Allinagent Architecture Proposal v0.2”. This remains a proposal with dated refinements, not a description of every current implementation choice or a blanket architecture approval. Approved ADRs and the [canonical MVP](../product/MVP_SPEC_v0.1.md) govern semantics; [CODEMAP](../development/CODEMAP.md) and [STATUS](../development/STATUS.md) describe current code boundaries and delivery evidence. Historical approval/BUILD limitations below belong to their dated acts.
 
 **REFINED — 2026-09-10:** [ADR-0014 v2](../decisions/ADR-0014-active-work-specialist-contribution.md) approves Active Work / Specialist contribution semantics referenced in §§7, 10, 12 and 19: Work Contracts, shared operational control, continuity and governed outputs. Historical inference leases, coarse invalidation and actor-registry suggestions do not define that product model or mandate a generic framework. This remains an architecture proposal; [the implementation gate](../development/ACTIVE_WORK_GATE.md) proposes a bounded first increment, with no BUILD authorization.
 

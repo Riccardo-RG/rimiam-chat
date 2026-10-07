@@ -1,4 +1,4 @@
-# MIRIAM — CODEMAP
+# RIMIAM — CODEMAP
 
 Updated 2026-10-07; linked entry paths verified. Navigation only; current scope, verification and limits: [STATUS](STATUS.md). Follow imports/references from these entry points. Update affected links when boundaries move; do not expand this into an inventory.
 

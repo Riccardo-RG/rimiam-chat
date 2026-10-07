@@ -1,8 +1,8 @@
-# Allinagent repository instructions
+# RIMIAM repository instructions
 
 ## Source of truth
 
-Read [docs/product/MVP_SPEC_v0.1.md](docs/product/MVP_SPEC_v0.1.md) before product or domain changes. It is the canonical product source of truth. If implementation convenience conflicts with a product invariant, preserve the invariant and surface the conflict.
+Read [docs/product/MVP_SPEC_v0.1.md](docs/product/MVP_SPEC_v0.1.md) before product or domain changes. It is the current consolidated product source of truth; `v0.1` is its stable historical filename, not the current application version. The v0.2 draft and architecture proposals do not supersede approved semantics. If implementation convenience conflicts with a product invariant, preserve the invariant and surface the conflict.
 
 For initial Goal, first authority and progressive authority setup, also read the exact approved [Decision 1 / ADR-0001](docs/decisions/ADR-0001-prima-authority-goal-iniziale-setup-progressivo.md), approved on 2026-09-08 and incorporated into the specification. Its scoped supersessions are explicit in the ADR. This product approval does not approve the remaining architecture proposals or authorize implementation.
 
@@ -12,7 +12,7 @@ Preserve the specification's distinctions between confirmed decisions, recommend
 
 ## Product identity
 
-Allinagent is an AI-native collaborative workspace. It is not primarily a chatbot, generic AI assistant, project-management app or multi-bot chat application. Conversation is the main human interface while the workspace maintains persistent, structured, inspectable and actionable shared state. Miriam is the native collaborative intelligence of the workspace.
+RIMIAM is an AI-native collaborative workspace. It is not primarily a chatbot, generic AI assistant, project-management app or multi-bot chat application. Conversation is the main human interface while the workspace maintains persistent, structured, inspectable and actionable shared state. Miriam is the native collaborative intelligence of the workspace.
 
 ## Core product invariants
 
