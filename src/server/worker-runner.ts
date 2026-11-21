@@ -1,4 +1,5 @@
 import { processCall, recoverCalls, reconcileCalls } from "./call-worker.ts";
+import { processWebPush, recoverWebPush } from "./web-push.ts";
 import { transcribeCallRecording } from "./call-transcripts.ts";
 import { processAccountMail, recoverAccountMail } from "./account-delivery.ts";
 import {
@@ -17,6 +18,10 @@ import {
   recoverExpiredInterpretations,
   type Interpreter,
 } from "./interpretation.ts";
+import {
+  processPersonalBrief,
+  recoverPrivateBriefs,
+} from "./personal-research.ts";
 import { processResearch, recoverResearch } from "./research.ts";
 import type { ResearchProvider } from "./research-provider.ts";
 import {
@@ -32,7 +37,7 @@ import {
   recoverEmail,
 } from "./email-worker.ts";
 export async function runWorker(
-  interpreter: Interpreter,
+  interpreter?: Interpreter,
   researchProvider?: ResearchProvider,
   calendarProvider?: CalendarProvider,
   emailProvider?: EmailProvider,
@@ -44,6 +49,10 @@ export async function runWorker(
     pollInterval: 1000,
     parsedCronItems: [],
     taskList: {
+      web_push: async (payload) => {
+        const { id } = z.object({ id: z.uuid() }).parse(payload);
+        await processWebPush(id);
+      },
       call_transcribe: async (payload) => {
         const { id } = z.object({ id: z.uuid() }).parse(payload);
         await transcribeCallRecording(id);
@@ -74,9 +83,10 @@ export async function runWorker(
             workspaceId: z.uuid(),
             id: z.uuid(),
             version: z.number().int().positive(),
+            scheduledAt: z.iso.datetime({ offset: true }).optional(),
           })
           .parse(payload);
-        await processFollowup(p.workspaceId, p.id, p.version);
+        await processFollowup(p.workspaceId, p.id, p.version, p.scheduledAt);
       },
       email_send: async (payload) => {
         const { id } = z.object({ id: z.uuid() }).parse(payload);
@@ -98,6 +108,16 @@ export async function runWorker(
         const input = z.object({ deliveryId: z.uuid() }).parse(payload);
         await processAccountMail(input.deliveryId);
       },
+      personal_research_brief: async (payload) => {
+        const p = z
+          .object({
+            workspace: z.uuid(),
+            workId: z.uuid(),
+            generation: z.number().int().positive(),
+          })
+          .parse(payload);
+        await processPersonalBrief(p.workspace, p.workId, p.generation);
+      },
       research: async (payload) => {
         const input = z.object({ workId: z.uuid() }).parse(payload);
         await processResearch(input.workId, researchProvider);
@@ -113,6 +133,7 @@ export async function runWorker(
   );
   await recoverExpiredInterpretations();
   await recoverResearch();
+  await recoverPrivateBriefs();
   await recoverAccountMail();
   await recoverInvitationMail();
   await recoverCalendar();
@@ -121,6 +142,7 @@ export async function runWorker(
   await recoverActiveWork(analysisSpecialist);
   await recoverDocuments();
   await recoverCalls();
+  await recoverWebPush();
   let reconcilingCalls = false;
   const callRecovery = setInterval(() => {
     if (reconcilingCalls) return;
@@ -132,6 +154,9 @@ export async function runWorker(
       });
   }, 3000);
   const recovery = setInterval(() => {
+    void recoverWebPush().catch(() =>
+      console.error("Web Push recovery failed"),
+    );
     void recoverCalls().catch(() =>
       console.error("Call transcription recovery failed"),
     );
@@ -153,6 +178,9 @@ export async function runWorker(
     );
     void recoverAccountMail().catch(() =>
       console.error("Account delivery recovery failed"),
+    );
+    void recoverPrivateBriefs().catch(() =>
+      console.error("Personal research recovery failed"),
     );
     void recoverResearch().catch(() =>
       console.error("Research recovery failed"),

@@ -3,6 +3,14 @@ import { z } from "zod";
 
 const version = z.number().int().positive();
 const reason = z.string().trim().min(1).max(2000);
+const taskStatus = z.enum([
+  "open",
+  "in_progress",
+  "standby",
+  "completed",
+  "cancelled",
+]);
+const commentBody = z.string().trim().min(1).max(2000);
 export const workRefSchema = z
   .object({
     kind: z.enum([
@@ -43,14 +51,72 @@ export const taskContentSchema = z
   .strict();
 export type TaskContent = z.infer<typeof taskContentSchema>;
 const taskBase = { taskId: z.uuid(), expectedVersion: version, reason };
+export const followupRecurrenceSchema = z
+  .object({
+    weekdays: z
+      .array(z.number().int().min(1).max(7))
+      .min(1)
+      .max(7)
+      .refine((days) => new Set(days).size === days.length)
+      .meta({
+        uniqueItems: true,
+        description:
+          "ISO weekdays in the reminder's time zone, Monday (1) through Sunday (7). Selecting all seven repeats daily.",
+      }),
+    until: z.iso
+      .date()
+      .describe("Inclusive final calendar date in the reminder's time zone.")
+      .optional(),
+  })
+  .strict();
+export type FollowupRecurrence = z.infer<typeof followupRecurrenceSchema>;
 const followupContent = {
   content: z.string().trim().min(1).max(2000),
   kind: z.enum(["remember", "check", "request_update", "review"]),
   remindAt: z.iso.datetime({ offset: true }),
   timeZone: taskContentSchema.shape.timeZone,
   reference: workRefSchema.nullable(),
+  // On revision, omission preserves a rule written by a newer client.
+  // Explicit null switches the reminder back to a single occurrence.
+  recurrence: followupRecurrenceSchema.nullable().optional(),
 };
 export const taskCommandSchemas = [
+  z
+    .object({
+      type: z.literal("task.comment"),
+      taskId: z.uuid(),
+      expectedVersion: version,
+      body: commentBody,
+    })
+    .strict(),
+  z.object({ type: z.literal("task.decline"), ...taskBase }).strict(),
+  z
+    .object({
+      type: z.literal("followup.occurrence"),
+      followupId: z.uuid(),
+      expectedVersion: version,
+      scheduledAt: z.iso.datetime({ offset: true }),
+      action: z.enum(["hide", "close", "replace", "replace_following"]),
+      replacement: z
+        .object({
+          content: followupContent.content,
+          remindAt: followupContent.remindAt,
+          timeZone: followupContent.timeZone,
+        })
+        .strict()
+        .optional(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("followup.previous"),
+      followupId: z.uuid(),
+      before: z.iso.datetime({ offset: true }),
+      action: z.enum(["archive", "remind_today"]),
+      remindAt: z.iso.datetime({ offset: true }).optional(),
+      timeZone: followupContent.timeZone,
+    })
+    .strict(),
   z
     .object({
       type: z.literal("task.create"),
@@ -101,7 +167,7 @@ export const taskCommandSchemas = [
     .object({
       type: z.literal("task.status"),
       ...taskBase,
-      status: z.enum(["open", "in_progress", "completed", "cancelled"]),
+      status: taskStatus,
       noNormativeEffect: z.literal(true),
     })
     .strict(),
@@ -133,7 +199,7 @@ export type TaskCommand = z.infer<typeof taskCommandSchema>;
 export const taskViewItemSchema = taskContentSchema.extend({
   id: z.uuid(),
   version,
-  status: z.enum(["open", "in_progress", "completed", "cancelled"]),
+  status: taskStatus,
   actor: z.string(),
   createdAt: z.string(),
   reason: z.string(),
@@ -141,6 +207,7 @@ export const taskViewItemSchema = taskContentSchema.extend({
   responsible: z.string().nullable(),
   acceptedVersion: version.nullable(),
   responsibleAvailable: z.boolean(),
+  declinedBy: z.string().nullable().optional(),
 });
 export const followupViewItemSchema = z.object({
   ...followupContent,
@@ -152,6 +219,7 @@ export const followupViewItemSchema = z.object({
   reason: z.string(),
   needsReview: z.boolean(),
   deliveredAt: z.string().nullable(),
+  nextRemindAt: z.iso.datetime({ offset: true }).nullable().optional(),
 });
 export const taskProposalSchema = z.object({
   id: z.uuid(),
@@ -180,10 +248,27 @@ export const tasksViewSchema = z.object({
 });
 export type TasksView = z.infer<typeof tasksViewSchema>;
 export type TaskItem = z.infer<typeof taskViewItemSchema>;
+export const taskCommentsSchema = z.object({
+  comments: z.array(
+    z.object({
+      id: z.uuid(),
+      actor: z.string(),
+      authorName: z.string(),
+      body: commentBody,
+      taskVersion: version,
+      createdAt: z.iso.datetime(),
+    }),
+  ),
+  next: z.string().nullable(),
+});
 export type FollowupItem = z.infer<typeof followupViewItemSchema>;
 export const tasksHistorySchema = z.object({
   versions: z.array(z.record(z.string(), z.unknown())),
   acceptances: z.array(z.record(z.string(), z.unknown())),
   references: z.array(z.record(z.string(), z.unknown())),
   proposals: z.array(z.record(z.string(), z.unknown())),
+  nextDelivery: z
+    .object({ version, scheduledAt: z.iso.datetime({ offset: true }) })
+    .nullable()
+    .optional(),
 });

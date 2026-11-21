@@ -186,7 +186,7 @@ export async function emailAttachments(
     if (a.kind === "workspace_source") {
       const s = (
         await tx.query(
-          `SELECT * FROM external_source s WHERE s.workspace_id=$1 AND s.id=$2 AND s.kind='document' AND NOT EXISTS(SELECT 1 FROM external_source n WHERE n.workspace_id=s.workspace_id AND n.document_id=s.document_id AND n.document_version>s.document_version)`,
+          `SELECT * FROM available_external_source s WHERE s.workspace_id=$1 AND s.id=$2 AND s.kind='document' AND NOT EXISTS(SELECT 1 FROM external_source n WHERE n.workspace_id=s.workspace_id AND n.document_id=s.document_id AND n.document_version>s.document_version)`,
           [w, a.id],
         )
       ).rows[0];

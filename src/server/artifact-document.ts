@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { referenceSourceRelation } from "./reference-sources.ts";
 import type {
   ArtifactBlock,
   ArtifactDocumentCommand,
@@ -87,6 +88,21 @@ export async function composeArtifact(
     ).rows[0];
     requireThat(contribution, "CONTRIBUTION_NOT_FOUND", 404);
     if (c.type === "artifact.from_contribution") {
+      if (c.saveToLibrary) {
+        // execute() has locked this Workspace. Concurrent saves by different
+        // members converge on the existing file without adopting it.
+        const priorCopy = (
+          await tx.query<{ artifact_id: string; artifact_version: number }>(
+            "SELECT d.artifact_id,d.artifact_version FROM artifact_document d JOIN artifact_version v ON (v.workspace_id,v.artifact_id,v.version)=(d.workspace_id,d.artifact_id,d.artifact_version) WHERE d.workspace_id=$1 AND d.contribution_id=$2 AND v.generator='contribution_document_v1' ORDER BY v.created_at,d.artifact_id LIMIT 1",
+            [w, contribution.id],
+          )
+        ).rows[0];
+        if (priorCopy)
+          return {
+            artifactId: priorCopy.artifact_id,
+            version: priorCopy.artifact_version,
+          };
+      }
       blocks = [
         { type: "paragraph", text: contribution.body },
         { type: "paragraph", text: contribution.qualification },
@@ -140,7 +156,7 @@ export async function composeArtifact(
       requireThat(
         (
           await tx.query(
-            "SELECT 1 FROM external_source WHERE workspace_id=$1 AND id=$2 AND media_type LIKE 'image/%'",
+            "SELECT 1 FROM available_external_source WHERE workspace_id=$1 AND id=$2 AND media_type LIKE 'image/%'",
             [w, block.sourceId],
           )
         ).rowCount,
@@ -155,8 +171,9 @@ export async function composeArtifact(
     requireThat(
       (
         await tx.query(
-          "SELECT 1 FROM workspace_source WHERE workspace_id=$1 AND id=$2",
-          [w, id],
+          `SELECT 1 FROM ${referenceSourceRelation} s WHERE workspace_id=$1 AND id=$2
+           UNION ALL SELECT 1 FROM document_visibility WHERE NOT $3::boolean AND workspace_id=$1 AND source_id=$2 AND withdrawn`,
+          [w, id, sourceIds.includes(id)],
         )
       ).rowCount,
       "SOURCE_NOT_FOUND",

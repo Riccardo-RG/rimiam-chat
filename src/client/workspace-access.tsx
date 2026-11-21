@@ -1,4 +1,6 @@
 "use client";
+import { useUiLanguage } from "./ui-language";
+
 import { useEffect, useState } from "react";
 import { api } from "./api";
 import type { Command } from "@/contracts/commands";
@@ -25,6 +27,7 @@ export function WorkspaceAccess({
   action: (fn: () => Promise<void>) => Promise<void>;
   busy: boolean;
 }) {
+  const { t: uiText } = useUiLanguage();
   const [loaded, setLoaded] = useState<{
       workspace: string;
       view: AccessView;
@@ -75,11 +78,15 @@ export function WorkspaceAccess({
   const name = (id: string) =>
     view?.members.find((m) => m.id === id)?.name ?? "Partecipante storico";
   return (
-    <section className="card source-work" aria-label="Accordi di accesso">
-      <h2>Accordi di accesso</h2>
+    <section
+      className="card source-work"
+      aria-label={uiText("Accordi di accesso")}
+    >
+      <h2>{uiText("Accordi di accesso")}</h2>
       <p className="hint">
-        Invitare persone e amministrare l’accesso non autorizza a decidere sul
-        progetto. La storia condivisa è visibile ai membri ammessi.
+        {uiText(
+          "Invitare persone e amministrare l’accesso non autorizza a decidere sul progetto. La storia condivisa è visibile ai membri ammessi.",
+        )}
       </p>
       {error && <p role="alert">{error}</p>}
       {view && (
@@ -91,22 +98,23 @@ export function WorkspaceAccess({
                 <article key={r.id} className="item">
                   <strong>{r.holderName}</strong> ·{" "}
                   {r.kind === "stewardship"
-                    ? "gestione dell’accesso"
-                    : "solo inviti"}{" "}
-                  · v{r.version}
+                    ? uiText("gestione dell’accesso")
+                    : uiText("solo inviti")}{" "}
+                  {uiText("· v")}
+                  {r.version}
                   <p>
                     {r.available
-                      ? "Partecipazione disponibile"
-                      : "Partecipazione attualmente non esercitabile"}
+                      ? uiText("Partecipazione disponibile")
+                      : uiText("Partecipazione attualmente non esercitabile")}
                   </p>
                   <p>
-                    Modifiche:{" "}
+                    {uiText("Modifiche:")}{" "}
                     {r.conditions
                       .map(
                         (c) =>
                           `${name(c.holderId)}${c.available ? "" : " (indisponibile)"}`,
                       )
-                      .join(" + ") || "Secondo l’accordo corrente"}
+                      .join(" + ") || uiText("Secondo l’accordo corrente")}
                     .
                   </p>
                   <button
@@ -122,15 +130,17 @@ export function WorkspaceAccess({
                       )
                     }
                   >
-                    Storia dell’accordo
+                    {uiText("Storia dell’accordo")}
                   </button>
                   {r.holderId === actor && (
                     <details>
-                      <summary>Rinunciare alla mia partecipazione</summary>
+                      <summary>
+                        {uiText("Rinunciare alla mia partecipazione")}
+                      </summary>
                       <p>
-                        Rimani membro. Le condizioni degli altri non vengono
-                        ridotte e la gestione potrebbe diventare indisponibile.
-                        Non è necessario nominare un successore.
+                        {uiText(
+                          "Rimani membro. Le condizioni degli altri non vengono ridotte e la gestione potrebbe diventare indisponibile. Non è necessario nominare un successore.",
+                        )}
                       </p>
                       <button
                         disabled={busy}
@@ -141,7 +151,9 @@ export function WorkspaceAccess({
                           })
                         }
                       >
-                        Confermo la rinuncia alla gestione dell’accesso
+                        {uiText(
+                          "Confermo la rinuncia alla gestione dell’accesso",
+                        )}
                       </button>
                     </details>
                   )}
@@ -150,13 +162,13 @@ export function WorkspaceAccess({
           </div>
           {!view.relationships.some((r) => r.available && r.changeAccess) && (
             <p role="status">
-              Nessuna gestione dell’accesso è attualmente esercitabile. La
-              partecipazione già permessa continua; nessuno viene promosso
-              automaticamente.
+              {uiText(
+                "Al momento nessuno può gestire gli accessi. I membri attuali possono continuare a partecipare. Il ruolo non passa automaticamente a un’altra persona.",
+              )}
             </p>
           )}
           <details>
-            <summary>Proporre un accordo di accesso</summary>
+            <summary>{uiText("Proporre un accordo di accesso")}</summary>
             <form
               onSubmit={(e) => {
                 e.preventDefault();
@@ -173,26 +185,26 @@ export function WorkspaceAccess({
               }}
             >
               <label>
-                Accordo
+                {uiText("Accordo")}
                 <select
                   value={kind}
                   onChange={(e) => setKind(e.target.value as typeof kind)}
                 >
                   <option value="stewardship">
-                    Gestione nominativa dell’accesso
+                    {uiText("Gestione nominativa dell’accesso")}
                   </option>
                   <option value="delegation">
-                    Delega limitata agli inviti
+                    {uiText("Delega limitata agli inviti")}
                   </option>
                 </select>
               </label>
               {kind === "stewardship" ? (
                 <fieldset>
-                  <legend>Nuovo insieme completo dei gestori</legend>
+                  <legend>{uiText("Chi gestirà gli accessi?")}</legend>
                   <p>
-                    Sostituisce l’insieme corrente. Se scegli più persone, le
-                    loro partecipazioni saranno protette da approvazione
-                    congiunta nominativa.
+                    {uiText(
+                      "Sostituisce l’insieme corrente. Se scegli più persone, le loro partecipazioni saranno protette da approvazione congiunta nominativa.",
+                    )}
                   </p>
                   {view.members
                     .filter((m) => m.active)
@@ -205,7 +217,7 @@ export function WorkspaceAccess({
                 </fieldset>
               ) : (
                 <label>
-                  Destinatario
+                  {uiText("Destinatario")}
                   <select name="person" required>
                     {view.members
                       .filter((m) => m.active)
@@ -218,10 +230,12 @@ export function WorkspaceAccess({
                 </label>
               )}
               <label>
-                Motivazione
+                {uiText("Motivazione")}
                 <textarea name="reason" required maxLength={4000} />
               </label>
-              <button disabled={busy}>Prepara proposta e termini</button>
+              <button disabled={busy}>
+                {uiText("Prepara proposta e termini")}
+              </button>
             </form>
           </details>
           {view.relationships
@@ -229,7 +243,8 @@ export function WorkspaceAccess({
             .map((r) => (
               <details key={r.id}>
                 <summary>
-                  Revocare la delega agli inviti di {r.holderName}
+                  {uiText("Revocare la delega agli inviti di ")}
+                  {r.holderName}
                 </summary>
                 <form
                   onSubmit={(e) => {
@@ -245,10 +260,10 @@ export function WorkspaceAccess({
                   }}
                 >
                   <label>
-                    Motivazione
+                    {uiText("Motivazione")}
                     <input name="reason" required maxLength={4000} />
                   </label>
-                  <button disabled={busy}>Proponi revoca</button>
+                  <button disabled={busy}>{uiText("Proponi revoca")}</button>
                 </form>
               </details>
             ))}
@@ -257,23 +272,25 @@ export function WorkspaceAccess({
               <summary>
                 {kindName[p.kind]} ·{" "}
                 {p.status === "adopted"
-                  ? "adottato"
+                  ? uiText("adottato")
                   : p.status === "stale"
-                    ? "da riproporre: stato cambiato"
-                    : "in attesa"}
+                    ? uiText("da riproporre: stato cambiato")
+                    : uiText("in attesa")}
               </summary>
               <p>
-                {p.reason} · proposta di {name(p.proposedBy)}
+                {p.reason}
+                {uiText(" · proposta di ")}
+                {name(p.proposedBy)}
               </p>
               <p>
-                Partecipazioni risultanti:{" "}
+                {uiText("Partecipazioni risultanti:")}{" "}
                 {p.targets
                   .filter((t) => t.active)
                   .map(
                     (t) =>
                       `${name(t.holderId)} (${t.kind === "stewardship" ? "gestione" : "inviti"})`,
                   )
-                  .join(", ") || "La delega indicata termina"}
+                  .join(", ") || uiText("La delega indicata termina")}
                 .
               </p>
               <ul>
@@ -284,14 +301,14 @@ export function WorkspaceAccess({
               {p.required.map((r, i) => (
                 <p key={i}>
                   {r.role === "holder"
-                    ? "Accettazione dei termini"
-                    : "Autorizzazione della modifica"}
+                    ? uiText("Accettazione dei termini")
+                    : uiText("Autorizzazione della modifica")}
                   : {name(r.personId)} ·{" "}
                   {p.approvals.some(
                     (a) => a.role === r.role && a.personId === r.personId,
                   )
-                    ? "registrata"
-                    : "in attesa"}
+                    ? uiText("registrata")
+                    : uiText("in attesa")}
                   {p.status === "pending" &&
                     r.personId === actor &&
                     !p.approvals.some(
@@ -310,8 +327,8 @@ export function WorkspaceAccess({
                         }
                       >
                         {r.role === "holder"
-                          ? "Accetto questi termini per me"
-                          : "Autorizzo questa modifica esatta"}
+                          ? uiText("Accetto questi termini per me")
+                          : uiText("Autorizzo questa modifica esatta")}
                       </button>
                     )}
                 </p>
@@ -320,25 +337,30 @@ export function WorkspaceAccess({
           ))}
           {view.next && (
             <button onClick={() => setBefore(view.next)}>
-              Proposte precedenti
+              {uiText("Proposte precedenti")}
             </button>
           )}
           {before && (
-            <button onClick={() => setBefore(null)}>Proposte recenti</button>
+            <button onClick={() => setBefore(null)}>
+              {uiText("Proposte recenti")}
+            </button>
           )}
           {history?.workspace === workspace && (
             <details open>
-              <summary>Storia attribuita dell’accordo</summary>
+              <summary>{uiText("Storia attribuita dell’accordo")}</summary>
               {history.value.versions.map((v) => (
                 <article key={v.version}>
-                  <strong>Versione {v.version}</strong> ·{" "}
-                  {v.active ? "attiva" : "terminata"}
+                  <strong>
+                    {uiText("Versione ")}
+                    {v.version}
+                  </strong>{" "}
+                  · {v.active ? uiText("attiva") : uiText("terminata")}
                   <p>
                     {name(v.actor)} · {new Date(v.createdAt).toLocaleString()} ·{" "}
                     {v.basis}
                   </p>
                   <p>
-                    Condizioni nominative:{" "}
+                    {uiText("Condizioni nominative:")}{" "}
                     {v.requiredParticipations
                       .map((id) =>
                         name(
@@ -363,7 +385,7 @@ export function WorkspaceAccess({
                     )
                   }
                 >
-                  Versioni precedenti
+                  {uiText("Versioni precedenti")}
                 </button>
               )}
             </details>

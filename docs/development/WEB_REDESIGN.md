@@ -1,0 +1,16 @@
+# Responsive Web redesign
+
+The [founder interview](../design/reviews/2026-11-19-web/INTERVISTA.md) records the interaction decisions. The [verified screen captures](../design/reviews/2026-11-19-web/verifica/README.md) show one conversation in both themes and at phone width. **Appearance offers System, Light and Dark.** The 19 November captures include the editorial scenery used in that release. The local Web revision uses a compact header with the space’s name and an optional uploaded picture. Profile and Workspace photos identify people and groups; attachments are shared content. [Brand and artwork](../design/BRAND.md).
+
+| Journey | Local evidence |
+| --- | --- |
+| Return from Home | Groups and direct chats appear together. [Personal reading](../../tests/e2e/conversation-reading.spec.ts) exercises the oldest unseen mention, skipping to the end and reopening the previous position. Human-requested responses and quoted replies retain the exact source. |
+| Private conversations | [Two-member browser scenario](../../tests/e2e/direct-chat.spec.ts), [consent and recap](../../tests/direct-chat.test.ts). Creating a group with the same contact leaves the direct chat and its files separate. |
+| Shared files | [Attachment journey](../../tests/e2e/chat-attachments.spec.ts) in Chromium and Firefox, including reordered files, reload after a lost acknowledgement, an authenticated preview and return to the original message. [Archive and access](../../tests/private-consultation-library.test.ts) cover personal stars and copies after leaving a group. |
+| Context, comparisons and documents | Private questions, on-demand recaps, original references and explicit sharing use the [consultation boundary](../../src/server/private-consultation.ts). A [generated document](../../tests/e2e/private-document.spec.ts) stays in the reader’s private archive until shared. [Working documents](../../tests/e2e/artifacts.spec.ts) retain earlier versions and support download and independent re-upload. The [work scenario](../../tests/e2e/active-work.spec.ts) opens the original completed contribution and its evidence. |
+| Personal assistant and agenda | [Personal conversations and research](PERSONAL_CHAT.md) and [Home agenda](../../tests/e2e/home-agenda.spec.ts). Two local accounts exercised named invitations, RSVP and explicit Task responsibility on the original conversation line. |
+| Appearance and membership | [Account and Workspace identity](../../tests/e2e/identity-photos.spec.ts), [decision in the timeline](../../tests/e2e/timeline-decisions.spec.ts) and [view widths and preserved drafts](../../tests/e2e/product-shell.spec.ts). The appearance and identity flows were exercised in Chromium and Firefox. |
+
+The 19 November milestone passed the full automated suite (513 tests across 69 files), TypeScript, formatting, Web and backend production builds. ESLint reported one unused-variable warning in the archived design prototype.
+
+The optimized build ran locally with real session checks, PostgreSQL and a worker. Scenarios that require an AI model, email provider or calendar provider use isolated test inputs or doubles. Safari/WebKit could not launch for this local verification. Earlier device and Railway evidence in [STATUS](STATUS.md) applies to the versions named there. Release and physical-device acceptance are separate.

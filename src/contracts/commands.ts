@@ -5,7 +5,7 @@ import { z } from "zod";
 import { voiceSendSchema } from "./voice.ts";
 import { calendarCommandSchemas } from "./calendar.ts";
 import { emailCommandSchemas } from "./email.ts";
-import { taskCommandSchemas } from "./tasks.ts";
+import { taskContentSchema, taskCommandSchemas } from "./tasks.ts";
 import {
   workSuggestionCommandSchema,
   activeWorkCommandSchema,
@@ -17,6 +17,10 @@ import { artifactDocumentCommands } from "./artifact-document.ts";
 import { workspaceLinkCommandSchema } from "./workspace-links.ts";
 import { conversationReferenceSchema } from "./activity.ts";
 import { productAssistanceSchema } from "./product-assistance.ts";
+import {
+  conversationAnswerCommands,
+  conversationAddressFields,
+} from "./conversation-reading.ts";
 
 // Public command vocabulary. Domain authorization is enforced exclusively by application services.
 const selection = {
@@ -90,7 +94,22 @@ export const uploadDocumentSchema = z.object({
   bytesBase64: z.string().min(1).max(11184812),
   previousSourceId: z.uuid().optional(),
   allowModelProcessing: z.literal(true).optional(),
+  conversationShare: z
+    .object({ workstreamFocus: workstreamFocusSchema.optional() })
+    .strict()
+    .optional(),
 });
+const visibilityInput = {
+  sourceId: z.uuid(),
+  documentVersion: z.number().int().positive(),
+  expectedVisibilityVersion: z.number().int().positive(),
+};
+export const withdrawDocumentSchema = z
+  .object({ type: z.literal("document.withdraw"), ...visibilityInput })
+  .strict();
+export const restoreDocumentSchema = z
+  .object({ type: z.literal("document.restore"), ...visibilityInput })
+  .strict();
 export const retryDocumentSchema = z
   .object({
     type: z.literal("document.retry"),
@@ -98,6 +117,25 @@ export const retryDocumentSchema = z
     allowModelProcessing: z.literal(true).optional(),
   })
   .strict();
+
+export const messageAttachmentsSchema = z
+  .array(
+    uploadDocumentSchema
+      .pick({
+        filename: true,
+        bytesBase64: true,
+        allowModelProcessing: true,
+      })
+      .strict(),
+  )
+  .min(1)
+  .max(10)
+  .refine(
+    (files) =>
+      files.reduce((sum, file) => sum + file.bytesBase64.length, 0) <=
+      11184812 + 40,
+    { message: "Allegati: massimo 8 MiB complessivi per messaggio." },
+  );
 
 export const researchRequestSchema = z.object({
   type: z.literal("research.request"),
@@ -114,6 +152,7 @@ export const researchControlSchema = z.object({
 const id = z.uuid();
 const text = z.string().trim().min(1).max(12000);
 export const commandSchema = z.discriminatedUnion("type", [
+  ...conversationAnswerCommands,
   ...callCommandSchemas,
   voiceSendSchema,
   ...attentionCommandSchemas,
@@ -133,7 +172,34 @@ export const commandSchema = z.discriminatedUnion("type", [
   questionAnswerSchema,
   questionReopenSchema,
   uploadDocumentSchema,
+  withdrawDocumentSchema,
+  restoreDocumentSchema,
   retryDocumentSchema,
+  z
+    .object({
+      type: z.literal("research.private_request"),
+      query: z.string().trim().min(1).max(500),
+      discloseQuery: z.literal(true),
+      analyzeExcerpts: z.literal(true),
+      notify: z.boolean(),
+      originId: z.uuid().optional(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("research.private_publish"),
+      workId: z.uuid(),
+      generation: z.number().int().positive(),
+      destinationId: z.uuid(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("research.brief_retry"),
+      workId: z.uuid(),
+      generation: z.number().int().positive(),
+    })
+    .strict(),
   researchRequestSchema,
   workspaceLinkCommandSchema,
   researchControlSchema,
@@ -147,19 +213,54 @@ export const commandSchema = z.discriminatedUnion("type", [
     goalId: id,
     version: z.number().int().positive(),
   }),
-  z.object({
-    type: z.literal("message.send"),
-    assistanceContext: productAssistanceSchema.optional(),
-    content: text,
-    workstreamFocus: workstreamFocusSchema.optional(),
-    reference: conversationReferenceSchema.optional(),
-  }),
-  z.object({
-    type: z.literal("invitation.create"),
-    email: z.email().toLowerCase(),
-    fullHistoryDisclosed: z.literal(true),
-    sendEmail: z.boolean().optional(),
-  }),
+  z
+    .object({
+      type: z.literal("reminder.set_time"),
+      messageId: z.uuid(),
+      remindAt: z.iso.datetime({ offset: true }),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("message.send"),
+      clientTimeZone: taskContentSchema.shape.timeZone.optional(),
+      ...conversationAddressFields,
+      assistanceContext: productAssistanceSchema.optional(),
+      content: z.string().trim().max(12000),
+      attachments: messageAttachmentsSchema.optional(),
+      workstreamFocus: workstreamFocusSchema.optional(),
+      reference: conversationReferenceSchema.optional(),
+    })
+    .refine((c) => c.content.length > 0 || !!c.attachments?.length),
+  z
+    .object({
+      type: z.literal("library.copy"),
+      sourceId: id,
+      destinationId: id,
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("library.favorite"),
+      sourceId: id,
+      starred: z.boolean(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("invitation.create"),
+      email: z.email().toLowerCase().optional(),
+      contactId: z.string().min(1).max(256).optional(),
+      fullHistoryDisclosed: z.literal(true),
+      sendEmail: z.boolean().optional(),
+    })
+    .refine(
+      (value) =>
+        (value.email === undefined) !== (value.contactId === undefined),
+      {
+        error: "Select exactly one invitation recipient.",
+      },
+    ),
   z.object({ type: z.literal("invitation.revoke"), invitationId: id }),
   z.object({
     type: z.literal("member.remove"),

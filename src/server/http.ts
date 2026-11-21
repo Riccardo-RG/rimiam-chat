@@ -2,10 +2,13 @@ import { z } from "zod";
 import { auth } from "./auth.ts";
 import { DomainError, requireThat } from "./errors.ts";
 
-export async function actorFrom(request: Request) {
+export async function sessionFrom(request: Request) {
   const session = await auth.api.getSession({ headers: request.headers });
   requireThat(session, "AUTHENTICATION_REQUIRED", 401);
-  return session.user.id;
+  return session;
+}
+export async function actorFrom(request: Request) {
+  return (await sessionFrom(request)).user.id;
 }
 export function assertOrigin(request: Request) {
   requireThat(

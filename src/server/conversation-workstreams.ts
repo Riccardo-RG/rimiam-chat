@@ -25,11 +25,17 @@ export async function createConversationWorkstream(
   );
   let result: ConversationOperation;
   if (!matches.length) {
-    const created = await attentionCommand(tx, w, actor, {
-      type: "workstream.save",
-      title,
-      description: "",
-    });
+    const created = await attentionCommand(
+      tx,
+      w,
+      actor,
+      {
+        type: "workstream.save",
+        title,
+        description: "",
+      },
+      "conversation_receipt",
+    );
     result = {
       outcome: "created",
       title,
@@ -64,10 +70,10 @@ export async function createConversationWorkstream(
   }
   const content =
     result.outcome === "created"
-      ? `Ho creato il filone «${result.title}». È una vista della Conversation condivisa: non è una chat privata e non cambia Goal, impegni o permessi.`
+      ? `Ho creato l’argomento «${result.title}» nello spazio.`
       : result.outcome === "existing"
-        ? `Il filone «${result.title}» è già attivo. Ho collegato questa richiesta al filone esistente, senza crearne un duplicato.`
-        : `Esiste già un filone con il nome «${title}», ma non posso scegliere o riattivarlo implicitamente. Apri Filoni per selezionarlo e, se necessario, attivarlo o riaprirlo; oppure chiedimi un filone con un nome diverso. Non ho creato o modificato alcun filone.`;
+        ? `L’argomento «${result.title}» è già attivo. Ho collegato qui la tua richiesta.`
+        : `Esiste già un argomento chiamato «${title}». Apri Argomenti per scegliere quello giusto o indicami un altro nome.`;
   const replyMessageId = randomUUID();
   const seq = (
     await tx.query(
@@ -92,6 +98,9 @@ export async function createConversationWorkstream(
       result.workstreamVersion ?? null,
     ],
   );
-  await changed(tx, w, "message.send");
+  await changed(tx, w, "message.send", false, false, {
+    kind: "message",
+    id: source,
+  });
   return { replyMessageId, operationResult: result };
 }

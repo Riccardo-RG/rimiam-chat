@@ -37,8 +37,23 @@ export const temporalRefSchema = z
   })
   .strict();
 const reason = z.string().trim().min(1).max(2000);
+export const temporalAudienceSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("calendar") }).strict(),
+  z.object({ kind: z.literal("all") }).strict(),
+  z
+    .object({
+      kind: z.literal("people"),
+      people: z
+        .array(z.string().min(1))
+        .min(1)
+        .max(100)
+        .refine((v) => new Set(v).size === v.length),
+    })
+    .strict(),
+]);
 const temporalFields = {
   payload: calendarPayloadSchema,
+  audience: temporalAudienceSchema.optional(),
   reason,
   sourceMessageId: z.uuid().optional(),
   representSelf: z.literal(true),
@@ -56,6 +71,14 @@ const proposalFields = {
   shareWithWorkspace: z.literal(true),
 };
 export const calendarCommandSchemas = [
+  z
+    .object({
+      type: z.literal("temporal.respond"),
+      eventId: z.uuid(),
+      expectedVersion: version,
+      response: z.enum(["accepted", "declined"]),
+    })
+    .strict(),
   z.object({ type: z.literal("temporal.create"), ...temporalFields }).strict(),
   z
     .object({
@@ -176,6 +199,7 @@ export const calendarViewSchema = z.object({
   contextRevision: revision,
   accessRevision: revision,
   providerConfigured: z.boolean(),
+  members: z.array(z.object({ id: z.string(), name: z.string() })).default([]),
   ownCommitments: z
     .array(z.object({ id: z.uuid(), content: z.string(), version: revision }))
     .default([]),
@@ -187,6 +211,7 @@ export const calendarViewSchema = z.object({
       version,
       personId: z.string(),
       payload: calendarPayloadSchema,
+      audience: temporalAudienceSchema.optional(),
       reason: z.string(),
       sourceMessageId: z.uuid().nullable(),
       createdAt: z.string(),
@@ -197,6 +222,7 @@ export const calendarViewSchema = z.object({
       id: z.uuid(),
       version,
       label: z.string(),
+      provider: z.string().optional(),
       active: z.boolean(),
       resources: z.array(
         z.object({

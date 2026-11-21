@@ -10,6 +10,8 @@ vi.mock("ai", async (original) => ({
   ...(await original<typeof import("ai")>()),
   generateText: vi.fn(),
 }));
+// Adapter-only tests; real transactional admission is covered in ai-admission.test.ts.
+vi.mock("../src/server/ai-admission", () => ({ admitAIInvocation: vi.fn() }));
 const schema = z
   .object({ answer: z.string().min(1), citations: z.array(z.string()) })
   .strict();
@@ -208,6 +210,7 @@ describe("structured model boundary (no real provider or database)", () => {
     expect(await model.generateJSON(args)).toEqual(value);
     expect(generate.mock.calls[0][0]).toMatchObject({
       maxRetries: 0,
+      providerOptions: { openai: { store: false } },
       system: args.system,
       prompt: args.prompt,
     });

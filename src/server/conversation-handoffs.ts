@@ -282,6 +282,7 @@ export async function validateHandoffOrigin(
     case "goal.establish":
       matches = h.kind === "goal.establish";
       break;
+    case "goal.editShared":
     case "goal.propose":
       matches =
         h.kind === "goal.change" &&
@@ -360,6 +361,9 @@ export async function recordHandoffApplication(
   switch (c.type) {
     case "goal.establish":
       ref = { kind: "goal", id: id("goalId"), version: 1 };
+      break;
+    case "goal.editShared":
+      ref = { kind: "goal", id: id("goalId"), version: version() };
       break;
     case "goal.propose":
       preparedKind = "goal_transition";

@@ -19,9 +19,9 @@ it("shows explicitly selected screen, actual field and issue without attaching i
     issue: "required",
   };
   expect(assistanceLabel(context)).toBe(
-    "Task e follow-up · Attività · Campo obbligatorio",
+    "Da fare e promemoria · Attività · Campo obbligatorio",
   );
-  expect(assistanceQuestion(context)).toContain("@RIMIAM");
+  expect(assistanceQuestion(context)).toContain("@Emme");
   const html = renderToStaticMarkup(
     createElement(AssistanceReference, { context, remove: () => {} }),
   );

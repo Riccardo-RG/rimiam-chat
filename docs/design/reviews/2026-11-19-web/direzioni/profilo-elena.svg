@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40">
+  <defs><clipPath id="cerchio"><circle cx="20" cy="20" r="20"/></clipPath></defs>
+  <g clip-path="url(#cerchio)">
+    <path fill="#e7ceb8" d="M0 0h40v40H0z"/>
+    <path fill="#553331" d="M8 35c1-5 2-8 2-15 0-8 4-13 10-13 8 0 12 5 12 12 0 6 0 11 2 15z"/>
+    <path fill="#52796e" d="M4 42c1-8 6-13 15-14h3c8 1 13 6 15 14z"/>
+    <path fill="#bf8263" d="M16 23h8v6c-2 3-5 3-8 0z"/>
+    <path fill="#e7ad84" d="M13 16c4 0 9-2 13-5 0 4 1 6 3 8-1 6-4 10-8 10-5 0-8-5-8-10z"/>
+    <path fill="#553331" d="M17 18h1v2h-1zm7-1h1v2h-1z"/>
+  </g>
+</svg>

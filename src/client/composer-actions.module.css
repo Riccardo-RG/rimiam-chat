@@ -1,0 +1,163 @@
+.mentions {
+  display: flex;
+  gap: 0.3rem;
+  overflow-x: auto;
+  padding-block: 0.25rem;
+}
+.mentions button {
+  min-height: 2.5rem;
+  flex: none;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+}
+.shortcut {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.6rem;
+  border: 0;
+  background: transparent;
+  color: var(--secondary);
+}
+.shortcut kbd {
+  display: grid;
+  place-items: center;
+  min-width: 1.25em;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  font-family: inherit;
+  line-height: 1.2;
+}
+.attachmentName {
+  overflow-wrap: anywhere;
+  margin: 0.5rem 0.45rem 0;
+}
+.disclosure {
+  display: block;
+  color: var(--muted);
+}
+.attachmentActions {
+  display: flex;
+  justify-content: end;
+  gap: 0.5rem;
+}
+.attachmentAnnouncement {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+@media (max-width: 600px) {
+  .shortcut span {
+    display: none;
+  }
+}
+.picker {
+  width: min(28rem, calc(100vw - 1rem));
+  max-height: min(30rem, 75dvh);
+  margin: auto auto 1rem;
+  border: 1px solid var(--control-line);
+  border-radius: 12px;
+  padding: 0.75rem;
+  background: var(--white);
+  color: var(--ink);
+  box-shadow: var(--shadow-panel);
+}
+.picker[open] {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+.picker::backdrop {
+  background: rgb(10 18 34 / 0.36);
+}
+.header,
+.search {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+.header {
+  justify-content: space-between;
+}
+.header h3 {
+  margin: 0;
+  font-family: var(--editorial);
+  font-size: 1.25rem;
+}
+.search {
+  margin: 0;
+  padding: 0.35rem 0.6rem;
+  border: 1px solid var(--control-line);
+  border-radius: 6px;
+  color: var(--secondary);
+}
+.search:focus-within {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+.search input {
+  width: 100%;
+  margin: 0;
+  padding: 0.35rem 0;
+  min-height: 2rem;
+  border: none;
+  background: transparent;
+  color: var(--ink);
+  font-size: 1rem;
+}
+.search input:focus-visible {
+  outline: none;
+}
+.options {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.options button {
+  width: 100%;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.45rem 0.55rem;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+  font-size: 0.9rem;
+}
+.options svg {
+  width: 1rem;
+  height: 1rem;
+  color: var(--secondary);
+}
+.options small {
+  margin-inline-start: auto;
+  color: var(--muted);
+}
+.options button:hover,
+.options button[aria-selected="true"] {
+  background: var(--secondary-surface);
+  color: var(--secondary);
+}
+.picker p {
+  margin: 0.45rem;
+  color: var(--muted);
+}
+.literal {
+  align-self: flex-start;
+  border: 0;
+  background: transparent;
+  color: var(--secondary);
+}
+@media (max-width: 640px) {
+  .picker {
+    margin: 0.5rem auto auto;
+    max-height: min(26rem, calc(var(--chat-viewport-height, 65dvh) - 1rem));
+  }
+}

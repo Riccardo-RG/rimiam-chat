@@ -4,7 +4,8 @@ export const invitationPayloadSchema = z
   .object({
     from: z.email(),
     to: z.tuple([z.email()]),
-    subject: z.literal("Invito a MIRIAM"),
+    // Previously committed envelopes keep their original subject on retry.
+    subject: z.enum(["Invito a RIMIAM", "Invito a MIRIAM"]),
     text: z.string().min(1).max(4000),
   })
   .strict();
@@ -47,8 +48,8 @@ export function resendInvitationMail(
       return invitationPayloadSchema.parse({
         from: settings.from,
         to: [recipient],
-        subject: "Invito a MIRIAM",
-        text: `Hai ricevuto un invito personale a uno spazio MIRIAM. Apri il link e accedi con questo indirizzo email:\n\n${url.href}\n\nAccettando potrai leggere la storia condivisa conservata nello spazio. L’invito non attribuisce adesione al Goal o authority decisionale. Se non ti aspettavi questo invito, ignoralo.`,
+        subject: "Invito a RIMIAM",
+        text: `Hai ricevuto un invito personale a uno spazio RIMIAM, la chat condivisa con Emme. Apri il link e accedi con questo indirizzo email:\n\n${url.href}\n\nAccettando potrai leggere la storia condivisa conservata nello spazio. L’invito non attribuisce adesione al Goal o authority decisionale. Se non ti aspettavi questo invito, ignoralo.`,
       });
     },
     async send(payload, key) {

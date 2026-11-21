@@ -15,6 +15,6 @@ export function invitationDeliveryLabel(status?: string | null) {
     case "expired":
       return "Invio scaduto";
     default:
-      return "Solo link, nessuna email richiesta";
+      return "Nessun invio email richiesto";
   }
 }

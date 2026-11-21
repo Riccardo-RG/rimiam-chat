@@ -12,11 +12,11 @@ Preserve the specification's distinctions between confirmed decisions, recommend
 
 ## Product identity
 
-RIMIAM is an AI-native collaborative workspace. It is not primarily a chatbot, generic AI assistant, project-management app or multi-bot chat application. Conversation is the main human interface while the workspace maintains persistent, structured, inspectable and actionable shared state. Miriam is the native collaborative intelligence of the workspace.
+RIMIAM is an AI-native collaborative workspace. It is not primarily a chatbot, generic AI assistant, project-management app or multi-bot chat application. Conversation is the main human interface while the workspace maintains persistent, structured, inspectable and actionable shared state. Emme is the native collaborative intelligence. Historical ADRs, actor identifiers and older addressed messages use Miriam. Preserve those identities and source records.
 
 ## Core product invariants
 
-1. One collaborative workspace has one canonical Shared Context. In the MVP, private conversations with Miriam belong in a separate space with its own Context; there is no hidden per-member memory inside a shared space.
+1. One collaborative workspace has one canonical Shared Context. In the MVP, private conversations with Emme belong in a separate space with its own Context; there is no hidden per-member memory inside a shared space.
 2. Raw conversation/events are historical source material and must not be silently rewritten by derived or canonical state.
 3. Shared Context is persistent, versioned, inspectable and correctable.
 4. Important inferred state must retain provenance, including its sources and relevant history.
@@ -24,12 +24,13 @@ RIMIAM is an AI-native collaborative workspace. It is not primarily a chatbot, g
 6. Evidence does not automatically become Shared Context truth. Accepting evidence and authorizing resulting Artifact changes or external actions are distinct governance steps.
 7. Context processing must be incremental; do not repeatedly reinterpret the entire conversation as the normal processing path.
 8. Semantic organization must not require physically moving or duplicating historical conversation events. One event may belong to multiple Workstreams.
-9. Context, history and decisions belong to the workspace, not to Miriam or another agent. Agents are replaceable; workspace memory is durable.
-10. AI provider/model choices must not become domain concepts.
+9. Context, history and decisions belong to the workspace, not to Emme or another agent. Agents are replaceable; workspace memory is durable.
+10. AI provider/model choices must not become domain concepts. For the creator’s scoped choice of conversation connection, follow [ADR-0017](docs/decisions/ADR-0017-connessione-assistente-per-spazio.md).
 11. Consequential actions must respect scoped authority boundaries and Commit Points. When authority is already established, follow the Action Policy; ask only when authority is unresolved. Observed responsibility is not delegated authority.
 12. Destructive changes must be conservative and recoverable/versioned where applicable; destructive or high-impact operations require confirmation and recovery/history as specified.
 13. Security, workspace isolation and authorization are foundational requirements, including when advanced enterprise governance is outside MVP scope.
 14. At most one primary Goal is current per Workspace; preserve past identities. Follow [ADR-0003](docs/decisions/ADR-0003-lifecycle-goal-continuita-relazioni.md): substantial same/new-identity classification belongs to the authorized Goal-change act; it neither transfers consent nor overrides authority over existing constraints or commitments.
+   For direct edits to the current shared Goal wording, follow the scoped supersession in [ADR-0016](docs/decisions/ADR-0016-obiettivo-condiviso-e-argomenti.md). Preserve personal adherence, historical versions and governed lifecycle acts.
 15. Apply [Minimum Sufficient Context / ADR-0004](docs/decisions/ADR-0004-context-efficiency-minimum-sufficient-context.md) to all AI work: quality, continuity and approved invariants precede token/cost/latency efficiency; allow additional relevant context within access/authority bounds when needed. Numerical budgets are heuristics, not universal product caps.
 16. Follow [ADR-0005](docs/decisions/ADR-0005-postgresql-stato-canonico-storia-provenance.md): PostgreSQL owns directly queryable current domain state and immutable source/version/provenance history; validate application commands and commit domain-atomic changes transactionally. Full event sourcing is not the MVP foundation; exact schema remains an implementation choice constrained by approved semantics.
 17. Follow [ADR-0006](docs/decisions/ADR-0006-accesso-workspace-capability-relazioni-authority.md): access operations and authority to change access relationships are distinct; preserve relationship-specific protections, provenance and separate account eligibility/project authority. No permanent creator privilege or governance from group labels.
@@ -37,9 +38,9 @@ RIMIAM is an AI-native collaborative workspace. It is not primarily a chatbot, g
 19. Follow [ADR-0008](docs/decisions/ADR-0008-governance-accesso-protetta-condizioni-congiunte-rinuncia.md): validate access changes against pre-transition conditions and all affected protections, including membership/capability bypasses. Self-withdrawal does not rewrite others’ terms; ended participation can leave joint authorization unavailable, never reduced or exercisable by a former holder. Operational delegation grants no peer protection or onward delegation.
 20. Follow [ADR-0009](docs/decisions/ADR-0009-visibilita-storica-membri-confine-condiviso-workspace.md): eligible active human membership includes retained shared history without join-time cutoffs, as an explicit admission consequence; re-entry revives no ended governance. Apply the approved [B2 product policy](docs/product/MVP_SPEC_v0.1.md#141-policy-operativa-b2-approvata). B2 is sufficiently resolved for MVP implementation planning; this does not authorize implementation.
 
-Keep these domain distinctions explicit: Conversation vs Shared Context; raw events vs derived/canonical state; Evidence vs Truth; Understanding vs Authority; Workstream vs Sub-goal; Miriam vs Specialist Actors; Shared Context vs Current State; Contribution vs Shared State; Active Work vs a simple chat response. Current State is a projection of Shared Context. Contributions pass through workspace governance. Active Work follows [ADR-0014](docs/decisions/ADR-0014-active-work-specialist-contribution.md): shared steering never enlarges authority; preserve relevant state, anchored assumptions and unresolved restrictions. Semantic approval alone does not authorize BUILD.
+Keep these domain distinctions explicit: Conversation vs Shared Context; raw events vs derived/canonical state; Evidence vs Truth; Understanding vs Authority; Workstream vs Sub-goal; Emme vs Specialist Actors; Shared Context vs Current State; Contribution vs Shared State; Active Work vs a simple chat response. Current State is a projection of Shared Context. Contributions pass through workspace governance. Active Work follows [ADR-0014](docs/decisions/ADR-0014-active-work-specialist-contribution.md): shared steering never enlarges authority; preserve relevant state, anchored assumptions and unresolved restrictions. Semantic approval alone does not authorize BUILD.
 
-Approved client direction: [ADR-0010](docs/decisions/ADR-0010-client-nativi-backend-comune.md). Keep SwiftUI, Compose and Next.js clients behind the same versioned server contract; no client owns canonical state or authority.
+Approved client direction: [ADR-0010](docs/decisions/ADR-0010-client-nativi-backend-comune.md). The versioned server contract owns the domain boundary across client types. The hosted client is the responsive Web app. The local iOS and Android frontend uses React Native.
 
 Calendar follows [ADR-0011](docs/decisions/ADR-0011-calendar-stato-temporale-osservazioni-azioni.md): temporal state, private observations and authorized external effects are separate; preserve identity/provenance and unknown outcomes, with no automatic propagation or inferred representation.
 
@@ -47,7 +48,7 @@ Email follows [ADR-0012](docs/decisions/ADR-0012-workspace-email-privacy-bozze-i
 
 Tasks/follow-up follow [ADR-0013](docs/decisions/ADR-0013-task-responsabilita-follow-up.md): explicit version-bound responsibility is distinct from work, commitments and authority; material changes need fresh acceptance or valid pertinent authority, and reminders/closure never imply normative effects.
 
-Voice/calls follow [ADR-0015](docs/decisions/ADR-0015-voce-chiamate-consenso-registrazione.md): recording requires every captured participant’s explicit personal consent to audio, transcription and shared-history retention; withdrawal fences subsequent capture. RIMIAM is absent from human calls; post-call analysis requires a separate request and never implies adoption or authority.
+Voice/calls follow [ADR-0015](docs/decisions/ADR-0015-voce-chiamate-consenso-registrazione.md): recording requires every captured participant’s explicit personal consent to audio, transcription and shared-history retention; withdrawal fences subsequent capture. Emme is absent from human calls; post-call analysis requires a separate request and never implies adoption or authority.
 
 ## Engineering principles
 
@@ -56,7 +57,7 @@ These are defaults, not a final architecture decision:
 - Prefer the simplest architecture that preserves product invariants, with a modular monolith initially. Avoid premature microservices and disposable demo architecture.
 - Do not introduce a generic multi-agent framework before it is needed, or full event sourcing without clear justification.
 - Build vertically in usable, testable slices. Future requirements should influence boundaries, not inflate current scope.
-- Temporary frontend scope (user instruction, 2026-09-29): after the app-awareness increment, change only the Web frontend during the current testing phase. Defer iOS/Android changes and parity work until the user confirms testing is finished; retain existing mobile work and track deferred alignment in [STATUS](docs/development/STATUS.md). ADR-0010 and common server/domain boundaries remain unchanged.
+- Client scope (2026-11-20): maintain the responsive Web app and one React Native frontend for iOS and Android, as requested by the founder. Generate native platform projects from mobile/app.config.ts. Keep server contracts and client-independent authority checks intact. See [STATUS](docs/development/STATUS.md) for current evidence.
 - Account registration/session/invitation/recovery UX is BUILD work; external provider delivery/credentials are WIRE. Authentication does not grant Workspace membership, Goal adherence or authority.
 - Treat AI model output as untrusted structured input; validate it before it changes domain state or triggers actions.
 - Write model-facing prompts and agent operating instructions in English. This does not change user-facing language: preserve requested response languages, original source text, examples and exact protocol values. Product documentation and approved ADR wording are not subject to this language rule.

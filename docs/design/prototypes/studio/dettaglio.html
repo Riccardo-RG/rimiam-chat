@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Icone di RIMIAM · Tavola di confronto</title>
+    <link rel="icon" href="./rimiam-mark.svg">
+    <style>
+      :root {
+        color-scheme: light;
+        --paper: #f6f5f1;
+        --ink: #262623;
+        --quiet: #5a5a55;
+        --rule: #ccccc5;
+        --graphite: #282825;
+        font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; color: var(--ink); background: var(--paper); }
+      main { width: min(100%, 1120px); margin-inline: auto; padding: clamp(24px, 4vw, 54px) clamp(16px, 4vw, 48px); }
+      header { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 8px 24px; margin-bottom: clamp(19px, 3vw, 34px); }
+      h1 { margin: 0; font: 400 clamp(38px, 5.2vw, 62px)/1.05 Baskerville, "Baskerville Old Face", Georgia, serif; letter-spacing: -.052em; }
+      header a { display: inline-flex; align-items: baseline; gap: .6em; padding-block: 6px; color: var(--quiet); font-size: 13px; text-underline-offset: .25em; }
+      header a:hover { color: var(--ink); }
+      header a:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
+
+      table { width: 100%; border-collapse: collapse; table-layout: fixed; border-top: 2px solid var(--ink); }
+      th, td { padding: 0; text-align: center; vertical-align: middle; }
+      tr > :first-child { width: clamp(126px, 16vw, 176px); padding-left: 16px; text-align: left; }
+      thead th { height: 46px; border-bottom: 1px solid var(--rule); font-size: 13px; font-weight: 550; }
+      thead th:first-child { color: var(--quiet); font-weight: 450; }
+      tbody tr { height: 102px; }
+      tbody th { font-size: 17px; line-height: 1.15; font-weight: 570; letter-spacing: -.035em; }
+      .scale { display: block; margin-top: 6px; font: 11px/1.25 "SFMono-Regular", Consolas, "Liberation Mono", monospace; letter-spacing: 0; color: var(--quiet); }
+      .previous > * { border-bottom: 1px solid var(--rule); }
+      .current { background: #fdfcf9; }
+      .usage { height: 64px; color: #f5f5ee; background: var(--graphite); }
+      .usage th { font-size: 15px; }
+      .usage .scale { color: #c4c4bc; }
+      svg { display: block; width: 48px; height: 48px; margin: auto; fill: none; stroke: currentColor; stroke-width: 1.55; stroke-linecap: round; stroke-linejoin: round; }
+      .usage svg { width: 18px; height: 18px; }
+      .usage svg.invite { width: 21px; height: 21px; }
+
+      @media (max-width: 660px) {
+        main { padding-block: 27px; }
+        table { display: grid; grid-template-columns: 1.1fr 1.12fr 1fr .86fr; }
+        thead, tbody { display: contents; }
+        tr { display: grid; grid-template-rows: 59px repeat(6, 65px); }
+        tbody tr { height: auto; }
+        th, td { display: grid; align-content: center; justify-items: center; }
+        tr > :first-child { width: auto; padding-inline: 3px; text-align: center; }
+        thead th { height: auto; justify-items: start; font-size: 12px; padding-left: 6px; }
+        thead th:first-child { justify-items: start; padding-left: 6px; }
+        tbody th, .usage th { font-size: 13px; }
+        .scale { margin-top: 4px; font-size: 10px; }
+        .previous > *, .current > * { border-bottom: 1px solid var(--rule); }
+        .usage > * { border-bottom: 1px solid #444440; }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>Icone di RIMIAM</h1>
+        <a href="./index.html">Vedi nella conversazione <span aria-hidden="true">→</span></a>
+      </header>
+      <table role="table" aria-label="Le sei icone precedenti a confronto con la famiglia incisa e la sua resa alla dimensione d’uso">
+        <thead role="rowgroup">
+          <tr role="row">
+            <th role="columnheader" scope="col">Funzione</th>
+            <th role="columnheader" scope="col">I tuoi spazi</th>
+            <th role="columnheader" scope="col">Oggi</th>
+            <th role="columnheader" scope="col">Chat</th>
+            <th role="columnheader" scope="col">Strumenti</th>
+            <th role="columnheader" scope="col">Invita</th>
+            <th role="columnheader" scope="col">Allega</th>
+          </tr>
+        </thead>
+        <tbody role="rowgroup">
+          <tr class="previous" role="row">
+            <th role="rowheader" scope="row">Precedente<span class="scale">48 px</span></th>
+            <td role="cell"><svg aria-hidden="true"><use href="./rimiam-icons-prima.svg#home"/></svg></td>
+            <td role="cell"><svg aria-hidden="true"><use href="./rimiam-icons-prima.svg#clock"/></svg></td>
+            <td role="cell"><svg aria-hidden="true"><use href="./rimiam-icons-prima.svg#chat"/></svg></td>
+            <td role="cell"><svg aria-hidden="true"><use href="./rimiam-icons-prima.svg#sliders"/></svg></td>
+            <td role="cell"><svg aria-hidden="true"><use href="./rimiam-icons-prima.svg#share"/></svg></td>
+            <td role="cell"><svg aria-hidden="true"><use href="./rimiam-icons-prima.svg#clip"/></svg></td>
+          </tr>
+          <tr class="current" role="row">
+            <th role="rowheader" scope="row">Incisa<span class="scale">48 px</span></th>
+            <td role="cell"><svg aria-hidden="true"><use href="./rimiam-icons.svg?v=incisa#home"/></svg></td>
+            <td role="cell"><svg aria-hidden="true"><use href="./rimiam-icons.svg?v=incisa#clock"/></svg></td>
+            <td role="cell"><svg aria-hidden="true"><use href="./rimiam-icons.svg?v=incisa#chat"/></svg></td>
+            <td role="cell"><svg aria-hidden="true"><use href="./rimiam-icons.svg?v=incisa#sliders"/></svg></td>
+            <td role="cell"><svg aria-hidden="true"><use href="./rimiam-icons.svg?v=incisa#share"/></svg></td>
+            <td role="cell"><svg aria-hidden="true"><use href="./rimiam-icons.svg?v=incisa#clip"/></svg></td>
+          </tr>
+          <tr class="usage" role="row">
+            <th role="rowheader" scope="row">In uso<span class="scale">18–21 px</span></th>
+            <td role="cell"><svg aria-hidden="true"><use href="./rimiam-icons.svg?v=incisa#home"/></svg></td>
+            <td role="cell"><svg aria-hidden="true"><use href="./rimiam-icons.svg?v=incisa#clock"/></svg></td>
+            <td role="cell"><svg aria-hidden="true"><use href="./rimiam-icons.svg?v=incisa#chat"/></svg></td>
+            <td role="cell"><svg aria-hidden="true"><use href="./rimiam-icons.svg?v=incisa#sliders"/></svg></td>
+            <td role="cell"><svg class="invite" aria-hidden="true"><use href="./rimiam-icons.svg?v=incisa#share"/></svg></td>
+            <td role="cell"><svg aria-hidden="true"><use href="./rimiam-icons.svg?v=incisa#clip"/></svg></td>
+          </tr>
+        </tbody>
+      </table>
+    </main>
+  </body>
+</html>

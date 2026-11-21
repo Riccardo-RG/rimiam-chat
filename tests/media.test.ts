@@ -9,6 +9,7 @@ import {
 } from "../src/server/commands";
 import { snapshot } from "../src/server/queries";
 import { readDocument } from "../src/server/sources";
+import { referenceDetail } from "../src/server/conversation-reference";
 import { processDocument, recoverDocuments } from "../src/server/media-worker";
 import {
   configuredMediaExtractor,
@@ -78,6 +79,49 @@ const processing = async (id: string) =>
   ).rows[0];
 
 describe("rich input originals and bounded extraction", () => {
+  it("lets members inspect unprocessed photo metadata for existing uploads and new chat shares, without publishing evidence", async () => {
+    const { a, b, w } = await setup();
+    const legacy = await upload(a, w, "archivio.png", png);
+    expect(legacy.messageId).toBeUndefined();
+    const shared = await upload(a, w, "alba.png", png, {
+      conversationShare: {},
+    });
+    expect(shared.messageId).toBeTruthy();
+    const view = await snapshot(a, w);
+    for (const [file, title] of [
+      [legacy, "archivio.png"],
+      [shared, "alba.png"],
+    ] as const) {
+      const id = file.sourceId as string;
+      const ref = { kind: "source" as const, id, version: 1 };
+      const metadata = await referenceDetail(a, w, ref);
+      expect(metadata).toMatchObject({
+        title,
+        content: "",
+        actor: a,
+        current: true,
+        sourceIds: [id],
+        provenance: { documentId: file.documentId, documentVersion: 1 },
+      });
+      expect(metadata.qualification).toContain(
+        "Testo del file non disponibile",
+      );
+      expect(
+        view.sources.find((s: { id: string }) => s.id === id),
+      ).toMatchObject({ processing_status: "queued" });
+      expect(
+        (await retrieveSources(w, [id])).map((row) => row.id),
+      ).not.toContain(id);
+      await expect(referenceDetail(b, w, ref)).rejects.toThrow(
+        "WORKSPACE_ACCESS_DENIED",
+      );
+    }
+    expect(
+      view.messages.find((m: { id: string }) => m.id === shared.messageId),
+    ).toMatchObject({
+      reference: { kind: "source", id: shared.sourceId, version: 1 },
+    });
+  });
   it("extracts genuine PDF and DOCX locally with maintained parsers, keeping source qualifications", async () => {
     for (const [kind, bytes] of [
       ["pdf", pdf],

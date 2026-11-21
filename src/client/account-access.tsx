@@ -1,4 +1,5 @@
 "use client";
+import { useUiLanguage } from "./ui-language";
 
 import {
   useEffect,
@@ -6,13 +7,16 @@ import {
   useRef,
   useState,
   useSyncExternalStore,
+  type Ref,
 } from "react";
 import Link from "next/link";
 import { auth } from "./auth-client";
+import { IdentityProviderMark } from "./identity-provider-mark";
 import {
   accountErrorMessage,
   accountOAuthErrorReturn,
   safeAccountReturn,
+  socialCallbackError,
 } from "../shared/account-navigation";
 import styles from "./account-access.module.css";
 
@@ -20,8 +24,7 @@ function subscribeNavigation(listener: () => void) {
   window.addEventListener("popstate", listener);
   return () => window.removeEventListener("popstate", listener);
 }
-const readCallbackError = () =>
-  new URLSearchParams(window.location.search).get("error") ?? "";
+const readCallbackError = () => socialCallbackError(window.location.search);
 const serverCallbackError = () => "";
 
 export function AccountPassword({
@@ -29,12 +32,19 @@ export function AccountPassword({
   name = "password",
   signup,
   disabled,
+  error,
+  inputRef,
+  onChange,
 }: {
   label?: string;
   name?: string;
   signup: boolean;
   disabled: boolean;
+  error?: string;
+  inputRef?: Ref<HTMLInputElement>;
+  onChange?: () => void;
 }) {
+  const { t: uiText } = useUiLanguage();
   const id = useId();
   const [visible, setVisible] = useState(false);
   return (
@@ -50,22 +60,42 @@ export function AccountPassword({
           maxLength={128}
           required
           disabled={disabled}
-          aria-describedby={signup ? `${id}-requirements` : undefined}
+          ref={inputRef}
+          onChange={onChange}
+          aria-invalid={Boolean(error) || undefined}
+          aria-describedby={
+            [signup && `${id}-requirements`, error && `${id}-error`]
+              .filter(Boolean)
+              .join(" ") || undefined
+          }
         />
         <button
           type="button"
           disabled={disabled}
           aria-controls={id}
           aria-pressed={visible}
-          aria-label={`${visible ? "Nascondi" : "Mostra"} ${label.toLowerCase()}`}
+          aria-label={
+            name === "repeat"
+              ? uiText(
+                  visible
+                    ? "Nascondi la password di conferma"
+                    : "Mostra la password di conferma",
+                )
+              : uiText(visible ? "Nascondi password" : "Mostra password")
+          }
           onClick={() => setVisible(!visible)}
         >
-          {visible ? "Nascondi" : "Mostra"}
+          {visible ? uiText("Nascondi") : uiText("Mostra")}
         </button>
       </div>
       {signup && (
         <p id={`${id}-requirements`} className={styles.help}>
-          Da 12 a 128 caratteri.
+          {uiText("Da 12 a 128 caratteri.")}
+        </p>
+      )}
+      {error && (
+        <p id={`${id}-error`} className={styles.fieldError} role="alert">
+          {error}
         </p>
       )}
     </>
@@ -76,12 +106,22 @@ export function AccountAccess({
   returnTo,
   localMail,
   googleAvailable,
+  microsoftAvailable = false,
+  sessionPending = false,
+  providerConfig = "ready",
+  retryConfig,
 }: {
   returnTo: string;
   localMail: boolean;
   googleAvailable: boolean;
+  microsoftAvailable?: boolean;
+  sessionPending?: boolean;
+  providerConfig?: "loading" | "ready" | "error";
+  retryConfig?: () => void;
 }) {
+  const { t: uiText } = useUiLanguage();
   const callbackURL = safeAccountReturn(returnTo);
+  const invited = callbackURL.startsWith("/?invite=");
   const callbackError = useSyncExternalStore(
     subscribeNavigation,
     readCallbackError,
@@ -89,15 +129,18 @@ export function AccountAccess({
   );
   const [dismissedCallback, setDismissedCallback] = useState(false);
   const [signup, setSignup] = useState(false);
-  const [busy, setBusy] = useState<"" | "email" | "google">("");
+  const [busy, setBusy] = useState<"" | "email" | "google" | "microsoft">("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [nameError, setNameError] = useState(false);
+  const nameInput = useRef<HTMLInputElement>(null);
+  const nameErrorId = useId();
   const inFlight = useRef(false);
   const feedback = useRef<HTMLParagraphElement>(null);
   const shownError =
     error ||
     (!dismissedCallback && callbackError
-      ? accountErrorMessage(callbackError)
+      ? uiText(accountErrorMessage(callbackError))
       : "");
   useEffect(() => {
     const restore = (event: PageTransitionEvent) => {
@@ -110,35 +153,44 @@ export function AccountAccess({
     return () => window.removeEventListener("pageshow", restore);
   }, []);
   useEffect(() => {
-    if (shownError || notice) feedback.current?.focus();
-  }, [shownError, notice]);
+    if (!sessionPending && (shownError || notice)) feedback.current?.focus();
+  }, [shownError, notice, sessionPending]);
+  useEffect(() => {
+    if (!sessionPending && nameError) nameInput.current?.focus();
+  }, [nameError, sessionPending]);
   const clearFeedback = () => {
     setError("");
     setNotice("");
     setDismissedCallback(true);
+    setNameError(false);
   };
   const chooseMode = (nextSignup: boolean) => {
     if (nextSignup === signup) return;
     setSignup(nextSignup);
     clearFeedback();
   };
-  async function submit(method: "email" | "google", data?: FormData) {
-    if (inFlight.current) return;
+  async function submit(
+    method: "email" | "google" | "microsoft",
+    data?: FormData,
+  ) {
+    if (inFlight.current || sessionPending) return;
     inFlight.current = true;
     clearFeedback();
     setBusy(method);
     let redirecting = false;
     try {
-      if (method === "google") {
+      if (method !== "email") {
         const result = await auth.signIn.social({
-          provider: "google",
+          provider: method,
           callbackURL,
-          errorCallbackURL: accountOAuthErrorReturn(callbackURL),
+          errorCallbackURL: accountOAuthErrorReturn(callbackURL, method),
         });
         if (result.error)
-          setError(accountErrorMessage(result.error.code, result.error.status));
+          setError(
+            uiText(accountErrorMessage(result.error.code, result.error.status)),
+          );
         else if (result.data?.url && result.data.redirect) redirecting = true;
-        else setError(accountErrorMessage());
+        else setError(uiText(accountErrorMessage()));
       } else if (data) {
         const email = String(data.get("email") ?? "").trim();
         const password = String(data.get("password") ?? "");
@@ -151,17 +203,25 @@ export function AccountAccess({
             })
           : await auth.signIn.email({ email, password, callbackURL });
         if (result.error)
-          setError(accountErrorMessage(result.error.code, result.error.status));
+          setError(
+            uiText(accountErrorMessage(result.error.code, result.error.status)),
+          );
         else if (signup)
           setNotice(
             localMail
-              ? "Controlla la tua email per verificare l’account. In locale usa la casella di sviluppo."
-              : "Controlla la tua email: per entrare, apri il link di verifica. Se avevi già un account con questo indirizzo, accedi o recupera la password. Controlla anche lo spam.",
+              ? uiText(
+                  "Controlla la tua email per verificare l’account. In locale usa la casella di sviluppo.",
+                )
+              : uiText(
+                  "Controlla la tua email e apri il link di verifica per entrare. Dai un’occhiata anche allo spam. Hai già un account? Accedi o recupera la password.",
+                ),
           );
       }
     } catch {
       setError(
-        "Non riusciamo a completare la richiesta. Controlla la connessione e riprova.",
+        uiText(
+          "Non riusciamo a completare la richiesta. Controlla la connessione e riprova.",
+        ),
       );
     } finally {
       if (!redirecting) {
@@ -179,16 +239,16 @@ export function AccountAccess({
       <div
         className={styles.mode}
         role="group"
-        aria-label="Modalità di accesso"
+        aria-label={uiText("Modalità di accesso")}
       >
         <button
           type="button"
-          aria-label="Accedi con un account esistente"
+          aria-label={uiText("Accedi con un account esistente")}
           aria-pressed={!signup}
           disabled={Boolean(busy)}
           onClick={() => chooseMode(false)}
         >
-          Accedi
+          {uiText("Accedi")}
         </button>
         <button
           type="button"
@@ -196,71 +256,125 @@ export function AccountAccess({
           disabled={Boolean(busy)}
           onClick={() => chooseMode(true)}
         >
-          Crea un account
+          {uiText("Crea un account")}
         </button>
       </div>
       <h2 id="account-title">
-        {signup ? "Crea il tuo account" : "Bentornato."}
-      </h2>
-      <p className={styles.intro}>
-        {googleAvailable
-          ? "Continua con Google oppure usa email e password."
+        {invited
+          ? signup
+            ? uiText("Crea un account per aprire l’invito")
+            : uiText("Accedi per aprire l’invito")
           : signup
-            ? "Registrati con la tua email. Ti invieremo un link per verificarla."
-            : "Accedi con email e password."}
-      </p>
-      {callbackURL.includes("invite=") && (
+            ? uiText("Crea il tuo account")
+            : uiText("Entra in RIMIAM")}
+      </h2>
+      {signup && (
+        <p className={styles.intro}>
+          {googleAvailable || microsoftAvailable
+            ? uiText("Se scegli l’email, riceverai un link di verifica.")
+            : uiText("Riceverai un link per verificare la tua email.")}
+        </p>
+      )}
+      {invited && (
         <p className={styles.feedback}>
-          Hai ricevuto un invito: usa l’indirizzo a cui è stato inviato. Dopo
-          l’accesso potrai leggere e accettare l’invito allo spazio.
+          {uiText(
+            "Hai ricevuto un invito: usa l’indirizzo a cui è stato inviato. Dopo l’accesso potrai leggere e accettare l’invito allo spazio.",
+          )}
         </p>
       )}
       {googleAvailable && (
-        <>
-          <button
-            type="button"
-            className={styles.google}
-            disabled={Boolean(busy)}
-            onClick={() => void submit("google")}
-          >
-            <svg aria-hidden="true" width="20" height="20" viewBox="0 0 48 48">
-              <path
-                fill="#EA4335"
-                d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5Z"
-              />
-              <path
-                fill="#4285F4"
-                d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65Z"
-              />
-              <path
-                fill="#FBBC05"
-                d="M10.53 28.59A14.42 14.42 0 0 1 9.75 24c0-1.59.27-3.13.78-4.59l-7.98-6.19A23.91 23.91 0 0 0 0 24c0 3.87.93 7.53 2.56 10.78l7.97-6.19Z"
-              />
-              <path
-                fill="#34A853"
-                d="M24 48c6.48 0 11.93-2.13 15.91-5.8l-7.73-6c-2.15 1.45-4.92 2.3-8.18 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48Z"
-              />
-            </svg>
-            {busy === "google" ? "Apertura di Google…" : "Continua con Google"}
+        <button
+          type="button"
+          className={styles.provider}
+          disabled={Boolean(busy)}
+          onClick={() => void submit("google")}
+        >
+          <IdentityProviderMark provider="google" />
+          {busy === "google"
+            ? uiText("Apertura di Google…")
+            : uiText("Continua con Google")}
+        </button>
+      )}
+      {microsoftAvailable && (
+        <button
+          type="button"
+          className={styles.provider}
+          disabled={Boolean(busy)}
+          onClick={() => void submit("microsoft")}
+        >
+          <IdentityProviderMark provider="microsoft" />
+          {busy === "microsoft"
+            ? uiText("Apertura di Microsoft…")
+            : uiText("Continua con Microsoft")}
+        </button>
+      )}
+      {providerConfig === "loading" && (
+        <p className={styles.help} role="status">
+          {uiText("Verifica dei metodi di accesso…")}
+        </p>
+      )}
+      {providerConfig === "error" && (
+        <div className={styles.providerStatus} role="status">
+          {uiText("Impossibile verificare l’accesso con Google e Microsoft.")}{" "}
+          <button type="button" className="quiet" onClick={retryConfig}>
+            {uiText("Riprova")}
           </button>
-          <div className={styles.divider}>oppure con email</div>
-        </>
+        </div>
+      )}
+      {providerConfig === "ready" &&
+        (!googleAvailable || !microsoftAvailable) && (
+          <p className={styles.providerStatus}>
+            {!googleAvailable && !microsoftAvailable
+              ? uiText(
+                  "L’accesso con Google e Microsoft non è ancora attivo. Puoi usare email e password.",
+                )
+              : uiText(
+                  "L’accesso con {0} non è ancora attivo.",
+                  String(googleAvailable ? "Microsoft" : "Google"),
+                )}
+          </p>
+        )}
+      {(googleAvailable || microsoftAvailable) && (
+        <div className={styles.divider}>{uiText("oppure con email")}</div>
       )}
       <form
         onSubmit={(event) => {
           event.preventDefault();
-          void submit("email", new FormData(event.currentTarget));
+          const data = new FormData(event.currentTarget);
+          if (signup && !String(data.get("name") ?? "").trim()) {
+            clearFeedback();
+            setNameError(true);
+            nameInput.current?.focus();
+            return;
+          }
+          void submit("email", data);
         }}
       >
         <fieldset disabled={Boolean(busy)}>
           {signup && (
-            <label>
-              Nome
-              <input name="name" autoComplete="name" required maxLength={100} />
-            </label>
+            <>
+              <label>
+                {uiText("Nome")}
+                <input
+                  name="name"
+                  autoComplete="name"
+                  required
+                  maxLength={100}
+                  ref={nameInput}
+                  aria-invalid={nameError || undefined}
+                  aria-describedby={nameError ? nameErrorId : undefined}
+                  onChange={() => setNameError(false)}
+                />
+              </label>
+              {nameError && (
+                <p id={nameErrorId} className={styles.fieldError} role="alert">
+                  {uiText("Inserisci il tuo nome.")}
+                </p>
+              )}
+            </>
           )}
           <label>
-            Email
+            {uiText("Email")}
             <input
               name="email"
               type="email"
@@ -282,11 +396,11 @@ export function AccountAccess({
           >
             {busy === "email"
               ? signup
-                ? "Creazione account…"
-                : "Accesso…"
+                ? uiText("Creazione account…")
+                : uiText("Accesso…")
               : signup
-                ? "Registrati"
-                : "Accedi"}
+                ? uiText("Registrati")
+                : uiText("Accedi")}
           </button>
         </fieldset>
       </form>
@@ -315,23 +429,32 @@ export function AccountAccess({
           <Link
             href={`/account/recovery?returnTo=${encodeURIComponent(callbackURL)}`}
           >
-            Password dimenticata?
+            {uiText("Password dimenticata?")}
           </Link>
         )}
         <Link
           href={`/account/recovery?verify=1&returnTo=${encodeURIComponent(callbackURL)}`}
         >
-          Reinvia verifica email
+          {uiText("Reinvia verifica email")}
         </Link>
       </div>
       <p className={styles.legal}>
         <Link href="/beta" target="_blank" rel="noopener noreferrer">
-          Regole della beta ↗
+          {uiText("Regole della beta ↗")}
+        </Link>
+        <Link
+          href="/connessioni-e-dati"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          {uiText("Account, calendari e dati ↗")}
         </Link>
       </p>
       {localMail && (
         <p className={styles.help}>
-          <Link href="/local-mail">Casella email locale di sviluppo</Link>
+          <Link href="/local-mail">
+            {uiText("Casella email locale di sviluppo")}
+          </Link>
         </p>
       )}
     </section>

@@ -88,7 +88,7 @@ No worker calls the web API to update Context. It calls the shared application s
 | --- | --- | --- |
 | Identity adapter | Library-managed accounts and sessions; `AuthenticatedUser` | Exposes identity, never project authority |
 | Workspaces | Workspace lifecycle, members, invitations | Provides authorized workspace scopes; membership administration is distinct from Context authority |
-| Conversation | Append-only source events and timeline queries | Creates processing requests for supported human events; does not interpret them |
+| Conversation | AppenSenza eseguire altri tool o comandi, produci ora un report sintetico finale usando esclusivamente le evidenze gia raccolte. Indica chiaramente cosa confermi, cosa non hai potuto validare e se la PR SDK puo essere mergiata da sola. Non modificare-only source events and timeline queries | Creates processing requests for supported human events; does not interpret them |
 | Context | Goal commands, candidates, acceptance rules, items, versions, correction and provenance | Owns all canonical Context mutations; does not import provider SDKs |
 | Context processing | Incremental task scheduling, relevant-input assembly, inference attempts | Calls the inference port, then Context commands; cannot directly set accepted state |
 | Collaboration policy | Small pure rule set inside Context initially | Classifies required confirmation and verifies existing authority at commit; no configurable policy engine |

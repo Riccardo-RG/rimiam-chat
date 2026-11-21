@@ -6,6 +6,8 @@ vi.mock("ai", async (original) => ({
   ...(await original<typeof import("ai")>()),
   generateText: vi.fn(),
 }));
+// Adapter-only tests; real transactional admission is covered in ai-admission.test.ts.
+vi.mock("../src/server/ai-admission", () => ({ admitAIInvocation: vi.fn() }));
 
 const input = {
   kind: "image" as const,
@@ -64,6 +66,7 @@ describe("OpenAI image boundary", () => {
       modelId: "gpt-4.1-mini",
     });
     expect(request.maxRetries).toBe(0);
+    expect(request.providerOptions).toEqual({ openai: { store: false } });
     expect(request.messages).toEqual([
       {
         role: "user",

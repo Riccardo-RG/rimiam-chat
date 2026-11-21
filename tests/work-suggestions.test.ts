@@ -203,7 +203,7 @@ it("rejects a model target or revision not provided in its context, and a late c
   for (const foreign of [true, false]) {
     const m = await t.cmd({
       type: "message.send",
-      content: "Puoi modificare questa analisi?",
+      content: "@Emme, puoi modificare questa analisi?",
     });
     await expect(
       processInterpretation(String(m.interpretationId), {
@@ -221,11 +221,11 @@ it("rejects a model target or revision not provided in its context, and a late c
           };
         },
       }),
-    ).rejects.toThrow();
+    ).rejects.toThrow("WORK_CONTROL_NOT_PROVIDED");
   }
   const m = await t.cmd({
     type: "message.send",
-    content: "Forse mettiamo in pausa",
+    content: "@Emme, forse mettiamo in pausa questa analisi?",
   });
   await expect(
     processInterpretation(String(m.interpretationId), {
@@ -252,7 +252,7 @@ it("rejects a model target or revision not provided in its context, and a late c
         };
       },
     }),
-  ).rejects.toThrow();
+  ).rejects.toThrow("WORK_STATE_STALE");
   expect((await t.view()).suggestions).toHaveLength(0);
   expect((await t.view()).works[0].phase).toBe("paused");
   // A completed unrelated interpretation stays idempotent when another turn is queued.

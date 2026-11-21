@@ -226,6 +226,7 @@ export async function transcribeCallRecording(
           {
             kind: "audio",
             filename: file,
+            workspace: claim.workspace_id,
             mediaType: "audio/mpeg",
             bytes,
             allowModelProcessing: true,

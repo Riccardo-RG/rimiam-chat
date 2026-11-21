@@ -1,3 +1,6 @@
+import { reminderProjection } from "./conversation-reminder.ts";
+import { taskOfferProjection } from "./task-offer-message.ts";
+import { quoteProjection } from "./conversation-reading.ts";
 import {
   productAssistanceJoin,
   productAssistanceProjection,
@@ -31,7 +34,7 @@ export async function state(actor: string, w: string) {
     await member(tx, w, actor);
     const workspace = (
       await tx.query(
-        'SELECT id,name,revision,context_revision AS "contextRevision",access_revision AS "accessRevision" FROM workspace WHERE id=$1',
+        'SELECT id,name,revision,(personal_owner_id IS NOT NULL) AS personal,context_revision AS "contextRevision",access_revision AS "accessRevision" FROM workspace WHERE id=$1',
         [w],
       )
     ).rows[0];
@@ -96,8 +99,8 @@ export async function messages(
     await requireReadableWorkstream(tx, w, workstreamId);
     const rows = (
       await tx.query(
-        `SELECT m.id,m.sequence,m.content,COALESCE(m.author_id,'miriam') AS "authorId",COALESCE(u.name,'Miriam') AS "authorName",m.actor_kind AS "actorKind",m.purpose,m.reply_to_source_id AS "replyToSourceId",${messageFocusProjection} AS "workstreamFocus",${messageReferenceProjection} AS reference,${productAssistanceProjection} AS "assistanceContext",${conversationOperationProjection} AS "operationResult",COALESCE(r.source_ids,CASE WHEN cwa.reply_message_id IS NOT NULL THEN ARRAY[cwa.source_message_id] END,'{}'::uuid[]) AS "citationSourceIds",m.created_at AS "createdAt" FROM message m LEFT JOIN "user" u ON u.id=m.author_id LEFT JOIN miriam_response r ON (r.workspace_id,r.message_id)=(m.workspace_id,m.id) ${messageFocusJoin} ${messageReferenceJoin} ${productAssistanceJoin} WHERE m.workspace_id=$1 AND m.sequence>$2 AND m.sequence<=$3 AND ${focusedMessagePredicate} ORDER BY m.sequence LIMIT $4`,
-        [w, after, through, limit + 1, workstreamId ?? null],
+        `SELECT m.id,m.sequence,m.content,COALESCE(m.author_id,'miriam') AS "authorId",COALESCE(u.name,m.assistant_display_name,'Emme') AS "authorName",m.actor_kind AS "actorKind",m.purpose,m.reply_to_source_id AS "replyToSourceId",${reminderProjection("$6")} AS reminder,${taskOfferProjection} AS "taskOffer",${quoteProjection} AS "quoteMessageId",${messageFocusProjection} AS "workstreamFocus",${messageReferenceProjection} AS reference,${productAssistanceProjection} AS "assistanceContext",${conversationOperationProjection} AS "operationResult",COALESCE(r.source_ids,CASE WHEN cwa.reply_message_id IS NOT NULL THEN ARRAY[cwa.source_message_id] END,'{}'::uuid[]) AS "citationSourceIds",m.created_at AS "createdAt" FROM message m LEFT JOIN "user" u ON u.id=m.author_id LEFT JOIN miriam_response r ON (r.workspace_id,r.message_id)=(m.workspace_id,m.id) ${messageFocusJoin} ${messageReferenceJoin} ${productAssistanceJoin} WHERE m.workspace_id=$1 AND m.sequence>$2 AND m.sequence<=$3 AND ${focusedMessagePredicate} ORDER BY m.sequence LIMIT $4`,
+        [w, after, through, limit + 1, workstreamId ?? null, actor],
       )
     ).rows;
     const page = rows
@@ -161,8 +164,8 @@ export async function history(
     await requireReadableWorkstream(tx, w, workstreamId);
     const rows = (
       await tx.query(
-        `SELECT m.id,m.sequence,m.content,COALESCE(m.author_id,'miriam') AS "authorId",COALESCE(u.name,'Miriam') AS "authorName",m.actor_kind AS "actorKind",m.purpose,m.reply_to_source_id AS "replyToSourceId",${messageFocusProjection} AS "workstreamFocus",${messageReferenceProjection} AS reference,${productAssistanceProjection} AS "assistanceContext",${conversationOperationProjection} AS "operationResult",COALESCE(r.source_ids,CASE WHEN cwa.reply_message_id IS NOT NULL THEN ARRAY[cwa.source_message_id] END,'{}'::uuid[]) AS "citationSourceIds",m.created_at AS "createdAt" FROM message m LEFT JOIN "user" u ON u.id=m.author_id LEFT JOIN miriam_response r ON (r.workspace_id,r.message_id)=(m.workspace_id,m.id) ${messageFocusJoin} ${messageReferenceJoin} ${productAssistanceJoin} WHERE m.workspace_id=$1 AND m.sequence<$2 AND m.sequence<=$3 AND ${focusedMessagePredicate} ORDER BY m.sequence DESC LIMIT $4`,
-        [w, before, through, limit + 1, workstreamId ?? null],
+        `SELECT m.id,m.sequence,m.content,COALESCE(m.author_id,'miriam') AS "authorId",COALESCE(u.name,m.assistant_display_name,'Emme') AS "authorName",m.actor_kind AS "actorKind",m.purpose,m.reply_to_source_id AS "replyToSourceId",${reminderProjection("$6")} AS reminder,${taskOfferProjection} AS "taskOffer",${quoteProjection} AS "quoteMessageId",${messageFocusProjection} AS "workstreamFocus",${messageReferenceProjection} AS reference,${productAssistanceProjection} AS "assistanceContext",${conversationOperationProjection} AS "operationResult",COALESCE(r.source_ids,CASE WHEN cwa.reply_message_id IS NOT NULL THEN ARRAY[cwa.source_message_id] END,'{}'::uuid[]) AS "citationSourceIds",m.created_at AS "createdAt" FROM message m LEFT JOIN "user" u ON u.id=m.author_id LEFT JOIN miriam_response r ON (r.workspace_id,r.message_id)=(m.workspace_id,m.id) ${messageFocusJoin} ${messageReferenceJoin} ${productAssistanceJoin} WHERE m.workspace_id=$1 AND m.sequence<$2 AND m.sequence<=$3 AND ${focusedMessagePredicate} ORDER BY m.sequence DESC LIMIT $4`,
+        [w, before, through, limit + 1, workstreamId ?? null, actor],
       )
     ).rows;
     const page = rows

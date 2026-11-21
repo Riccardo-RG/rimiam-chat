@@ -44,6 +44,24 @@ export function useConversationScroll(
         element.scrollHeight - element.clientHeight - element.scrollTop < 64,
     });
   }, [key, messageIds, historical, ref]);
+  const hasMessages = Boolean(messageIds);
+  useLayoutEffect(() => {
+    const element = ref.current;
+    if (!element || !hasMessages) return;
+    const keepFollowing = () => {
+      if (current.current === key && positions.current.get(key)?.follow)
+        element.scrollTop = element.scrollHeight;
+    };
+    // The editor resizes the viewport. An image can settle later without
+    // changing either the viewport or the list of message IDs.
+    const observer = new ResizeObserver(keepFollowing);
+    observer.observe(element);
+    element.addEventListener("load", keepFollowing, true);
+    return () => {
+      observer.disconnect();
+      element.removeEventListener("load", keepFollowing, true);
+    };
+  }, [key, hasMessages, ref]);
   return {
     onScroll: capture,
     followLatest: () => {

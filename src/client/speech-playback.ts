@@ -35,7 +35,7 @@ export class SpeechPlayback {
       voices.find((v) => v.lang.split("-")[0] === language.split("-")[0]);
     if (!voice) {
       ended(
-        "Voce locale non disponibile: installa una voce nella lingua del dispositivo. Nessun testo è stato inviato a un servizio online.",
+        "Voce locale non disponibile: installa una voce nella lingua selezionata. Nessun testo è stato inviato a un servizio online.",
       );
       return;
     }

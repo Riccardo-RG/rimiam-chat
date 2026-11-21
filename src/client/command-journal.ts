@@ -1,4 +1,6 @@
+import { explicitCreationRejection } from "../shared/workspace-creation-errors";
 import type { Command } from "@/contracts/commands";
+import type { WorkspaceInvitations } from "@/contracts/workspace-invitations";
 import { receiptSchema, type CommandReceipt } from "../contracts/v1";
 import { api } from "./api";
 
@@ -7,7 +9,16 @@ export type PendingCommand = {
   actor: string;
   workspace: string;
   command:
-    Command | { type: "workspace.create"; name: string; description?: string };
+    | Command
+    | {
+        type: "workspace.create";
+        name: string;
+        assistantConnectionId?: string;
+        assistantConnectionRevision?: string;
+        description?: string;
+        invitations?: WorkspaceInvitations;
+        attachments?: Extract<Command, { type: "message.send" }>["attachments"];
+      };
   createdAt: string;
 };
 function database() {
@@ -36,7 +47,7 @@ async function write(command: PendingCommand | string) {
     db.close();
   }
 }
-export async function pendingCommands(actor: string) {
+export async function pendingCommands(actor: string, workspace?: string) {
   const db = await database();
   try {
     return await new Promise<PendingCommand[]>((resolve, reject) => {
@@ -46,7 +57,10 @@ export async function pendingCommands(actor: string) {
         .getAll();
       request.onsuccess = () =>
         resolve(
-          (request.result as PendingCommand[]).filter((c) => c.actor === actor),
+          (request.result as PendingCommand[]).filter(
+            (c) =>
+              c.actor === actor && (!workspace || c.workspace === workspace),
+          ),
         );
       request.onerror = () => reject(new Error("COMMAND_STORAGE_UNAVAILABLE"));
     });
@@ -55,6 +69,15 @@ export async function pendingCommands(actor: string) {
   }
 }
 export const forgetCommand = (id: string) => write(id);
+
+async function removeResolvedReminder(id: string) {
+  try {
+    await forgetCommand(id);
+  } catch {
+    // A storage error must not replace the definitive server outcome.
+  }
+}
+
 export function verifiedReceipt(command: PendingCommand, payload: unknown) {
   const receipt = receiptSchema.safeParse(payload);
   if (
@@ -71,7 +94,7 @@ export async function recoverCommand(command: PendingCommand) {
     `/api/v1/workspaces/${command.workspace}/receipts/${command.commandId}`,
   );
   const result = verifiedReceipt(command, receipt);
-  await write(command.commandId);
+  await removeResolvedReminder(command.commandId);
   return result;
 }
 export async function sendCommand(
@@ -84,10 +107,21 @@ export async function sendCommand(
       commandId: command.commandId,
       expectedActorId: command.actor,
       name: command.command.name,
+      assistantConnectionId: command.command.assistantConnectionId,
+      assistantConnectionRevision: command.command.assistantConnectionRevision,
       description: command.command.description,
+      invitations: command.command.invitations,
+      attachments: command.command.attachments,
+    }).catch(async (error: unknown) => {
+      if (error instanceof Error && explicitCreationRejection(error.message)) {
+        // These rejections roll back the entire creation. Let the user edit the
+        // recipients immediately; transport errors still require reconciliation.
+        await removeResolvedReminder(command.commandId);
+      }
+      throw error;
     });
     if (result.id !== command.workspace) throw new Error("INVALID_RECEIPT");
-    await write(command.commandId);
+    await removeResolvedReminder(command.commandId);
     return result;
   }
   const receipt = await api<CommandReceipt>(
@@ -99,13 +133,19 @@ export async function sendCommand(
     },
   );
   const result = verifiedReceipt(command, receipt);
-  await write(command.commandId);
+  await removeResolvedReminder(command.commandId);
   return result;
 }
 export function newWorkspaceCommand(
   actor: string,
   name: string,
   description?: string,
+  invitations?: WorkspaceInvitations,
+  attachments?: Extract<Command, { type: "message.send" }>["attachments"],
+  assistant?: {
+    assistantConnectionId: string;
+    assistantConnectionRevision: string;
+  },
 ): PendingCommand {
   const commandId = crypto.randomUUID();
   return {
@@ -115,7 +155,10 @@ export function newWorkspaceCommand(
     command: {
       type: "workspace.create",
       name,
+      ...assistant,
       ...(description ? { description } : {}),
+      ...(invitations ? { invitations } : {}),
+      ...(attachments?.length ? { attachments } : {}),
     },
     createdAt: new Date().toISOString(),
   };

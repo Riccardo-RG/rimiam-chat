@@ -1,9 +1,26 @@
 import {
+  appendAssistantSettings,
+  bindAssistantTurn,
+  conversationScope,
+  readConversationSetting,
+} from "./assistant-settings.ts";
+import { privateResearchAction } from "./personal-research.ts";
+import {
+  parseReminderRequest,
+  recordReminderRequest,
+  completeReminderRequest,
+} from "./conversation-reminder.ts";
+import {
   validateHandoffOrigin,
   recordHandoffApplication,
 } from "./conversation-handoffs.ts";
 import { applyCall } from "./calls.ts";
 import { addBetaFeedback } from "./beta-feedback.ts";
+import {
+  acknowledgeMessage,
+  recordConversationAddressing,
+  requestMessageAnswer,
+} from "./conversation-reading.ts";
 import { sendVoice } from "./voice.ts";
 import { draftArtifact, reviewArtifact, approveArtifact } from "./artifacts.ts";
 import { artifactDocumentCommandSchema } from "../contracts/artifact-document.ts";
@@ -35,10 +52,20 @@ import { recordMessageReference } from "./conversation-reference.ts";
 import { requestedWorkstreamTitle } from "../shared/workstream-intent.ts";
 import { recordProductAssistance } from "./product-assistance.ts";
 import { createConversationWorkstream } from "./conversation-workstreams.ts";
+import {
+  collaborationMode,
+  legacyAddressTargetsMember,
+} from "./participation.ts";
+import {
+  isAssistantAddress,
+  isSourceQuestion,
+} from "../shared/miriam-address.ts";
+import { recordWorkspaceNotice } from "./workspace-notice.ts";
 import { applyProject } from "./project-commands.ts";
 import {
   eligible,
   authenticatedSession,
+  noDepartureSinceInvitation,
   member,
   lockWorkspace,
   changed,
@@ -58,12 +85,26 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { transaction, type Tx } from "./db.ts";
 import { requireThat, DomainError } from "./errors.ts";
-import { uploadDocument, retryDocument } from "./sources.ts";
+import {
+  uploadDocument,
+  retryDocument,
+  markOrdinaryUpload,
+  changeDocumentVisibility,
+  requireAvailableDocuments,
+} from "./sources.ts";
 import { requestResearch, controlResearch } from "./research.ts";
 import { enqueueInvitationMail } from "./invitation-delivery.ts";
+import { resolvePersonalContactEmails } from "./personal-contacts.ts";
+import {
+  workspaceInvitationsSchema,
+  type WorkspaceInvitations,
+} from "../contracts/workspace-invitations.ts";
 import { applyWorkspaceLink } from "./workspace-links.ts";
 
-import { commandSchema } from "../contracts/commands.ts";
+import {
+  commandSchema,
+  messageAttachmentsSchema,
+} from "../contracts/commands.ts";
 import type { Command } from "../contracts/commands.ts";
 export { commandSchema } from "../contracts/commands.ts";
 export type { Command } from "../contracts/commands.ts";
@@ -77,7 +118,7 @@ async function membershipHistory(
   accepted = false,
 ) {
   await tx.query(
-    "INSERT INTO membership_history(id,workspace_id,user_id,version,active,actor_id,basis,full_history_accepted) SELECT $1,workspace_id,user_id,version,active,$4,$5,$6 FROM membership WHERE workspace_id=$2 AND user_id=$3",
+    "INSERT INTO membership_history(id,workspace_id,user_id,version,active,actor_id,basis,full_history_accepted,created_at) SELECT $1,workspace_id,user_id,version,active,$4,$5,$6,clock_timestamp() FROM membership WHERE workspace_id=$2 AND user_id=$3",
     [randomUUID(), w, person, actor, basis, accepted],
   );
 }
@@ -109,29 +150,235 @@ async function capability(
 export const tokenHash = (value: string) =>
   createHash("sha256").update(value).digest("hex");
 
+async function issueInvitation(
+  tx: Tx,
+  w: string,
+  actor: string,
+  relationship: string,
+  email: string,
+  sendEmail: boolean,
+  contactId: string | null = null,
+) {
+  const token = randomBytes(32).toString("base64url");
+  const inviteId = randomUUID();
+  await tx.query(
+    "INSERT INTO invitation(id,workspace_id,recipient_email,token_hash,issuer_id,relationship_id,expires_at,history_disclosed,created_at,recipient_contact_id) VALUES($1,$2,$3,$4,$5,$6,clock_timestamp()+interval '7 days',true,clock_timestamp(),$7)",
+    [inviteId, w, email, tokenHash(token), actor, relationship, contactId],
+  );
+  await changed(tx, w, "invitation.create");
+  const invitationUrl = new URL(
+    "/",
+    process.env.BETTER_AUTH_URL ?? "http://127.0.0.1:3000",
+  );
+  invitationUrl.searchParams.set("invite", token);
+  if (sendEmail)
+    await enqueueInvitationMail(tx, w, inviteId, invitationUrl.href);
+  return { invitationId: inviteId, token, invitationUrl: invitationUrl.href };
+}
+
+async function initializeWorkspace(
+  tx: Tx,
+  w: string,
+  actor: string,
+  name: string,
+  description: string,
+  personal: boolean,
+  archiveId?: string,
+) {
+  await tx.query(
+    "INSERT INTO workspace(id,name,created_by,personal_owner_id,personal_archive_id) VALUES($1,$2,$3,$4,$5)",
+    [w, name, actor, personal ? actor : null, archiveId ?? null],
+  );
+  await tx.query("INSERT INTO membership(workspace_id,user_id) VALUES($1,$2)", [
+    w,
+    actor,
+  ]);
+  await membershipHistory(
+    tx,
+    w,
+    actor,
+    actor,
+    "workspace_initialization",
+    true,
+  );
+  if (!personal) {
+    await tx.query(
+      "INSERT INTO access_relationship(id,workspace_id,holder_id,invitations,remove_members,change_access,basis) VALUES($1,$2,$3,true,true,true,'workspace_initialization')",
+      [randomUUID(), w, actor],
+    );
+    await accessHistory(tx, w, actor, actor, "workspace_initialization");
+  }
+  // Same transaction as creation/receipt. No inference, Goal or adoption command
+  // is run. The human introduction is available through the ordinary source view.
+  const introductionId = description ? randomUUID() : null;
+  if (introductionId)
+    await tx.query(
+      "INSERT INTO message(id,workspace_id,sequence,author_id,content,purpose) VALUES($1,$2,1,$3,$4,'workspace_introduction')",
+      [introductionId, w, actor, description],
+    );
+  const welcomeSequence = introductionId ? 2 : 1;
+  await tx.query(
+    "INSERT INTO message(id,workspace_id,sequence,author_id,actor_kind,content,purpose,reply_to_source_id) VALUES($1,$2,$3,NULL,'miriam',$4,'workspace_welcome',$5)",
+    [
+      randomUUID(),
+      w,
+      welcomeSequence,
+      personal
+        ? "Qui puoi conservare appunti e file, impostare promemoria o fare una domanda a Emme."
+        : introductionId
+          ? "Benvenuti. La descrizione che hai condiviso è il punto di partenza della conversazione: potete aggiungere idee, domande o materiali. Non stabilisce da sola un Goal o un accordo del gruppo."
+          : "Benvenuti. Questo è il vostro spazio per confrontarvi e raccogliere idee, domande e materiali. Potete iniziare dalla conversazione, anche senza un Goal già stabilito.",
+      introductionId,
+    ],
+  );
+  await tx.query("UPDATE workspace SET next_message=$2 WHERE id=$1", [
+    w,
+    welcomeSequence,
+  ]);
+  await changed(tx, w, "workspace.created", false, true);
+}
+
+export async function openPersonalSpace(actor: string, sessionId: string) {
+  return transaction((tx) => personalInTransaction(tx, actor, sessionId));
+}
+async function personalInTransaction(tx: Tx, actor: string, sessionId: string) {
+  await eligible(tx, actor, true);
+  // Other tabs/devices cannot create another private archive for the same account.
+  await tx.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))", [
+    `personal-space:${actor}`,
+  ]);
+  await authenticatedSession(tx, actor, sessionId);
+  const existing = (
+    await tx.query<{ id: string }>(
+      "SELECT id FROM workspace WHERE personal_owner_id=$1 AND personal_archive_id IS NULL",
+      [actor],
+    )
+  ).rows[0];
+  if (existing) {
+    await member(tx, existing.id, actor);
+    return existing;
+  }
+  const id = randomUUID();
+  await initializeWorkspace(tx, id, actor, "Il mio spazio", "", true);
+  return { id };
+}
+
+export async function openPersonalThread(
+  tx: Tx,
+  actor: string,
+  session: string,
+  thread?: string,
+  fresh = false,
+) {
+  const archive = await personalInTransaction(tx, actor, session);
+  const id =
+    thread ??
+    (
+      await tx.query(
+        "SELECT thread_id FROM personal_chat_resume WHERE actor_id=$1",
+        [actor],
+      )
+    ).rows[0]?.thread_id ??
+    archive.id;
+  const prior = (
+    await tx.query("SELECT personal_owner_id FROM workspace WHERE id=$1", [id])
+  ).rows[0];
+  if (!prior && fresh)
+    await initializeWorkspace(
+      tx,
+      id,
+      actor,
+      "Conversazione personale",
+      "",
+      true,
+      archive.id,
+    );
+  else
+    requireThat(
+      prior?.personal_owner_id === actor,
+      "PERSONAL_CHAT_UNAVAILABLE",
+      404,
+    );
+  await member(tx, id, actor, true, true);
+  await tx.query(
+    "INSERT INTO personal_chat_resume(actor_id,thread_id) VALUES($1,$2) ON CONFLICT(actor_id) DO UPDATE SET thread_id=excluded.thread_id",
+    [actor, id],
+  );
+  return { id, archiveId: archive.id };
+}
+
 export async function createWorkspace(
   actor: string,
   name: string,
   commandId: string,
   description = "",
+  sessionId?: string,
+  invitations?: WorkspaceInvitations,
+  attachments?: z.infer<typeof messageAttachmentsSchema>,
+  assistantConnectionId?: string,
+  assistantConnectionRevision?: string,
 ) {
+  requireThat(
+    (assistantConnectionId === undefined) ===
+      (assistantConnectionRevision === undefined),
+    "ASSISTANT_CONNECTION_CHANGED",
+    400,
+  );
   id.parse(commandId);
   name = z.string().trim().min(1).max(120).parse(name);
   description = z.string().trim().max(2000).parse(description);
+  const batch =
+    invitations === undefined
+      ? undefined
+      : workspaceInvitationsSchema.parse(invitations);
+  const files =
+    attachments === undefined
+      ? undefined
+      : messageAttachmentsSchema.parse(attachments);
+  const emails = new Set<string>();
+  const contacts = new Set<string>();
+  for (const recipient of batch?.recipients ?? []) {
+    if ("email" in recipient) emails.add(recipient.email);
+    else contacts.add(recipient.contactId);
+  }
   // Preserve hashes of existing name-only commands and normalize empty descriptions.
   const requestHash = tokenHash(
     JSON.stringify({
       type: "workspace.create",
+      ...(assistantConnectionId
+        ? { assistantConnectionId, assistantConnectionRevision }
+        : {}),
       name,
       ...(description ? { description } : {}),
+      ...(files
+        ? {
+            files: files.map((f) => [
+              f.filename,
+              tokenHash(f.bytesBase64),
+              !!f.allowModelProcessing,
+            ]),
+          }
+        : {}),
+      ...(batch
+        ? {
+            invitations: {
+              emails: [...emails].sort(),
+              contacts: [...contacts].sort(),
+              fullHistoryDisclosed: true,
+            },
+          }
+        : {}),
     }),
   );
   return transaction(async (tx) => {
-    await eligible(tx, actor, true);
+    const issuer = await eligible(tx, actor, true);
     // Serialize retries of creation before there is a Workspace row to lock.
     await tx.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))", [
       `${actor}:${commandId}`,
     ]);
+    // HTTP adapters always supply their captured session; trusted internal
+    // invocations may omit it. Validate after waiting for creation serialization.
+    if (sessionId || files) await authenticatedSession(tx, actor, sessionId);
     const prior = await tx.query(
       "SELECT w.id,w.name,w.created_by,r.request_hash FROM workspace w LEFT JOIN command_receipt r ON (r.workspace_id,r.command_id,r.actor_id)=(w.id,w.id,w.created_by) WHERE w.id=$1",
       [commandId],
@@ -144,55 +391,55 @@ export async function createWorkspace(
       );
       return { id: commandId };
     }
-    const w = commandId,
-      relation = randomUUID();
-    await tx.query(
-      "INSERT INTO workspace(id,name,created_by) VALUES($1,$2,$3)",
-      [w, name, actor],
-    );
-    await tx.query(
-      "INSERT INTO membership(workspace_id,user_id) VALUES($1,$2)",
-      [w, actor],
-    );
-    await membershipHistory(
-      tx,
-      w,
-      actor,
-      actor,
-      "workspace_initialization",
-      true,
-    );
-    await tx.query(
-      "INSERT INTO access_relationship(id,workspace_id,holder_id,invitations,remove_members,change_access,basis) VALUES($1,$2,$3,true,true,true,'workspace_initialization')",
-      [relation, w, actor],
-    );
-    await accessHistory(tx, w, actor, actor, "workspace_initialization");
-    // Same transaction as creation/receipt. No inference, Goal or adoption command
-    // is run. The human introduction is available through the ordinary source view.
-    const introductionId = description ? randomUUID() : null;
-    if (introductionId)
-      await tx.query(
-        "INSERT INTO message(id,workspace_id,sequence,author_id,content,purpose) VALUES($1,$2,1,$3,$4,'workspace_introduction')",
-        [introductionId, w, actor, description],
+    const w = commandId;
+    await initializeWorkspace(tx, w, actor, name, description, false);
+    if (assistantConnectionId && assistantConnectionRevision)
+      await appendAssistantSettings(
+        tx,
+        actor,
+        { workspaceId: w },
+        {
+          connectionId: assistantConnectionId,
+          connectionRevision: assistantConnectionRevision,
+          expectedRevision: 0,
+          displayName: "Emme",
+          instructions: "",
+        },
       );
-    const welcomeSequence = introductionId ? 2 : 1;
-    await tx.query(
-      "INSERT INTO message(id,workspace_id,sequence,author_id,actor_kind,content,purpose,reply_to_source_id) VALUES($1,$2,$3,NULL,'miriam',$4,'workspace_welcome',$5)",
-      [
-        randomUUID(),
-        w,
-        welcomeSequence,
-        introductionId
-          ? "Benvenuti. La descrizione che hai condiviso è il punto di partenza della conversazione: potete aggiungere idee, domande o materiali. Non stabilisce da sola un Goal o un accordo del gruppo."
-          : "Benvenuti. Questo è il vostro spazio per confrontarvi e raccogliere idee, domande e materiali. Potete iniziare dalla conversazione, anche senza un Goal già stabilito.",
-        introductionId,
-      ],
-    );
-    await tx.query("UPDATE workspace SET next_message=$2 WHERE id=$1", [
-      w,
-      welcomeSequence,
-    ]);
-    await changed(tx, w, "workspace.created", false, true);
+    if (files)
+      await apply(
+        tx,
+        await lockWorkspace(tx, w),
+        actor,
+        { type: "message.send", content: "", attachments: files },
+        { streamTitle: null },
+      );
+    if (batch) {
+      const relationship = await capability(tx, w, actor, "invitations");
+      const resolved = await resolvePersonalContactEmails(tx, actor, [
+        ...contacts,
+      ]);
+      // When a person was selected both ways, keep the stronger account binding.
+      const recipients = new Map<string, string | null>();
+      for (const email of emails) recipients.set(email, null);
+      for (const [contactId, email] of resolved)
+        recipients.set(email, contactId);
+      requireThat(
+        !recipients.has(issuer.email.toLowerCase()),
+        "CANNOT_INVITE_SELF",
+        400,
+      );
+      for (const [email, contactId] of recipients)
+        await issueInvitation(
+          tx,
+          w,
+          actor,
+          relationship,
+          email,
+          true,
+          contactId,
+        );
+    }
     await tx.query(
       "INSERT INTO command_receipt(workspace_id,actor_id,command_id,request_hash,result) VALUES($1,$2,$1,$3,$4)",
       [w, actor, requestHash, JSON.stringify({ id: w })],
@@ -203,26 +450,41 @@ export async function createWorkspace(
 
 export async function acceptInvitation(
   actor: string,
-  token: string,
+  invitation: string | { recipientInvitationId: string },
   fullHistoryAccepted: boolean,
+  sessionId?: string,
 ) {
   requireThat(fullHistoryAccepted, "HISTORY_ACCEPTANCE_REQUIRED", 400);
   return transaction(async (tx) => {
     const user = await eligible(tx, actor, true);
-    const lookup = await tx.query(
-      "SELECT workspace_id FROM invitation WHERE token_hash=$1",
-      [tokenHash(token)],
-    );
+    // Links retain their original token check. Inbox references identify an
+    // invitation only together with the authenticated recipient's verified email.
+    const lookup =
+      typeof invitation === "string"
+        ? await tx.query(
+            "SELECT id,workspace_id FROM invitation WHERE token_hash=$1",
+            [tokenHash(invitation)],
+          )
+        : await tx.query(
+            "SELECT id,workspace_id FROM invitation WHERE id=$1 AND recipient_email=$2 AND (recipient_contact_id IS NULL OR recipient_contact_id=$3)",
+            [invitation.recipientInvitationId, user.email.toLowerCase(), actor],
+          );
     requireThat(lookup.rowCount, "INVITATION_INVALID", 404);
     const w = lookup.rows[0].workspace_id;
-    await lockWorkspace(tx, w);
+    const ws = await lockWorkspace(tx, w);
+    requireThat(!ws.personal_owner_id, "INVITATION_INVALID", 404);
+    if (sessionId || typeof invitation !== "string")
+      await authenticatedSession(tx, actor, sessionId);
     const r = await tx.query(
-      "SELECT * FROM invitation WHERE token_hash=$1 FOR UPDATE",
-      [tokenHash(token)],
+      `SELECT i.* FROM invitation i WHERE i.id=$1 AND ${noDepartureSinceInvitation} FOR UPDATE`,
+      [lookup.rows[0].id, actor],
     );
+    requireThat(r.rowCount, "INVITATION_INVALID", 404);
     const invite = r.rows[0];
     requireThat(
-      invite.recipient_email === user.email.toLowerCase(),
+      invite.recipient_email === user.email.toLowerCase() &&
+        (invite.recipient_contact_id === null ||
+          invite.recipient_contact_id === actor),
       "INVITATION_RECIPIENT_MISMATCH",
       403,
     );
@@ -276,19 +538,120 @@ export async function execute(
   id.parse(commandId);
   const c = commandSchema.parse(input);
   return transaction(async (tx) => {
-    if (c.type === "workspace.link") {
-      for (const workspace of [...new Set([w, c.otherWorkspaceId])].sort())
+    if (
+      c.type === "workspace.link" ||
+      c.type === "library.copy" ||
+      c.type === "research.private_publish"
+    ) {
+      const other =
+        c.type === "workspace.link" ? c.otherWorkspaceId : c.destinationId;
+      for (const workspace of [...new Set([w, other])].sort())
         await lockWorkspace(tx, workspace);
     }
     const ws = await lockWorkspace(tx, w);
     await member(tx, w, actor, false, true);
-    if (sessionId) await authenticatedSession(tx, actor, sessionId);
+    if (
+      sessionId ||
+      ws.personal_owner_id ||
+      c.type === "conversation.requestAnswer" ||
+      c.type === "conversation.answered"
+    )
+      await authenticatedSession(tx, actor, sessionId);
+    if (c.type === "library.copy") {
+      await authenticatedSession(tx, actor, sessionId);
+      requireThat(c.destinationId !== w, "COPY_DESTINATION_INVALID", 400);
+      await member(tx, c.destinationId, actor, true, true);
+    }
+    if (c.type === "document.withdraw" || c.type === "document.restore")
+      await member(tx, w, actor, true, true);
+    if (ws.personal_archive_id)
+      requireThat(
+        [
+          "message.send",
+          "interpretation.retry",
+          "document.upload",
+          "document.withdraw",
+          "document.restore",
+          "research.private_request",
+          "research.private_publish",
+          "research.brief_retry",
+          "research.retry",
+          "research.cancel",
+          "reminder.set_time",
+        ].includes(c.type),
+        "PERSONAL_SPACE_UNSUPPORTED",
+        403,
+      );
+    if (ws.personal_owner_id) {
+      requireThat(
+        c.type === "message.send" ||
+          c.type === "interpretation.retry" ||
+          c.type === "document.upload" ||
+          c.type === "document.withdraw" ||
+          c.type === "document.restore" ||
+          c.type === "library.favorite" ||
+          c.type === "library.copy" ||
+          c.type === "artifact.compose" ||
+          c.type === "research.private_request" ||
+          c.type === "research.private_publish" ||
+          c.type === "research.brief_retry" ||
+          c.type === "research.retry" ||
+          c.type === "research.cancel" ||
+          c.type === "reminder.set_time" ||
+          c.type === "followup.create" ||
+          c.type === "calendar.read" ||
+          c.type === "calendar.disconnect" ||
+          c.type === "temporal.create" ||
+          c.type === "temporal.revise" ||
+          c.type === "followup.previous" ||
+          c.type === "followup.occurrence" ||
+          c.type === "followup.revise" ||
+          c.type === "followup.close",
+        "PERSONAL_SPACE_UNSUPPORTED",
+        403,
+      );
+    }
+    const displayName =
+      c.type === "message.send"
+        ? (await readConversationSetting(tx, w, ws.personal_owner_id))
+            .displayName
+        : "Emme";
+    let streamTitle: string | null = null;
+    let objective: string | undefined;
     if (
       c.type === "message.send" &&
       !c.assistanceContext &&
-      (startObjective(c.content) || requestedWorkstreamTitle(c.content))
+      !isSourceQuestion(
+        c.content,
+        c.reference?.kind,
+        !!c.quoteMessageId,
+        displayName,
+      ) &&
+      !ws.personal_owner_id
     ) {
-      await authenticatedSession(tx, actor, sessionId);
+      streamTitle = requestedWorkstreamTitle(c.content, displayName);
+      objective = startObjective(c.content, displayName);
+      if (streamTitle || objective) {
+        // An imperative between people is ordinary Conversation in discreet mode.
+        const called = isAssistantAddress(c.content, displayName);
+        if (
+          (called &&
+            (await legacyAddressTargetsMember(
+              tx,
+              w,
+              actor,
+              c.content,
+              undefined,
+              displayName,
+            ))) ||
+          (!called && (await collaborationMode(tx, w)) === "discreet")
+        ) {
+          streamTitle = null;
+          objective = undefined;
+        } else {
+          await authenticatedSession(tx, actor, sessionId);
+        }
+      }
     }
     const hash = tokenHash(JSON.stringify(c));
     const previous = await tx.query(
@@ -339,8 +702,25 @@ export async function execute(
                           calendar.data,
                           sessionId,
                         )
-                      : await apply(tx, ws, actor, c);
-    if (c.type !== "beta.feedback.add") await reassessActiveWork(tx, w);
+                      : await apply(
+                          tx,
+                          ws,
+                          actor,
+                          c,
+                          {
+                            streamTitle,
+                            objective,
+                            displayName,
+                          },
+                          sessionId,
+                        );
+    if (
+      !ws.personal_owner_id &&
+      c.type !== "beta.feedback.add" &&
+      c.type !== "library.favorite" &&
+      c.type !== "library.copy"
+    )
+      await reassessActiveWork(tx, w);
     await tx.query(
       "INSERT INTO command_receipt(workspace_id,actor_id,command_id,request_hash,result) VALUES($1,$2,$3,$4,$5)",
       [w, actor, commandId, hash, JSON.stringify(result)],
@@ -377,11 +757,95 @@ async function apply(
   ws: WorkspaceRow,
   actor: string,
   c: Command,
+  messageIntent: {
+    streamTitle: string | null;
+    objective?: string;
+    displayName?: string;
+  },
+  sessionId?: string,
 ): Promise<Record<string, unknown>> {
   const w = ws.id;
   if (c.type.startsWith("call."))
     return applyCall(tx, w, actor, c as Parameters<typeof applyCall>[3]);
   switch (c.type) {
+    case "library.copy": {
+      const to = await lockWorkspace(tx, c.destinationId);
+      requireThat(
+        !to.personal_archive_id &&
+          !!ws.personal_owner_id !== !!to.personal_owner_id,
+        "COPY_DESTINATION_INVALID",
+        400,
+      );
+      const record = (
+        await tx.query<{
+          filename: string;
+          original_bytes: Buffer;
+          qualification: string;
+        }>(
+          "SELECT filename,original_bytes,qualification FROM available_external_source WHERE workspace_id=$1 AND id=$2 AND kind='document'",
+          [w, c.sourceId],
+        )
+      ).rows[0];
+      requireThat(record, "SOURCE_NOT_FOUND", 404);
+      const result = await uploadDocument(
+        tx,
+        to.id,
+        actor,
+        {
+          type: "document.upload",
+          filename: record.filename,
+          bytesBase64: record.original_bytes.toString("base64"),
+        },
+        record.qualification.startsWith("Documento preparato da Emme")
+          ? "Documento preparato da Emme e condiviso da una persona; contenuto non adottato."
+          : undefined,
+        !to.personal_owner_id,
+      );
+      await tx.query(
+        "INSERT INTO library_copy_origin(workspace_id,source_id,origin_workspace_id,origin_source_id,copied_by) VALUES($1,$2,$3,$4,$5)",
+        [to.id, result.sourceId, w, c.sourceId, actor],
+      );
+      if (to.personal_owner_id) return result;
+      const messageId = randomUUID();
+      await tx.query(
+        `WITH seq AS (UPDATE workspace SET next_message=next_message+1 WHERE id=$1 RETURNING next_message)
+        INSERT INTO message(id,workspace_id,sequence,author_id,content) SELECT $2,$1,next_message,$3,$4 FROM seq`,
+        [to.id, messageId, actor, record.filename],
+      );
+      await tx.query(
+        "INSERT INTO message_attachment(workspace_id,message_id,position,source_id) VALUES($1,$2,0,$3)",
+        [to.id, messageId, result.sourceId],
+      );
+      await changed(tx, to.id, "message.send", false, false, {
+        kind: "message",
+        id: messageId,
+      });
+      return { ...result, messageId };
+    }
+    case "library.favorite": {
+      if (c.starred) await requireAvailableDocuments(tx, w, [c.sourceId]);
+      requireThat(
+        (
+          await tx.query(
+            "SELECT 1 FROM source_identity WHERE workspace_id=$1 AND id=$2",
+            [w, c.sourceId],
+          )
+        ).rowCount,
+        "SOURCE_NOT_FOUND",
+        404,
+      );
+      if (c.starred)
+        await tx.query(
+          "INSERT INTO library_favorite(workspace_id,user_id,source_id) VALUES($1,$2,$3) ON CONFLICT DO NOTHING",
+          [w, actor, c.sourceId],
+        );
+      else
+        await tx.query(
+          "DELETE FROM library_favorite WHERE workspace_id=$1 AND user_id=$2 AND source_id=$3",
+          [w, actor, c.sourceId],
+        );
+      return { starred: c.starred };
+    }
     case "beta.feedback.add":
       return addBetaFeedback(tx, w, actor, c);
     case "workspace.link":
@@ -399,10 +863,87 @@ async function apply(
       return changeQuestion(tx, ws, actor, c);
     case "voice.send":
       return sendVoice(tx, w, actor, c);
-    case "document.upload":
-      return uploadDocument(tx, w, actor, c);
+    case "document.upload": {
+      const source = await uploadDocument(
+        tx,
+        w,
+        actor,
+        c,
+        undefined,
+        !ws.personal_owner_id,
+      );
+      await markOrdinaryUpload(tx, w, actor, source.sourceId);
+      if (!c.conversationShare) return source;
+      const messageId = randomUUID();
+      await tx.query(
+        `WITH next AS (UPDATE workspace SET next_message=next_message+1 WHERE id=$1 RETURNING next_message)
+         INSERT INTO message(id,workspace_id,sequence,author_id,content)
+         SELECT $2,$1,next_message,$3,$4 FROM next`,
+        [w, messageId, actor, c.filename],
+      );
+      // A source reference identifies the exact retained file version. The
+      // filename is presentation, never another request or interpretation.
+      await recordMessageReference(tx, w, messageId, {
+        kind: "source",
+        id: source.sourceId,
+        version: 1,
+      });
+      const focus = c.conversationShare.workstreamFocus;
+      if (focus) {
+        await recordMessageFocus(tx, w, messageId, actor, focus);
+        await tx.query(
+          "INSERT INTO workstream_source(workspace_id,workstream_id,source_id,version,included,actor_id,origin) VALUES($1,$2,$3,1,true,$4,'human')",
+          [w, focus.workstreamId, source.sourceId, actor],
+        );
+      }
+      await tx.query(
+        "INSERT INTO message_attachment(workspace_id,message_id,position,source_id) VALUES($1,$2,0,$3)",
+        [w, messageId, source.sourceId],
+      );
+      await changed(tx, w, "message.send", false, false, {
+        kind: "message",
+        id: messageId,
+      });
+      return { ...source, messageId };
+    }
+    case "document.withdraw":
+    case "document.restore":
+      return changeDocumentVisibility(tx, w, actor, c);
     case "document.retry":
       return retryDocument(tx, w, actor, c);
+    case "research.private_request": {
+      requireThat(
+        ws.personal_owner_id === actor,
+        "PERSONAL_CHAT_UNAVAILABLE",
+        403,
+      );
+      if (c.originId) {
+        await member(tx, c.originId, actor);
+        requireThat(
+          (
+            await tx.query(
+              "SELECT 1 FROM personal_chat_consultation p JOIN conversation_reading r ON r.workspace_id=p.target_id AND r.user_id=$2 AND r.admission=p.admission WHERE p.thread_id=$1 AND p.target_id=$3",
+              [w, actor, c.originId],
+            )
+          ).rowCount,
+          "CONSULTATION_SELECTION_CHANGED",
+          409,
+        );
+      }
+      const work = await requestResearch(tx, ws, actor, {
+        type: "research.request",
+        query: c.query,
+        discloseQuery: true,
+      });
+      await tx.query(
+        "INSERT INTO personal_research_preference(workspace_id,work_id,actor_id,notify,origin_id) VALUES($1,$2,$3,$4,$5)",
+        [w, work.workId, actor, c.notify, c.originId ?? null],
+      );
+      return work;
+    }
+    case "research.private_publish":
+    case "research.brief_retry":
+      return privateResearchAction(tx, ws, actor, c);
     case "research.request":
       return requestResearch(tx, ws, actor, c);
     case "research.retry":
@@ -420,9 +961,16 @@ async function apply(
         "INSERT INTO goal(id,workspace_id,current_version) VALUES($1,$2,1)",
         [goalId, w],
       );
+      const source = await recordWorkspaceNotice(
+        tx,
+        w,
+        actor,
+        "ha impostato l’obiettivo dello spazio.",
+        { kind: "goal", id: goalId, version: 1 },
+      );
       await tx.query(
-        "INSERT INTO goal_version(workspace_id,goal_id,version,content,established_by) VALUES($1,$2,1,$3,$4)",
-        [w, goalId, c.content, actor],
+        "INSERT INTO goal_version(workspace_id,goal_id,version,content,established_by,source_id) VALUES($1,$2,1,$3,$4,$5)",
+        [w, goalId, c.content, actor, source],
       );
       await tx.query("INSERT INTO goal_intent_participant VALUES($1,$2,1,$3)", [
         w,
@@ -449,6 +997,26 @@ async function apply(
       await changed(tx, w, c.type);
       return {};
     }
+    case "conversation.requestAnswer":
+      await requestMessageAnswer(tx, w, actor, c.messageId, c.recipients);
+      return {};
+    case "conversation.answered":
+      await acknowledgeMessage(tx, w, actor, c.messageId);
+      return {};
+    case "reminder.set_time": {
+      requireThat(sessionId, "SESSION_REQUIRED", 401);
+      const result = await completeReminderRequest(
+        tx,
+        ws,
+        actor,
+        c.messageId,
+        c.remindAt,
+        sessionId,
+        personalInTransaction,
+      );
+      await changed(tx, w, "reminder.confirmed");
+      return result;
+    }
     case "message.send": {
       await member(tx, w, actor, true);
       const messageId = randomUUID(),
@@ -459,16 +1027,99 @@ async function apply(
       );
       await tx.query(
         "INSERT INTO message(id,workspace_id,sequence,author_id,content) VALUES($1,$2,$3,$4,$5)",
-        [messageId, w, seq.rows[0].next_message, actor, c.content],
+        [
+          messageId,
+          w,
+          seq.rows[0].next_message,
+          actor,
+          c.content || c.attachments!.map((file) => file.filename).join(", "),
+        ],
       );
       if (c.workstreamFocus)
         await recordMessageFocus(tx, w, messageId, actor, c.workstreamFocus);
+      await recordConversationAddressing(tx, w, actor, messageId, c.content, c);
       if (c.reference)
         await recordMessageReference(tx, w, messageId, c.reference);
       if (c.assistanceContext)
         await recordProductAssistance(tx, w, messageId, c.assistanceContext);
-      const streamTitle =
-        !c.assistanceContext && requestedWorkstreamTitle(c.content);
+      if (c.attachments) {
+        for (const [position, file] of c.attachments.entries()) {
+          const source = await uploadDocument(
+            tx,
+            w,
+            actor,
+            { type: "document.upload", ...file },
+            undefined,
+            !ws.personal_owner_id,
+          );
+          await markOrdinaryUpload(tx, w, actor, source.sourceId);
+          await tx.query(
+            "INSERT INTO message_attachment(workspace_id,message_id,position,source_id) VALUES($1,$2,$3,$4)",
+            [w, messageId, position, source.sourceId],
+          );
+          if (c.workstreamFocus)
+            await tx.query(
+              "INSERT INTO workstream_source(workspace_id,workstream_id,source_id,version,included,actor_id,origin) VALUES($1,$2,$3,1,true,$4,'human')",
+              [w, c.workstreamFocus.workstreamId, source.sourceId, actor],
+            );
+        }
+        if (!c.content) {
+          await changed(tx, w, c.type, false, false, {
+            kind: "message",
+            id: messageId,
+          });
+          return { messageId };
+        }
+      }
+      const reminder =
+        c.clientTimeZone &&
+        !c.assistanceContext &&
+        !c.attachments &&
+        !c.quoteMessageId &&
+        !c.reference
+          ? parseReminderRequest(
+              c.content,
+              !!ws.personal_owner_id,
+              messageIntent.displayName,
+            )
+          : null;
+      if (
+        reminder &&
+        c.clientTimeZone &&
+        !(await legacyAddressTargetsMember(
+          tx,
+          w,
+          actor,
+          c.content,
+          undefined,
+          messageIntent.displayName,
+        ))
+      ) {
+        requireThat(sessionId, "SESSION_REQUIRED", 401);
+        await recordReminderRequest(
+          tx,
+          ws,
+          actor,
+          messageId,
+          reminder,
+          c.clientTimeZone,
+          sessionId,
+          personalInTransaction,
+        );
+        await changed(tx, w, c.type, false, false, {
+          kind: "message",
+          id: messageId,
+        });
+        return { messageId };
+      }
+      if (
+        ws.personal_owner_id &&
+        !isAssistantAddress(c.content, messageIntent.displayName)
+      ) {
+        await changed(tx, w, c.type);
+        return { messageId };
+      }
+      const { streamTitle, objective } = messageIntent;
       if (streamTitle) {
         const operation = await createConversationWorkstream(
           tx,
@@ -483,9 +1134,17 @@ async function apply(
         "INSERT INTO interpretation(id,workspace_id,source_id,status) VALUES($1,$2,$3,'queued')",
         [interpretationId, w, messageId],
       );
+      await bindAssistantTurn(
+        tx,
+        conversationScope(w, ws.personal_owner_id),
+        interpretationId,
+        0,
+      );
       await enqueue(tx, interpretationId);
-      await changed(tx, w, c.type);
-      const objective = !c.assistanceContext && startObjective(c.content);
+      await changed(tx, w, c.type, false, false, {
+        kind: "message",
+        id: messageId,
+      });
       const work = objective
         ? await createActiveWork(tx, w, objective, messageId, actor)
         : undefined;
@@ -493,25 +1152,22 @@ async function apply(
     }
     case "invitation.create": {
       const relationship = await capability(tx, w, actor, "invitations");
-      const token = randomBytes(32).toString("base64url"),
-        inviteId = randomUUID();
-      await tx.query(
-        "INSERT INTO invitation(id,workspace_id,recipient_email,token_hash,issuer_id,relationship_id,expires_at,history_disclosed) VALUES($1,$2,$3,$4,$5,$6,now()+interval '7 days',true)",
-        [inviteId, w, c.email, tokenHash(token), actor, relationship],
+      const contactId = c.contactId ?? null;
+      const email = contactId
+        ? (await resolvePersonalContactEmails(tx, actor, [contactId])).get(
+            contactId,
+          )
+        : c.email;
+      requireThat(email, "PERSONAL_CONTACT_UNAVAILABLE", 409);
+      return issueInvitation(
+        tx,
+        w,
+        actor,
+        relationship,
+        email,
+        c.sendEmail === true,
+        contactId,
       );
-      await changed(tx, w, c.type);
-      const invitationUrl = new URL(
-        "/",
-        process.env.BETTER_AUTH_URL ?? "http://127.0.0.1:3000",
-      );
-      invitationUrl.searchParams.set("invite", token);
-      if (c.sendEmail)
-        await enqueueInvitationMail(tx, w, inviteId, invitationUrl.href);
-      return {
-        invitationId: inviteId,
-        token,
-        invitationUrl: invitationUrl.href,
-      };
     }
     case "invitation.revoke": {
       await capability(tx, w, actor, "invitations");
@@ -732,10 +1388,17 @@ async function apply(
     case "interpretation.retry": {
       await member(tx, w, actor, true);
       const r = await tx.query(
-        "UPDATE interpretation SET status='queued',generation=generation+1,lease_until=NULL,error_code=NULL WHERE workspace_id=$1 AND id=$2 AND (status IN ('completed','stale','failed') OR (status='running' AND lease_until<now())) RETURNING id",
+        "UPDATE interpretation SET status='queued',generation=generation+1,routing_epoch=routing_epoch+1,lease_until=NULL,error_code=NULL,failed_explicit_request=NULL WHERE workspace_id=$1 AND id=$2 AND (status IN ('completed','stale','failed') OR (status='running' AND lease_until<now())) RETURNING id,source_id,routing_epoch",
         [w, c.interpretationId],
       );
       requireThat(r.rowCount, "INTERPRETATION_NOT_RETRYABLE");
+      await requireAvailableDocuments(tx, w, [r.rows[0].source_id]);
+      await bindAssistantTurn(
+        tx,
+        conversationScope(w, ws.personal_owner_id),
+        c.interpretationId,
+        r.rows[0].routing_epoch,
+      );
       await enqueue(tx, c.interpretationId);
       await changed(tx, w, c.type);
       return {};

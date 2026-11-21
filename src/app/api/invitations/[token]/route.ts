@@ -1,4 +1,10 @@
-import { actorFrom, assertOrigin, body, endpoint } from "@/server/http";
+import {
+  actorFrom,
+  sessionFrom,
+  assertOrigin,
+  body,
+  endpoint,
+} from "@/server/http";
 import { invitationDetails } from "@/server/queries";
 import { acceptInvitation } from "@/server/commands";
 import { z } from "zod";
@@ -16,13 +22,15 @@ export async function POST(
 ) {
   return endpoint(async () => {
     assertOrigin(request);
+    const session = await sessionFrom(request);
     const input = z
       .object({ fullHistoryAccepted: z.literal(true) })
       .parse(await body(request));
     return acceptInvitation(
-      await actorFrom(request),
+      session.user.id,
       (await params).token,
       input.fullHistoryAccepted,
+      session.session.id,
     );
   });
 }

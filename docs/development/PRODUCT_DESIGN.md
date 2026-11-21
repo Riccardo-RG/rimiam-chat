@@ -1,8 +1,26 @@
 # RIMIAM — product experience completion
 
-## Current Web refinement — 2026-10-07
+## Current Web presentation — 2026-11-20
 
-The user authorized a decisive Web redesign and delegated palette/composition choices. The implemented [Workspace composition](../../src/app/page.tsx) puts Conversation first, with compact Goal orientation, actual work/attention signals, readable attributed messages and a clear composer. Returning users resume from their Workspace list; Context, work and documents remain supporting views, with tools/people disclosed progressively. Account entry, responsive navigation and Light/Dark/System presentation use the [cobalt/slate palette](../design/BRAND.md#current-web-presentation--2026-10-07); the supplied multicolor logo is unchanged.
+The local Web app implements [Studio and its Incisa icons](../design/BRAND.md#current-web-presentation). The [captured conversation](../design/reviews/2026-11-20-studio/README.md) shows the same Workspace in both themes and on a narrow screen.
+
+## Web interaction model — 2026-11-19
+
+**Chat** and **Condivisi** sit next to the Workspace name. **Strumenti** groups **In programma**, **Contesto** and **Direzione**. Both `/file` and `/documenti` open Condivisi. A desktop message shows a small identity image, name and date above the text. On narrow Web screens Emme keeps her mark and people keep their names; the date and time appear at the start of each day, with a time cue after a long gap. Recorded decisions and completed contributions can be reopened from compact historical rows. Their sources, applicable authority and current status remain in the detail view. The direction view places current decisions underneath the Goal and links to named proposals awaiting the reader’s explicit approval. See [brand and image provenance](../design/BRAND.md#current-web-identity).
+
+The [verified desktop and narrow-Web captures](../design/reviews/2026-11-19-web/verifica/README.md) show the same two-person conversation and recorded decision in a local production build.
+
+## Earlier Web refinement — 2026-11-18
+
+The Web redesign gives Conversation a speaker column when its reading area is wide enough, returning to stacked names in a narrow panel. Secondary views share a compact header with back-to-index and return-to-chat controls. In the direction view, the actual Goal comes first. Represented intent and adherence to its version are separate, personal adherence is explicit, and history, decisions and mandates expand on demand. Enter sends in the chat editor; Shift+Enter inserts a line break. Versioned actions retain their original server contracts. [Web colors and type](../design/BRAND.md#current-web-presentation).
+
+In Conversation, messages share one continuous timeline. A change of speaker or day starts a group with the author’s name. Each individual message retains its own original reference. Time, provenance, feedback and optional speech are available through its options. The timeline takes the available height. On compact Web the writing field reveals its actions while editing. Touching another part of the page returns the composer to its reading state and preserves the draft. Voice messages and human calls have dedicated controls. The compact header opens the Goal, pending activity and reading details on demand. On wider screens the Goal and work cues sit alongside the conversation. See the [current interaction guide](WEB_WORKFLOWS.md).
+
+After a participant had difficulty finding invitations in a new space, the workspace header now opens the personal invitation form directly for eligible members. Verified recipients see outstanding invitations on Home and in an open conversation, including invitations created before this change. Opening one shows the shared-history notice and requires explicit admission. Once the recipient joins, the card disappears. People, context, work, documents and activity lead the workspace menu, followed by optional tools, the workspace switcher and account settings. The bell opens per-device, per-space notification preferences. [Current Web palette](../design/BRAND.md#current-web-presentation) and [release evidence](STATUS.md).
+
+## Earlier Web refinement — 2026-10-07
+
+The user authorized a decisive Web redesign and delegated palette/composition choices. The implemented [Workspace composition](../../src/app/page.tsx) puts Conversation first, with compact Goal orientation, actual work/attention signals, readable attributed messages and a clear composer. Returning users resume from their Workspace list; Context, work and documents remain supporting views, with tools/people disclosed progressively. Account entry, responsive navigation and Light/Dark/System presentation use the [cobalt/slate palette](../design/BRAND.md#web-presentation--2026-10-07); the supplied multicolor logo is unchanged.
 
 This reversible presentation choice supersedes earlier Web styling/composition where different, without changing canonical semantics, authority, provenance or command boundaries. Native clients are unchanged; their visual alignment is deferred until the user confirms Web testing is finished. No browser or visual acceptance was performed. [STATUS](STATUS.md) records actual checks and remaining limits; the historical directions below are not a claim of current visual acceptance.
 
@@ -34,8 +52,8 @@ This is an authorized, reversible presentation/integration refinement, not an AD
 
 ## Shared information architecture
 
-- **Application Home:** existing Workspaces, create/join, account access and a concise explanation through the product: people converse; Miriam helps maintain shared understanding and ongoing work. No dashboard metrics or large marketing site.
-- **Workspace home:** Goal as orientation, compact actual attention, human/AI Conversation and reachable composer. Miriam's work has a small durable presence; details and completed history are available on demand.
+- **Application Home:** existing Workspaces, create/join, account access and a concise explanation through the product: people converse; Emme helps maintain shared understanding and ongoing work. No dashboard metrics or large marketing site.
+- **Workspace home:** Goal as orientation, compact actual attention, human/AI Conversation and reachable composer. Emme’s work has a small durable presence; details and completed history are available on demand.
 - **Inspectable layers:** Context (qualified understanding, questions and governed decisions), work, materials (Sources/Artifacts), connected capabilities and people/access. These support the conversation and retain their existing authorization and provenance controls.
 - **States:** distinguish proposal, accepted reference, authorized action, provider receipt and unadopted Contribution in both words and structure. Human account names never determine whether a message is AI. No fake thinking, progress percentages or chain-of-thought.
 

@@ -1,0 +1,56 @@
+.photoAction.photoAction {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  line-height: 1.2;
+}
+.photoAction svg {
+  display: block;
+  flex: none;
+}
+.trigger {
+  padding: 0;
+  min-height: 0;
+  box-shadow: none;
+  cursor: zoom-in;
+}
+
+.preview {
+  box-sizing: border-box;
+  width: min(100% - 2rem, 22rem);
+  max-height: calc(100dvh - 2rem);
+  margin: auto;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  background: var(--white);
+  color: var(--ink);
+}
+.preview::backdrop {
+  background: rgb(0 0 0 / 58%);
+}
+.preview header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+.preview h2 {
+  margin: 0;
+  font-size: 1.1rem;
+  overflow-wrap: anywhere;
+}
+.preview button {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 44px;
+  flex-shrink: 0;
+}
+.preview img {
+  width: min(100%, 256px);
+  height: auto;
+  display: block;
+  margin-inline: auto;
+}

@@ -8,11 +8,33 @@ import { transaction, type Tx } from "./db.ts";
 import { member } from "./workspace-state.ts";
 import { requireThat } from "./errors.ts";
 import { activityEvent } from "./activity.ts";
+import { referenceSourceRelation } from "./reference-sources.ts";
+
+// A shared original is inspectable immediately, even when extraction is
+// pending, unavailable or withheld. Only reference inspection sees these
+// metadata-only rows; evidence retrieval still requires published content.
+const inspectableSources = `(
+ SELECT * FROM ${referenceSourceRelation} qualified
+ UNION ALL
+ SELECT m.id,m.workspace_id,m.content,m.author_id,u.name AS author_name,m.sequence,m.created_at,
+   'message'::text,NULL::text,NULL::text,'Registrazione di una modifica nello spazio, attribuita a chi ha eseguito l’operazione.'::text,
+   NULL::uuid,NULL::integer,NULL::text
+ FROM message m JOIN "user" u ON u.id=m.author_id
+ WHERE m.purpose IN ('workstream_event','goal_event')
+ UNION ALL
+ SELECT d.id,d.workspace_id,''::text AS content,d.contributed_by,
+   'Documento: '||d.title AS author_name,NULL::integer AS sequence,d.created_at,
+   d.kind,d.title,d.url,CASE WHEN v.withdrawn THEN 'File ritirato da chi lo ha condiviso.' ELSE d.qualification||' Testo del file non disponibile.' END AS qualification,
+   d.document_id,d.document_version,d.content_hash
+ FROM external_source d LEFT JOIN document_visibility v ON (v.workspace_id,v.source_id)=(d.workspace_id,d.id)
+ WHERE d.kind='document' AND NOT EXISTS (
+   SELECT 1 FROM workspace_source published WHERE published.workspace_id=d.workspace_id AND published.id=d.id)
+)`;
 
 // Closed vocabulary of existing shared domain records; never private mailbox/calendar data.
 const selects: Record<ConversationReference["kind"], string> = {
   goal: `SELECT v.content AS title,v.content,v.established_by AS actor,v.created_at,(v.version=g.current_version AND g.status='active') AS current,
- 'Intento registrato, non consenso collettivo o autorizzazione ad agire.' AS qualification,ARRAY[v.source_id] AS source_ids,
+ 'Questa versione riporta l’obiettivo dello spazio. L’autore della modifica è indicato nella storia.' AS qualification,ARRAY[v.source_id] AS source_ids,
  jsonb_build_object('currentVersion',g.current_version,'currentPrimary',g.current_primary,'status',g.status,'sourceId',v.source_id,
  'explicitAdherents',ARRAY(SELECT user_id FROM goal_adherence WHERE workspace_id=v.workspace_id AND goal_id=v.goal_id AND goal_version=v.version ORDER BY user_id)) AS provenance
  FROM goal_version v JOIN goal g ON (g.workspace_id,g.id)=(v.workspace_id,v.goal_id) WHERE v.workspace_id=$1 AND v.goal_id=$2 AND v.version=$3`,
@@ -46,7 +68,7 @@ const selects: Record<ConversationReference["kind"], string> = {
  jsonb_build_object('status',v.status,'reason',v.reason,'answerInformationId',v.answer_information_id,'answerInformationVersion',v.answer_information_version,'currentVersion',q.current_version) AS provenance
  FROM question_version v JOIN open_question q ON (q.workspace_id,q.id)=(v.workspace_id,v.question_id) WHERE v.workspace_id=$1 AND v.question_id=$2 AND v.version=$3`,
   workstream: `SELECT v.title,v.description AS content,v.actor_id AS actor,v.created_at,v.version=w.current_version AS current,
- 'Filone editoriale dello stesso Workspace; non Goal, Context privato, adozione o authority. Lifecycle storico e corrente restano distinti.' AS qualification,ARRAY[v.source_id] AS source_ids,
+ 'Argomento dello stesso spazio; non Goal, Context privato, adozione o authority. Lifecycle storico e corrente restano distinti.' AS qualification,ARRAY[v.source_id] AS source_ids,
  jsonb_build_object('origin',v.origin,'recordedLifecycle',v.lifecycle_state,'recordedAction',v.lifecycle_action,'currentVersion',w.current_version,'currentState',w.state) AS provenance
  FROM workstream_version v JOIN workstream w ON (w.workspace_id,w.id)=(v.workspace_id,v.workstream_id) WHERE v.workspace_id=$1 AND v.workstream_id=$2 AND v.version=$3`,
   active_work: `SELECT c.objective AS title,e.content||CASE WHEN result.body IS NULL THEN '' ELSE E'\n\nContribution storica non adottata:\n'||result.body END AS content,
@@ -64,9 +86,15 @@ const selects: Record<ConversationReference["kind"], string> = {
  jsonb_build_object('startsAt',v.starts_at,'endsAt',v.ends_at,'timeZone',v.time_zone,'reason',v.reason,'personId',e.person_id,'currentVersion',e.current_version) AS provenance
  FROM scheduled_event_version v JOIN scheduled_event e ON (e.workspace_id,e.id)=(v.workspace_id,v.event_id) WHERE v.workspace_id=$1 AND v.event_id=$2 AND v.version=$3`,
   source: `SELECT COALESCE(s.title,'Messaggio condiviso') AS title,s.content,s.author_id AS actor,s.created_at,
- NOT EXISTS(SELECT 1 FROM external_source newer WHERE newer.workspace_id=s.workspace_id AND newer.document_id=s.document_id AND newer.document_version>s.document_version) AS current,
- s.qualification,ARRAY[s.id] AS source_ids,jsonb_build_object('sourceKind',s.kind,'documentId',s.document_id,'documentVersion',s.document_version,'url',s.url,'authorName',s.author_name) AS provenance
- FROM workspace_source s WHERE s.workspace_id=$1 AND s.id=$2 AND $3=1`,
+ v.withdrawn IS NOT TRUE AND NOT EXISTS(SELECT 1 FROM external_source newer WHERE newer.workspace_id=s.workspace_id AND newer.document_id=s.document_id AND newer.document_version>s.document_version) AS current,
+ s.qualification,ARRAY[s.id] AS source_ids,jsonb_build_object('sourceKind',s.kind,'withdrawn',coalesce(v.withdrawn,false),'documentId',s.document_id,'documentVersion',s.document_version,'url',s.url,'authorName',s.author_name,
+ 'actorKind',m.actor_kind,'replyToSourceId',m.reply_to_source_id,'citationSourceIds',COALESCE(r.source_ids,'{}'::uuid[]))
+ || CASE WHEN d.followup_id IS NULL THEN '{}'::jsonb ELSE jsonb_build_object(
+   'followupId',d.followup_id,'followupVersion',d.version,'scheduledAt',d.scheduled_at) END AS provenance
+ FROM ${inspectableSources} s LEFT JOIN document_visibility v ON (v.workspace_id,v.source_id)=(s.workspace_id,s.id) LEFT JOIN message m ON (m.workspace_id,m.id)=(s.workspace_id,s.id)
+ LEFT JOIN miriam_response r ON (r.workspace_id,r.message_id)=(s.workspace_id,s.id)
+ LEFT JOIN followup_delivery d ON (d.workspace_id,d.message_id)=(s.workspace_id,s.id)
+ WHERE s.workspace_id=$1 AND s.id=$2 AND $3=1`,
 };
 export async function resolveReference(
   tx: Tx,
@@ -86,7 +114,7 @@ export async function resolveReference(
   ).rows;
   const sourceIds = (
     await tx.query(
-      "SELECT id FROM workspace_source WHERE workspace_id=$1 AND id=ANY($2::uuid[]) ORDER BY id",
+      `SELECT id FROM ${inspectableSources} s WHERE workspace_id=$1 AND id=ANY($2::uuid[]) ORDER BY id`,
       [
         w,
         [

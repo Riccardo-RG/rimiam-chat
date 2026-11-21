@@ -1,0 +1,49 @@
+name: React Native quality
+
+on:
+  pull_request:
+    paths:
+      - "mobile/**"
+      - "src/contracts/**"
+      - "src/shared/**"
+      - ".github/workflows/native-ci.yml"
+  push:
+    branches: [main]
+    paths:
+      - "mobile/**"
+      - "src/contracts/**"
+      - "src/shared/**"
+      - ".github/workflows/native-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-quality-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mobile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: mobile
+    env:
+      CI: "1"
+      EXPO_NO_TELEMETRY: "1"
+      EXPO_OFFLINE: "1"
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - run: npm ci
+      - run: npm run check
+      - name: Build iOS and Android JavaScript bundles
+        run: npm run bundle

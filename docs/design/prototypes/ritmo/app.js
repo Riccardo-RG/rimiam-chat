@@ -93,7 +93,7 @@ function human(person, text, time = "10:42", attachment = false) {
   return `<article class="message ${self ? "self" : "human"}"><div class="message-meta">${avatar(person, self)}<span class="message-author">${people[person]}${self ? " · tu" : ""}</span><time>${time}</time></div><p>${text}</p>${attachment ? `<button type="button" class="attached-source" data-action="source"><span class="file-icon">${icon("file")}</span><span><strong>Stima costi beta · esempio.pdf</strong><small>Caricato da Giulia · documento originale</small></span></button>` : ""}</article>`;
 }
 function rimiam(body, time = "10:44") {
-  return `<article class="message rimiam"><div class="message-meta"><span class="rimiam-mark">${icon("rimiam")}</span><span class="message-author">RIMIAM</span><time>${time}</time></div><div class="rimiam-body">${body}</div></article>`;
+  return `<article class="message rimiam"><div class="message-meta"><span class="rimiam-mark">${icon("rimiam")}</span><span class="message-author">Emme</span><time>${time}</time></div><div class="rimiam-body">${body}</div></article>`;
 }
 function currentStatus() {
   if (state.conflict && state.work === "paused")
@@ -135,7 +135,7 @@ function conversationContent() {
   );
   result += human(
     "riccardo",
-    "RIMIAM, da dove partiamo per la prima beta?",
+    "Emme, da dove partiamo per la prima beta?",
     "10:43",
   );
   if (state.work === "idle") {
@@ -195,7 +195,7 @@ function homeHTML() {
   return `<header class="home-header"><span class="wordmark">rimiam</span><span class="web-nav">I tuoi spazi</span>${button("account", avatar(state.person, true), "icon-btn")}</header><div class="home-scroll"><span class="eyebrow">CIAO, ${people[state.person].toUpperCase()}</span><h1>Le cose che<br />state costruendo.</h1><p class="home-intro">Uno spazio per ogni intenzione.<br />Un filo da riprendere, insieme.</p><div class="section-label"><h2>I tuoi spazi</h2>${button("create", "Nuovo spazio", "text-link", "plus")}</div><button type="button" class="workspace-card" data-action="enter"><span class="workspace-art">${icon("leaf")}</span><h3>${escapeHTML(state.workspace)}</h3><p>${state.created ? "Il primo passo, insieme." : "Dall’idea ai primi utenti. Costruiamo RIMIAM, insieme."}</p><span class="card-foot"><span class="avatar-stack">${avatar(state.created ? state.creationPerson : "riccardo")}${state.created ? "" : avatar("giulia")}</span><span>${state.created ? "Appena creato" : "Riprendi la conversazione"} ↗</span></span></button><button type="button" class="invitation-entry" data-action="invitations">${icon("mail")}<span>Inviti</span><span class="muted">Nessuno in attesa</span></button><div class="home-footer">${icon("shield")}Ogni spazio ha la sua conversazione e la sua storia.</div></div>`;
 }
 function workspaceHTML() {
-  return `<header class="workspace-header">${button("home", '<span class="sr-only">I tuoi spazi</span>', "icon-btn", "back")}<div class="workspace-name"><h1>${escapeHTML(state.workspace)}</h1><button type="button" data-action="people">${state.created ? "Solo tu, per ora" : "Tu e " + people[state.person === "riccardo" ? "giulia" : "riccardo"]}${icon("down")}</button></div>${button("lens", "Lo spazio", "lens-entry", "lens")}</header><div class="workspace-body"><section class="conversation-column" aria-label="Conversazione dello Workspace">${activity()}${state.focus ? `<div class="focus-strip">${icon("thread")}<span>Filone · Il lancio della beta</span>${button("unfocus", "Tutta la conversazione", "")}</div>` : ""}<div class="conversation" id="conversation">${conversationContent()}</div><div class="composer-area"><form class="composer" id="composer"><label class="sr-only" for="message">Messaggio nella conversazione condivisa</label><textarea id="message" rows="1" placeholder="Continuiamo da qui…" maxlength="2000">${escapeHTML(state.draft)}</textarea><div class="composer-tools">${button("attach", '<span class="sr-only">Aggiungi una fonte</span>', "icon-btn", "plus")}${button("voice", '<span class="sr-only">Messaggio vocale</span>', "icon-btn", "mic")}<span class="composer-context">${state.focus ? "Nello stesso spazio" : "Nella conversazione"}</span>${button("voice-dialogue", '<span class="sr-only">Parla con RIMIAM</span>', "icon-btn", "wave")}<button type="submit" class="icon-btn send" aria-label="Invia il messaggio nell’anteprima">${icon("up")}</button></div></form><div class="composer-footer">${icon("rimiam")}RIMIAM interviene quando la chiami.</div></div></section><aside class="dock ${state.pinned && state.platform === "web" ? "visible" : ""}" id="dock" aria-label="Dettaglio dello spazio"></aside></div>`;
+  return `<header class="workspace-header">${button("home", '<span class="sr-only">I tuoi spazi</span>', "icon-btn", "back")}<div class="workspace-name"><h1>${escapeHTML(state.workspace)}</h1><button type="button" data-action="people">${state.created ? "Solo tu, per ora" : "Tu e " + people[state.person === "riccardo" ? "giulia" : "riccardo"]}${icon("down")}</button></div>${button("lens", "Lo spazio", "lens-entry", "lens")}</header><div class="workspace-body"><section class="conversation-column" aria-label="Conversazione dello Workspace">${activity()}${state.focus ? `<div class="focus-strip">${icon("thread")}<span>Filone · Il lancio della beta</span>${button("unfocus", "Tutta la conversazione", "")}</div>` : ""}<div class="conversation" id="conversation">${conversationContent()}</div><div class="composer-area"><form class="composer" id="composer"><label class="sr-only" for="message">Messaggio nella conversazione condivisa</label><textarea id="message" rows="1" placeholder="Continuiamo da qui…" maxlength="2000">${escapeHTML(state.draft)}</textarea><div class="composer-tools">${button("attach", '<span class="sr-only">Aggiungi una fonte</span>', "icon-btn", "plus")}${button("voice", '<span class="sr-only">Messaggio vocale</span>', "icon-btn", "mic")}<span class="composer-context">${state.focus ? "Nello stesso spazio" : "Nella conversazione"}</span>${button("voice-dialogue", '<span class="sr-only">Parla con Emme</span>', "icon-btn", "wave")}<button type="submit" class="icon-btn send" aria-label="Invia il messaggio nell’anteprima">${icon("up")}</button></div></form><div class="composer-footer">${icon("rimiam")}Puoi rivolgerti a Emme nella conversazione.</div></div></section><aside class="dock ${state.pinned && state.platform === "web" ? "visible" : ""}" id="dock" aria-label="Dettaglio dello spazio"></aside></div>`;
 }
 function render({ end = false } = {}) {
   const previous = document.getElementById("conversation");
@@ -224,7 +224,7 @@ function workDetail() {
   if (state.work === "idle")
     return {
       title: "Il lavoro",
-      body: `<span class="eyebrow">DA ESPLORARE INSIEME</span><h3>Una cosa alla volta.<br />Senza perdere il resto.</h3><p>Nessun lavoro di RIMIAM in corso in questa scena.</p><h4>Filoni attivi</h4>${button("stream", "Il lancio della beta", "lens-row", "thread")}<h4>Task</h4><p class="muted">Nessun Task assegnato. Un suggerimento di RIMIAM non assegna una responsabilità.</p>`,
+      body: `<span class="eyebrow">DA ESPLORARE INSIEME</span><h3>Una cosa alla volta.<br />Senza perdere il resto.</h3><p>Nessun lavoro di Emme in corso in questa scena.</p><h4>Filoni attivi</h4>${button("stream", "Il lancio della beta", "lens-row", "thread")}<h4>Task</h4><p class="muted">Nessun Task assegnato. Un suggerimento di Emme non assegna una responsabilità.</p>`,
       footer: button("start", "Confronta i due scenari", "primary", "rimiam"),
     };
   const log = [
@@ -239,7 +239,7 @@ function workDetail() {
       ? button("result", "Leggi il risultato", "primary", "file")
       : `${button(state.work === "working" || state.work === "needs_input" ? "pause" : "resume", state.work === "working" || state.work === "needs_input" ? "Metti in pausa" : "Riprendi", "secondary", state.work === "working" || state.work === "needs_input" ? "pause" : "play")}${state.work !== "stopped" ? button("stop-confirm", "Ferma il lavoro", "text-link danger") : ""}`;
   return {
-    title: "Il lavoro di RIMIAM",
+    title: "Il lavoro di Emme",
     body: `${badge(currentStatus(), state.conflict || state.outdated ? "warning" : "")}<h3>Come partire<br />con la prima beta.</h3><p class="lead">Un confronto dei materiali condivisi, con i dati mancanti lasciati visibili.</p>${state.conflict ? `<div class="info-block warning"><strong>Il perimetro è da chiarire</strong><p>La pausa o la ripresa non cancellano le due indicazioni incompatibili.</p>${button("conflict", "Vedi il punto da chiarire", "text-link", "arrow")}</div>` : ""}<h4>Perimetro del lavoro <span class="muted">· v${state.contractVersion}</span></h4><dl class="definition"><div><dt>Obiettivo</dt><dd>Confrontare una beta con 10 gruppi e una con 50. Nessuna decisione di lancio.</dd></div><div><dt>Ambito</dt><dd>${state.scope === "services-only" ? "Solo costi dei servizi; tempo di supporto escluso secondo l’indicazione di Riccardo ancora vigente." : "Costi stimati dei servizi, ipotesi di utilizzo e tempo per supporto e feedback."}${state.contractExtra ? " Esplicitare le ipotesi sul consumo AI, senza inventare dati mancanti." : ""}</dd></div><div><dt>Ipotesi e limiti</dt><dd>150 €/mese nel documento e circa 500 €/mese riferiti da Giulia sono stime illustrative, non prezzi verificati. Utilizzo AI e tempo di supporto non misurati.</dd></div><div><dt>Fonti pertinenti</dt><dd>${button("source", "Stima costi beta · originale v1", "text-link", "file")}<br />${button("larger-beta", "Messaggio di Giulia · 12 settembre", "text-link", "context")}</dd></div><div><dt>Risultato atteso</dt><dd>Contributo con confronto e punti da verificare. Nessuna adozione, assegnazione o azione esterna.</dd></div></dl><h4>Continuità</h4><ol class="history">${log.map((entry) => `<li>${escapeHTML(entry.text)}<small>${escapeHTML(entry.detail)}</small></li>`).join("")}</ol>${state.work !== "completed" && !state.conflict && state.scope === "full" && !state.contractExtra ? button("compatible", "Esplicita le ipotesi sul consumo AI", "text-link", "plus") : ""}<p class="footnote">${people[state.person]} può guidare questo lavoro perché può contribuire allo spazio. La richiesta iniziale non assegna un proprietario.</p>`,
     footer: controls,
   };
@@ -247,7 +247,7 @@ function workDetail() {
 function conflictDetail() {
   return {
     title: "Un punto da chiarire",
-    body: `${badge("In attesa di chiarimento", "warning")}<h3>Stesso confronto.<br />Due perimetri diversi.</h3><p>Le indicazioni sono entrambe conservate. RIMIAM non sceglie quale persona seguire.</p><div class="question-pair"><div><strong>Riccardo · 10:47</strong><p>«Limita il confronto ai costi dei servizi: escludi il tempo di supporto.»</p></div><div><strong>Giulia · 10:48</strong><p>«Nel confronto deve esserci anche il tempo per supporto e feedback.»</p></div></div><p class="lead">Volete confrontare solo i costi dei servizi oppure includere anche il tempo per supporto e feedback?</p><p class="footnote">Puoi ritirare la tua indicazione. Non puoi ritirare quella dell’altra persona. Il perimetro non contestato e la storia restano conservati.</p>`,
+    body: `${badge("In attesa di chiarimento", "warning")}<h3>Stesso confronto.<br />Due perimetri diversi.</h3><p>Le indicazioni sono entrambe conservate. Emme non sceglie quale persona seguire.</p><div class="question-pair"><div><strong>Riccardo · 10:47</strong><p>«Limita il confronto ai costi dei servizi: escludi il tempo di supporto.»</p></div><div><strong>Giulia · 10:48</strong><p>«Nel confronto deve esserci anche il tempo per supporto e feedback.»</p></div></div><p class="lead">Volete confrontare solo i costi dei servizi oppure includere anche il tempo per supporto e feedback?</p><p class="footnote">Puoi ritirare la tua indicazione. Non puoi ritirare quella dell’altra persona. Il perimetro non contestato e la storia restano conservati.</p>`,
     footer: `${button("withdraw", "Ritiro la mia indicazione", "primary")}${button("ask-conflict", "Ne parliamo in conversazione", "text-link", "arrow")}`,
   };
 }
@@ -260,8 +260,8 @@ function resultDetail() {
     };
   return {
     title: "Il confronto",
-    body: `${badge(state.outdated ? "Da ricontrollare · fonte aggiornata" : "Contributo · non adottato", state.outdated ? "warning" : "neutral")}<h3>Partire piccoli,<br />per imparare meglio.</h3><p class="footnote">RIMIAM · 13 settembre, 10:49 · risultato v1<br />Completato sul Work Contract v${state.contractVersion} · dati illustrativi</p><p class="lead">I 150 € sono una stima nel documento condiviso; i 500 € sono un’ipotesi di Giulia. Nessuno dei due importi è un preventivo verificato.</p><div class="comparison"><div><span class="eyebrow">10 GRUPPI</span><strong>~150 €</strong><p>al mese · stima nel documento</p></div><div><span class="eyebrow">50 GRUPPI</span><strong>~500 €</strong><p>al mese · ipotesi di Giulia</p></div></div><p>La differenza ipotizzata è di 350 € al mese, ma non basta per scegliere: le stime potrebbero assumere un uso diverso dell’AI e non includono il vostro tempo.</p><div class="info-block"><strong>Il punto utile per proseguire</strong><p>Misurare il costo di alcune sessioni reali e stimare il tempo di supporto prima di scegliere la dimensione della beta.</p><p class="footnote">Raccomandazione · nessun Task creato o assegnato.</p></div><h4>Da dove viene</h4>${button("source", "Stima costi beta · v1", "text-link", "file")}<br />${button("larger-beta", "Stima attribuita a Giulia", "text-link", "context")}<p class="footnote">Questo contributo non è una decisione o un’informazione accettata. Eventuali adozioni seguono il percorso governato della capability pertinente.</p>${state.outdated ? '<div class="info-block warning"><strong>Il risultato era completo quando è stato prodotto.</strong><p>Una modifica successiva alla fonte richiede una nuova verifica. Nessun riavvio automatico.</p></div>' : ""}`,
-    footer: button("ask-result", "Parliamone con RIMIAM", "primary", "rimiam"),
+    body: `${badge(state.outdated ? "Da ricontrollare · fonte aggiornata" : "Contributo · non adottato", state.outdated ? "warning" : "neutral")}<h3>Partire piccoli,<br />per imparare meglio.</h3><p class="footnote">Emme · 13 settembre, 10:49 · risultato v1<br />Completato sul Work Contract v${state.contractVersion} · dati illustrativi</p><p class="lead">I 150 € sono una stima nel documento condiviso; i 500 € sono un’ipotesi di Giulia. Nessuno dei due importi è un preventivo verificato.</p><div class="comparison"><div><span class="eyebrow">10 GRUPPI</span><strong>~150 €</strong><p>al mese · stima nel documento</p></div><div><span class="eyebrow">50 GRUPPI</span><strong>~500 €</strong><p>al mese · ipotesi di Giulia</p></div></div><p>La differenza ipotizzata è di 350 € al mese, ma non basta per scegliere: le stime potrebbero assumere un uso diverso dell’AI e non includono il vostro tempo.</p><div class="info-block"><strong>Il punto utile per proseguire</strong><p>Misurare il costo di alcune sessioni reali e stimare il tempo di supporto prima di scegliere la dimensione della beta.</p><p class="footnote">Raccomandazione · nessun Task creato o assegnato.</p></div><h4>Da dove viene</h4>${button("source", "Stima costi beta · v1", "text-link", "file")}<br />${button("larger-beta", "Stima attribuita a Giulia", "text-link", "context")}<p class="footnote">Questo contributo non è una decisione o un’informazione accettata. Eventuali adozioni seguono il percorso governato della capability pertinente.</p>${state.outdated ? '<div class="info-block warning"><strong>Il risultato era completo quando è stato prodotto.</strong><p>Una modifica successiva alla fonte richiede una nuova verifica. Nessun riavvio automatico.</p></div>' : ""}`,
+    footer: button("ask-result", "Parliamone con Emme", "primary", "rimiam"),
   };
 }
 function getDetail(type) {
@@ -283,7 +283,7 @@ function getDetail(type) {
   ) {
     return {
       title: "Uno spazio nuovo",
-      body: '<span class="eyebrow">SI PARTE DA QUI</span><h3>La struttura<br />arriverà parlando.</h3><p>In questo spazio non ci sono ancora fonti, informazioni accettate, filoni o lavori di RIMIAM. I contenuti della startup RIMIAM appartengono all’altro spazio.</p>',
+      body: '<span class="eyebrow">SI PARTE DA QUI</span><h3>La struttura<br />arriverà parlando.</h3><p>In questo spazio non ci sono ancora fonti, informazioni accettate, filoni o lavori di Emme. I contenuti della startup RIMIAM appartengono all’altro spazio.</p>',
       footer: button("close", "Torna alla conversazione", "secondary"),
     };
   }
@@ -306,7 +306,7 @@ function getDetail(type) {
     return {
       title: "Quello che è emerso",
       body: `<span class="eyebrow">CONTEXT</span><h3>Un riferimento.<br />Con le sue basi.</h3><p>Informazioni, ipotesi e decisioni restano distinguibili.</p><h4>Informazione accettata</h4><div class="info-block">${badge("Accettata da Riccardo")}<p>Nel foglio condiviso risultano <strong>6 persone disponibili a un’intervista</strong>.</p><p class="footnote">Informazione v2 · accettata il 13 settembre, 10:30 · fonte: elenco contatti illustrativo. Riferimento di lavoro, non consenso collettivo o certezza garantita.</p>${button("information-history", "Fonte e correzione precedente", "text-link", "clock")}</div><h4>Ancora da verificare</h4>${button("source", "10 gruppi · ~150 €/mese nel documento", "lens-row", "file")}${button("larger-beta", "50 gruppi · ~500 €/mese ipotizzati da Giulia", "lens-row", "context")}<h4>Domanda aperta</h4><p>Quante sessioni faranno i gruppi e quanto supporto richiederanno?</p>`,
-      footer: button("ask-context", "Chiedi a RIMIAM", "primary", "rimiam"),
+      footer: button("ask-context", "Chiedi a Emme", "primary", "rimiam"),
     };
   if (type === "information-history")
     return {
@@ -328,7 +328,7 @@ function getDetail(type) {
   if (type === "stream")
     return {
       title: "Un filone dello spazio",
-      body: `${badge(state.stream === "active" ? "Attivo" : state.stream === "resolved" ? "Risolto" : "Archiviato", state.stream !== "active" ? "neutral" : "")}<h3>Il lancio<br />della beta.</h3><p>Dimensione della beta, costi e primi riscontri: messaggi, fonti e lavoro raccolti senza spostarli dalla conversazione condivisa.</p><p class="footnote">Filone W-01 · v${state.streamVersion} · stessi partecipanti e stessa visibilità dello Workspace</p><h4>Dentro questo filone</h4>${button("source", "Stima costi beta", "lens-row", "file")}${button("work", "Il confronto della beta", "lens-row", "work")}<div class="info-block"><strong>Un punto di vista, non un’altra stanza.</strong><p>La vista focalizzata filtra la lettura. Le fonti pertinenti dello spazio restano disponibili a RIMIAM; la storia originale non cambia.</p></div><p class="footnote">Risolvere o archiviare il filone non completa Task, Goal o impegni. Riaprirlo conserva la stessa identità.</p>`,
+      body: `${badge(state.stream === "active" ? "Attivo" : state.stream === "resolved" ? "Risolto" : "Archiviato", state.stream !== "active" ? "neutral" : "")}<h3>Il lancio<br />della beta.</h3><p>Dimensione della beta, costi e primi riscontri: messaggi, fonti e lavoro raccolti senza spostarli dalla conversazione condivisa.</p><p class="footnote">Filone W-01 · v${state.streamVersion} · stessi partecipanti e stessa visibilità dello Workspace</p><h4>Dentro questo filone</h4>${button("source", "Stima costi beta", "lens-row", "file")}${button("work", "Il confronto della beta", "lens-row", "work")}<div class="info-block"><strong>Un punto di vista, non un’altra stanza.</strong><p>La vista focalizzata filtra la lettura. Le fonti pertinenti dello spazio restano disponibili a Emme; la storia originale non cambia.</p></div><p class="footnote">Risolvere o archiviare il filone non completa Task, Goal o impegni. Riaprirlo conserva la stessa identità.</p>`,
       footer: `${button("focus", "Apri la vista focalizzata", "primary", "thread")}${state.stream === "active" ? button("resolve-stream", "Segna il filone come risolto", "text-link") : button("reopen-stream", "Riapri lo stesso filone", "text-link")}${state.stream === "resolved" ? button("archive-stream", "Archivia il filone", "text-link") : ""}`,
     };
   if (type === "sources" || type === "attach")
@@ -358,13 +358,13 @@ function getDetail(type) {
   if (type === "stop-confirm")
     return {
       title: "Fermare questo lavoro?",
-      body: "<h3>Il lavoro si ferma.<br />La storia resta.</h3><p>RIMIAM non continuerà l’esecuzione di questo lavoro. Fonti, contributi e indicazioni rimangono consultabili; eventuali impegni collegati non vengono soddisfatti o cancellati.</p>",
+      body: "<h3>Il lavoro si ferma.<br />La storia resta.</h3><p>Emme non continuerà l’esecuzione di questo lavoro. Fonti, contributi e indicazioni rimangono consultabili; eventuali impegni collegati non vengono soddisfatti o cancellati.</p>",
       footer: `${button("stop", "Ferma il lavoro", "primary")}${button("work", "Torna al dettaglio", "text-link")}`,
     };
   if (type === "call")
     return {
       title: "Chiamata audio",
-      body: `${badge("Anteprima · nessuna chiamata attiva", "neutral")}<h3>Una conversazione<br />fra voi.</h3><p>RIMIAM non partecipa e non parla live nelle chiamate fra persone.</p><div class="info-block"><strong>Prima di registrare, ognuno sceglie.</strong><p>Il consenso personale deve includere audio, trascrizione e conservazione come fonte condivisa, visibile anche ai membri ammessi successivamente secondo la policy dello spazio.</p></div><div class="person-row">${avatar("riccardo")}<span><strong>Riccardo</strong><small>Consenso non espresso</small></span></div><div class="person-row">${avatar("giulia")}<span><strong>Giulia</strong><small>Consenso non espresso</small></span></div><p class="footnote">L’analisi di RIMIAM richiede una richiesta separata dopo la chiamata. Nessun microfono viene attivato nell’anteprima.</p>`,
+      body: `${badge("Anteprima · nessuna chiamata attiva", "neutral")}<h3>Una conversazione<br />fra voi.</h3><p>Emme non partecipa e non parla live nelle chiamate fra persone.</p><div class="info-block"><strong>Prima di registrare, ognuno sceglie.</strong><p>Il consenso personale deve includere audio, trascrizione e conservazione come fonte condivisa, visibile anche ai membri ammessi successivamente secondo la policy dello spazio.</p></div><div class="person-row">${avatar("riccardo")}<span><strong>Riccardo</strong><small>Consenso non espresso</small></span></div><div class="person-row">${avatar("giulia")}<span><strong>Giulia</strong><small>Consenso non espresso</small></span></div><p class="footnote">L’analisi di Emme richiede una richiesta separata dopo la chiamata. Nessun microfono viene attivato nell’anteprima.</p>`,
       footer:
         '<button type="button" class="primary" disabled>Registrazione non autorizzata</button>',
     };
@@ -376,8 +376,8 @@ function getDetail(type) {
     };
   if (type === "voice" || type === "voice-dialogue")
     return {
-      title: type === "voice" ? "Un messaggio vocale" : "Parla con RIMIAM",
-      body: `<span class="eyebrow">VOCE NELLO STESSO SPAZIO</span><h3>${type === "voice" ? "Puoi dirlo<br />a voce." : "La conversazione<br />continua a voce."}</h3><p>${type === "voice" ? "Audio originale e trascrizione restano distinguibili e collegati alla loro fonte." : "RIMIAM usa lo stesso contesto della Conversation. Parlare non salta i passaggi di autorizzazione delle azioni conseguenziali."}</p><p class="footnote">Questo prototipo esplora l’ingresso al percorso. Non attiva il microfono, non registra e non genera audio.</p>`,
+      title: type === "voice" ? "Un messaggio vocale" : "Parla con Emme",
+      body: `<span class="eyebrow">VOCE NELLO STESSO SPAZIO</span><h3>${type === "voice" ? "Puoi dirlo<br />a voce." : "La conversazione<br />continua a voce."}</h3><p>${type === "voice" ? "Audio originale e trascrizione restano distinguibili e collegati alla loro fonte." : "Emme usa lo stesso contesto della Conversation. Parlare non salta i passaggi di autorizzazione delle azioni conseguenziali."}</p><p class="footnote">Questo prototipo esplora l’ingresso al percorso. Non attiva il microfono, non registra e non genera audio.</p>`,
       footer: button("close", "Torna alla conversazione", "secondary"),
     };
   if (type === "account")
@@ -503,7 +503,7 @@ function resetScene(scene) {
   });
   if (scene === "completed")
     state.events.push({
-      text: "RIMIAM ha prodotto il contributo v1",
+      text: "Emme ha prodotto il contributo v1",
       detail: "13 settembre, 10:49 · non adottato",
     });
   if (scene === "conflict")
@@ -631,13 +631,13 @@ function action(name) {
   }
   const questions = {
     "ask-result":
-      "RIMIAM, nel confronto della beta (contributo v1), che cosa dobbiamo misurare prima di invitare i primi gruppi?",
+      "Emme, nel confronto della beta (contributo v1), che cosa dobbiamo misurare prima di invitare i primi gruppi?",
     "ask-context":
-      "RIMIAM, sui costi riportati nella stima beta v1, quali ipotesi dobbiamo ancora verificare?",
+      "Emme, sui costi riportati nella stima beta v1, quali ipotesi dobbiamo ancora verificare?",
     "ask-conflict":
-      "RIMIAM, sul confronto della beta: chiarisco la mia indicazione sul perimetro…",
+      "Emme, sul confronto della beta: chiarisco la mia indicazione sul perimetro…",
     "ask-goal":
-      "RIMIAM, vorrei discutere il Goal corrente senza modificarlo ancora.",
+      "Emme, vorrei discutere il Goal corrente senza modificarlo ancora.",
   };
   if (questions[name]) return ask(questions[name]);
   openDetail(name);
@@ -705,7 +705,7 @@ document.addEventListener("submit", (event) => {
     if (!text) return;
     state.draft = "";
     if (
-      /rimiam/i.test(text) &&
+      /\b(?:emme|miriam|rimiam)\b/i.test(text) &&
       /confronta/i.test(text) &&
       state.work === "idle" &&
       !state.created
@@ -718,7 +718,7 @@ document.addEventListener("submit", (event) => {
       });
     } else {
       state.extraMessages.push({ person: state.person, text });
-      if (/rimiam/i.test(text))
+      if (/\b(?:emme|miriam|rimiam)\b/i.test(text))
         state.extraMessages.push({
           kind: "notice",
           text: "Qui puoi esplorare l’interazione, ma non è collegato un modello. Il messaggio resta nell’anteprima; le altre risposte sono esempi scritti per il design.",

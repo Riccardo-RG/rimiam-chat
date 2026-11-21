@@ -1,4 +1,5 @@
 "use client";
+import { useUiLanguage } from "./ui-language";
 
 import { useEffect, useState } from "react";
 import {
@@ -6,6 +7,8 @@ import {
   type ConversationHandoff,
 } from "@/contracts/conversation-handoff";
 import { api, errorText } from "./api";
+import { EmmeMessageMark } from "./brand-signature";
+import { WorkspaceIcon } from "./workspace-icon";
 
 export function useConversationHandoffs(
   workspace: string,
@@ -83,6 +86,15 @@ export const handoffDestination = (handoff: ConversationHandoff) => {
   return "calendar";
 };
 
+function handoffLabel(handoff: ConversationHandoff) {
+  if (handoff.status === "applied")
+    return handoff.application?.prepared
+      ? "Proposta preparata"
+      : "Passaggio registrato";
+  if (handoff.status === "stale") return "Suggerimento da rivedere";
+  return "Suggerimento di Emme";
+}
+
 export function ConversationHandoffs({
   items,
   open,
@@ -90,39 +102,60 @@ export function ConversationHandoffs({
   items: ConversationHandoff[];
   open: (handoff: ConversationHandoff) => void;
 }) {
+  const { t: uiText } = useUiLanguage();
   if (!items.length) return null;
   return (
-    <div className="conversation-handoffs">
-      {items.map((handoff) => (
-        <article className="conversation-handoff" key={handoff.id}>
-          <span className="eyebrow">
-            {handoff.status === "applied"
-              ? "PASSAGGIO REGISTRATO"
-              : "PASSO PROPOSTO DA RIMIAM"}
-          </span>
-          <p>{handoff.summary}</p>
-          <small>
-            {handoff.status === "applied"
-              ? handoff.application?.prepared
-                ? "Proposta preparata. Le approvazioni e gli effetti rimangono distinti."
-                : "Operazione registrata con il suo atto e la sua provenienza."
-              : handoff.status === "stale"
-                ? "Il riferimento è cambiato. La proposta richiede una nuova valutazione."
-                : handoff.status === "navigation"
-                  ? "Apri il percorso personale. Nessuna condivisione o azione esterna viene eseguita."
-                  : "Aprire il controllo non accetta, assegna o autorizza nulla."}
-          </small>
-          <button type="button" className="quiet" onClick={() => open(handoff)}>
-            {handoff.status === "applied"
-              ? "Vedi il passaggio"
-              : handoff.status === "stale"
-                ? "Ispeziona il riferimento"
-                : "Valuta questo passo"}{" "}
-            ↗
-          </button>
-        </article>
-      ))}
-    </div>
+    <details className="conversation-handoffs">
+      <summary>
+        <EmmeMessageMark />
+        {items.length === 1
+          ? handoffLabel(items[0])
+          : uiText("{0} passaggi di Emme", String(items.length))}
+        <WorkspaceIcon name="chevron" />
+      </summary>
+      <ul>
+        {items.map((handoff) => (
+          <li key={handoff.id}>
+            {items.length > 1 && <strong>{handoffLabel(handoff)}</strong>}
+            <p>{handoff.summary}</p>
+            <small>
+              {handoff.status === "applied"
+                ? handoff.application?.prepared
+                  ? uiText(
+                      "La proposta è pronta. Le eventuali approvazioni si verificano nel dettaglio.",
+                    )
+                  : uiText(
+                      "Puoi consultare l’atto registrato e la sua origine.",
+                    )
+                : handoff.status === "stale"
+                  ? uiText(
+                      "Il riferimento è cambiato dopo questo suggerimento.",
+                    )
+                  : handoff.status === "navigation"
+                    ? uiText(
+                        "Si apre il tuo percorso personale. Sei tu a scegliere cosa condividere o inviare.",
+                      )
+                    : uiText(
+                        "Puoi esaminare il suggerimento e decidere se confermarlo.",
+                      )}
+            </small>
+            <button
+              type="button"
+              className="quiet"
+              onClick={() => open(handoff)}
+            >
+              {handoff.status === "applied"
+                ? uiText("Vedi il passaggio")
+                : handoff.status === "stale"
+                  ? uiText("Vedi il riferimento")
+                  : handoff.status === "navigation"
+                    ? uiText("Apri il percorso personale")
+                    : uiText("Valuta il suggerimento")}
+            </button>
+          </li>
+        ))}
+      </ul>
+    </details>
   );
 }
 
@@ -135,28 +168,31 @@ export function HandoffContext({
   source: () => void;
   close: () => void;
 }) {
+  const { t: uiText } = useUiLanguage();
   return (
     <aside
       className="handoff-context"
-      aria-label="Richiesta dalla conversazione"
+      aria-label={uiText("Richiesta dalla conversazione")}
     >
-      <strong>Dalla conversazione</strong>
+      <strong>{uiText("Dalla conversazione")}</strong>
       <p>{handoff.summary}</p>
       {handoff.status === "stale" && (
         <p role="alert">
-          Questa proposta è superata. Torna al riferimento e chiedi di
-          rivalutarla prima di applicarla.
+          {uiText(
+            "Questa proposta è superata. Torna al riferimento e chiedi di rivalutarla prima di applicarla.",
+          )}
         </p>
       )}
       <p className="hint">
-        La preparazione conserva la richiesta originale. L’atto esplicito e i
-        controlli di questa area mantengono i propri effetti.
+        {uiText(
+          "La richiesta originale resta in chat. Qui puoi controllare i dettagli prima di confermare.",
+        )}
       </p>
       <button className="quiet" onClick={source}>
-        Messaggio di partenza
+        {uiText("Messaggio di partenza")}
       </button>
       <button className="quiet" onClick={close}>
-        Esci da questo percorso
+        {uiText("Esci da questo percorso")}
       </button>
     </aside>
   );

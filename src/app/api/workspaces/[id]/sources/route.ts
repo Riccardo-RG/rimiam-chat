@@ -1,4 +1,4 @@
-import { actorFrom, assertOrigin, body, endpoint } from "@/server/http";
+import { sessionFrom, assertOrigin, body, endpoint } from "@/server/http";
 import { execute } from "@/server/commands";
 import { uploadDocumentSchema } from "@/server/sources";
 export async function POST(
@@ -7,13 +7,14 @@ export async function POST(
 ) {
   return endpoint(async () => {
     assertOrigin(request);
-    const actor = await actorFrom(request);
+    const session = await sessionFrom(request);
     const input = await body(request, 1500000);
     return execute(
-      actor,
+      session.user.id,
       (await params).id,
       input.commandId,
       uploadDocumentSchema.parse(input.command),
+      session.session.id,
     );
   });
 }

@@ -1,8 +1,9 @@
 import { PRODUCT_GUIDE_VERSION } from "../shared/product-guide.ts";
 import type { Tx } from "./db.ts";
 import { callConfigured, recordingConfigured } from "./call-provider.ts";
-import { googleConfiguration } from "./google-credentials.ts";
-import { isStructuredModelConfigured } from "./structured-llm.ts";
+import { transcriptionConfiguration } from "./media-provider.ts";
+import { integrationConfiguration } from "./google-credentials.ts";
+import { listAssistantConnectionsWithRevisions } from "./assistant-connections.ts";
 
 export interface ProductAction {
   id: string;
@@ -19,6 +20,8 @@ export async function productCapabilities(
   tx: Tx,
   w: string,
   actor: string | null,
+  personal = false,
+  selected?: { connectionId: string; connectionRevision: string },
 ) {
   const participation = actor
     ? (
@@ -31,20 +34,22 @@ export async function productCapabilities(
       ).rows[0]
     : undefined;
   const canContribute = participation?.contributes === true;
-  let googleConfigured = false;
-  try {
-    googleConfigured = Boolean(googleConfiguration());
-  } catch {
-    // Invalid deployment configuration is not evidence of a usable integration.
-  }
   const configuration = {
-    assistant: isStructuredModelConfigured(),
+    assistant: listAssistantConnectionsWithRevisions().some(
+      (c) =>
+        c.id === (selected?.connectionId ?? "default") &&
+        c.configured &&
+        (!selected || c.revision === selected.connectionRevision),
+    ),
     webResearch: Boolean(
       process.env.RESEARCH_PROVIDER === "brave" &&
       process.env.BRAVE_SEARCH_API_KEY?.trim(),
     ),
-    calendar: googleConfigured,
-    email: googleConfigured,
+    calendar: Boolean(integrationConfiguration("google", "calendar")),
+    email: Boolean(
+      integrationConfiguration("google", "email") ||
+      integrationConfiguration("microsoft"),
+    ),
     invitationDelivery: Boolean(
       process.env.MAIL_PROVIDER === "resend" &&
       process.env.RESEND_API_KEY &&
@@ -59,11 +64,7 @@ export async function productCapabilities(
           ? process.env.ANTHROPIC_API_KEY?.trim()
           : false),
     ),
-    audioTranscription: Boolean(
-      process.env.TRANSCRIPTION_PROVIDER === "openai" &&
-      process.env.OPENAI_API_KEY &&
-      process.env.TRANSCRIPTION_MODEL,
-    ),
+    audioTranscription: Boolean(transcriptionConfiguration()),
     calls: callConfigured(),
     callRecording: recordingConfigured(),
   };
@@ -81,13 +82,56 @@ export async function productCapabilities(
     available,
     limits,
   });
-  return {
+  const base = {
     guideVersion: PRODUCT_GUIDE_VERSION,
     participation: {
       hasHumanActor: actor !== null,
       activeEligibleMember: Boolean(participation),
       canContribute,
     },
+  };
+  if (personal)
+    return {
+      ...base,
+      configuration: {
+        ...configuration,
+        webResearch: false,
+        calendar: false,
+        email: false,
+        invitationDelivery: false,
+        imageReading: false,
+        audioTranscription: false,
+        calls: false,
+        callRecording: false,
+      },
+      actions: [
+        action(
+          "conversation",
+          "conversation",
+          "Only the requesting account sees this archive. Reply to explicit personal questions using material in this space.",
+        ),
+        action(
+          "artifacts",
+          "existing_ui",
+          "Create or edit draft notes. Saving a draft cannot adopt a decision or commitment.",
+        ),
+        action(
+          "sources.upload",
+          "existing_ui",
+          "Store personal files. Uploading a file or saving a link does not request AI reading, fetch the page or disclose material to another workspace.",
+        ),
+        action(
+          "followup",
+          "existing_ui",
+          "Set, revise or stop a personal reminder. Its due message appears in this private space.",
+        ),
+      ],
+      boundaries: [
+        "This account-only utility space is independent of shared workspaces. No invitations, shared state adoption, tasks, delegation or external actions. Never claim to execute these from conversation.",
+      ],
+    };
+  return {
+    ...base,
     configuration,
     actions: [
       action(
@@ -98,7 +142,7 @@ export async function productCapabilities(
       action(
         "workstream.create",
         "conversation",
-        "Supported by an explicit authenticated text request naming a shared workstream, or Crea filone. Missing/ambiguous names need clarification. No creation from quoted text, sources or model inference.",
+        "Supported by an explicit authenticated text request naming a shared workstream, or Nuovo argomento. Missing/ambiguous names need clarification. No creation from quoted text, sources or model inference.",
       ),
       action(
         "workstream.manage",
@@ -108,7 +152,7 @@ export async function productCapabilities(
       action(
         "goal",
         "commit_point",
-        "Prepare and open initial intent or versioned Goal proposals. The existing UI applies explicit establishment, adherence and authorized change; no inferred adherence or transferred obligations.",
+        "Prepare initial intent or a versioned change. Any current contributor can save a text edit to the current primary Goal; the chat records the editor. Replacement, conclusion, obligations and personal adherence keep their own governed controls. A suggested change cannot save itself.",
       ),
       action(
         "information",
@@ -128,7 +172,7 @@ export async function productCapabilities(
       action(
         "followup",
         "existing_ui",
-        "Create and maintain personal reminders in Tasks. Reminders and closure do not change commitments, responsibility or external calendars.",
+        "Schedule reminders in Tasks for the shared chat. When due, Emme posts the reminder to the group. Eligible members may receive a push on opted-in devices. Only the creator can revise or close the reminder. Reminders and closure do not change commitments, responsibility or external calendars.",
       ),
       action(
         "active_work",
@@ -172,13 +216,13 @@ export async function productCapabilities(
       action(
         "email.send",
         "commit_point",
-        "The mailbox owner reviews and authorizes the exact version/envelope in Email. Private connection state is unknown here; disclosure is separate, and unknown sends must be reconciled rather than blindly retried.",
+        "In Strumenti → Email → Le tue caselle the owner can connect Gmail or Outlook when configured. Signing in to RIMIAM does not connect a mailbox. The owner reviews and authorizes the exact envelope in Email. Private connection state is unknown here. Disclosure is separate; reconcile an uncertain send before retrying.",
         canContribute && configuration.email,
       ),
       action(
         "people.access",
         "commit_point",
-        "Existing invitation and protected access-governance UI validates current authority. Admission includes retained shared history; no creator override or governance inferred from membership.",
+        "On Web, a member with invitation capability selects Invita in the chat header, enters the recipient email and acknowledges retained history. The recipient signs in with that verified address and can accept an incoming invitation in the app or follow the personal link. Email delivery is optional. Joining grants ordinary participation and access to retained shared history. It grants no invitation management or project authority.",
       ),
       action(
         "workspace_links",
@@ -195,7 +239,7 @@ export async function productCapabilities(
       action(
         "calls",
         "existing_ui",
-        "Human audio calls require configured transport. Recording additionally needs storage and every captured participant's explicit personal audio/transcription/history consent. Miriam is absent; post-call analysis requires a separate request.",
+        "Human audio calls require configured transport. Recording additionally needs storage and every captured participant's explicit personal audio/transcription/history consent. Emme is absent; post-call analysis requires a separate request.",
         canContribute && configuration.calls,
         false,
       ),

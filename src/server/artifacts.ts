@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { Tx } from "./db.ts";
 import { changed, member, type WorkspaceRow } from "./workspace-state.ts";
 import { requireThat } from "./errors.ts";
+import { referenceSourceRelation } from "./reference-sources.ts";
 
 import {
   artifactDraftSchema,
@@ -69,8 +70,12 @@ export async function draftArtifact(
   const ids = [...new Set([q.source_id, ...support, ...selected])];
   const sources = (
     await tx.query(
-      "SELECT * FROM workspace_source WHERE workspace_id=$1 AND id=ANY($2::uuid[]) ORDER BY created_at,id",
-      [w, ids],
+      `SELECT id,kind,author_name,title,document_version,url,qualification,created_at FROM ${referenceSourceRelation} s
+       WHERE workspace_id=$1 AND id=ANY($2::uuid[])
+       UNION ALL SELECT s.id,s.kind,NULL,s.title,s.document_version,NULL,'File ritirato da chi lo ha condiviso.',s.created_at
+       FROM external_source s JOIN document_visibility v ON (v.workspace_id,v.source_id)=(s.workspace_id,s.id)
+       WHERE s.workspace_id=$1 AND s.id=ANY($2::uuid[]) AND NOT(s.id=ANY($3::uuid[])) AND v.withdrawn ORDER BY created_at,id`,
+      [w, ids, selected],
     )
   ).rows;
   requireThat(sources.length === ids.length, "SOURCE_NOT_FOUND", 404);
@@ -216,6 +221,15 @@ export async function artifactOutdatedReasons(
     ).rowCount
   )
     reasons.push("Documento selezionato aggiornato");
+  if (
+    (
+      await tx.query(
+        "SELECT 1 FROM artifact_source r JOIN document_visibility s ON (s.workspace_id,s.source_id)=(r.workspace_id,r.source_id) WHERE r.workspace_id=$1 AND r.artifact_id=$2 AND r.artifact_version=$3 AND r.explicitly_selected AND s.withdrawn LIMIT 1",
+        [w, v.artifact_id, v.version],
+      )
+    ).rowCount
+  )
+    reasons.push("Documento selezionato ritirato");
   if (
     (
       await tx.query(

@@ -52,6 +52,15 @@ export const projectCommandSchemas = [
     .strict(),
   z
     .object({
+      type: z.literal("goal.editShared"),
+      conversationOrigin: conversationOriginSchema.optional(),
+      goalId: z.uuid(),
+      expectedVersion: version,
+      content,
+    })
+    .strict(),
+  z
+    .object({
       type: z.literal("goal.propose"),
       conversationOrigin: conversationOriginSchema.optional(),
       goalId: z.uuid(),

@@ -1,13 +1,17 @@
 "use client";
+import { useUiLanguage } from "./ui-language";
+
 import { setHumanCallActive } from "./call-audio-focus";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { Room, RoomEvent, Track } from "livekit-client";
 import {
   callViewSchema,
-  recordingConsentText,
+  recordingConsentWordingSchema,
   type CallView,
 } from "../contracts/calls";
 import type { Command } from "../contracts/commands";
+import { ConversationAudioTool } from "./conversation-audio-tool";
+import { microphoneError, microphoneUnavailable } from "./microphone-access";
 import { api, errorText } from "./api";
 
 export function WorkspaceCall({
@@ -21,8 +25,10 @@ export function WorkspaceCall({
   disabled: boolean;
   command: (c: Command) => Promise<Record<string, unknown>>;
 }) {
+  const { t: uiText, locale } = useUiLanguage();
   const [view, setView] = useState<CallView | null>(null),
     [status, setStatus] = useState(""),
+    [loadError, setLoadError] = useState(""),
     [error, setError] = useState(""),
     [muted, setMuted] = useState(false),
     [busy, setBusy] = useState(false),
@@ -44,7 +50,9 @@ export function WorkspaceCall({
     }
     if (p.state !== "admitted") {
       setStatus(
-        "Ingresso in attesa: eventuali registrazioni devono prima essere arrestate.",
+        uiText(
+          "Ingresso in attesa: eventuali registrazioni devono prima essere arrestate.",
+        ),
       );
       return;
     }
@@ -53,15 +61,6 @@ export function WorkspaceCall({
     const token = ++generation.current;
     void (async () => {
       try {
-        window.dispatchEvent(
-          new CustomEvent("miriam:microphone", { detail: "call" }),
-        );
-        const permission = await navigator.mediaDevices.getUserMedia({
-          audio: true,
-          video: false,
-        });
-        permission.getTracks().forEach((t) => t.stop());
-        if (token !== generation.current) return;
         const credentials = await api<{ url: string; token: string }>(
           `/api/v1/workspaces/${workspace}/call-connect`,
           { callId: wanted },
@@ -81,14 +80,18 @@ export function WorkspaceCall({
           track.detach().forEach((e) => e.remove()),
         );
         r.on(RoomEvent.Reconnecting, () =>
-          setStatus("Riconnessione alla chiamata…"),
+          setStatus(uiText("Riconnessione alla chiamata…")),
         );
-        r.on(RoomEvent.Reconnected, () => setStatus("Chiamata connessa"));
+        r.on(RoomEvent.Reconnected, () =>
+          setStatus(uiText("Chiamata connessa")),
+        );
         r.on(RoomEvent.Disconnected, () => {
           if (room.current === r) {
             room.current = null;
             setHumanCallActive(false);
-            setStatus("Chiamata disconnessa. Premi Entra per riprovare.");
+            setStatus(
+              uiText("Chiamata disconnessa. Premi Entra per riprovare."),
+            );
             setWanted(null);
           }
         });
@@ -99,12 +102,13 @@ export function WorkspaceCall({
         }
         await r.localParticipant.setMicrophoneEnabled(true);
         setMuted(false);
-        setStatus("Chiamata connessa");
+        setStatus(uiText("Chiamata connessa"));
       } catch (e) {
-        if (alive.current) {
-          setError(errorText(e));
-          await disconnect();
-          setWanted(null);
+        if (alive.current && token === generation.current) {
+          setError(microphoneError(e));
+          await leave().catch((failure) =>
+            setError(microphoneError(e) + " " + errorText(failure)),
+          );
         }
       } finally {
         joining.current = false;
@@ -142,6 +146,36 @@ export function WorkspaceCall({
       setBusy(false);
     }
   }
+  async function join() {
+    setError("");
+    setBusy(true);
+    try {
+      const unavailable = microphoneUnavailable();
+      if (unavailable) throw new Error(unavailable);
+      if (typeof RTCPeerConnection === "undefined")
+        throw new Error("Questo browser non supporta le chiamate audio Web.");
+      window.dispatchEvent(
+        new CustomEvent("miriam:microphone", { detail: "call" }),
+      );
+      setStatus(uiText("Attendo l’accesso al microfono…"));
+      const permission = await navigator.mediaDevices.getUserMedia({
+        audio: true,
+        video: false,
+      });
+      permission.getTracks().forEach((t) => t.stop());
+      if (!alive.current) return;
+      setStatus(uiText("Ingresso nella chiamata…"));
+      const result = await command({ type: "call.join" });
+      if (alive.current) setWanted(String(result.callId));
+    } catch (e) {
+      if (alive.current) {
+        setStatus("");
+        setError(microphoneError(e));
+      }
+    } finally {
+      if (alive.current) setBusy(false);
+    }
+  }
   useEffect(() => {
     alive.current = true;
     let active = true;
@@ -151,11 +185,12 @@ export function WorkspaceCall({
           if (active) {
             const next = callViewSchema.parse(x);
             setView(next);
+            setLoadError("");
             receiveCall(next);
           }
         })
         .catch((e) => {
-          if (active) setError(errorText(e));
+          if (active) setLoadError(errorText(e));
         });
     load();
     const timer = setInterval(load, 2000);
@@ -202,57 +237,92 @@ export function WorkspaceCall({
     self = current?.participants.find(
       (p) => p.userId === actor && p.state !== "left",
     );
+  const consentText = view?.currentConsentText ?? view?.consentText;
+  const wording = recordingConsentWordingSchema.safeParse(consentText);
+  const recording = current?.recordings.some(
+    (r) =>
+      !r.captureFenced &&
+      ["active", "starting", "stopping", "unknown"].includes(r.state),
+  );
   return (
-    <details className="workspace-call">
-      <summary>
-        Chiamata audio {current ? "· in corso" : "tra partecipanti"}
-        {current?.recordings.some(
-          (r) =>
-            !r.captureFenced &&
-            ["active", "starting", "stopping", "unknown"].includes(r.state),
-        ) && " · REGISTRAZIONE attiva o in verifica"}
-      </summary>
-      <p>
-        RIMIAM non partecipa dal vivo. La registrazione richiede il consenso
-        personale di tutti; l’analisi si richiede dopo la chiamata.
-      </p>
-      {!view?.configured && (
-        <p>Il servizio chiamate deve essere configurato.</p>
+    <ConversationAudioTool
+      icon="phone"
+      title={uiText("Chiamata audio")}
+      status={
+        recording
+          ? "Registrazione attiva o in verifica"
+          : current
+            ? "Chiamata in corso"
+            : error
+              ? "Chiamata da verificare"
+              : undefined
+      }
+    >
+      {!view && !loadError && (
+        <p role="status">{uiText("Verifica disponibilità della chiamata…")}</p>
       )}
-      {!wanted ? (
+      {loadError && <p role="alert">{loadError}</p>}
+      {view && !view.configured && (
+        <p role="status">
+          {uiText(
+            "Il servizio chiamate deve essere configurato. Chi gestisce RIMIAM può attivare il collegamento audio per questa installazione.",
+          )}
+        </p>
+      )}
+      {view?.configured && disabled && (
+        <p role="status">
+          {uiText(
+            "Per entrare in chiamata serve il permesso di contribuire a questo spazio.",
+          )}
+        </p>
+      )}
+      {view?.configured && (
+        <p>
+          {uiText(
+            "In chiamata parli con le persone dello spazio. Per registrare serve il consenso di tutti i partecipanti.",
+          )}
+        </p>
+      )}
+      {!wanted && view?.configured ? (
         <button
-          disabled={disabled || busy || !view?.configured}
-          onClick={() =>
-            void act({ type: "call.join" }).then((r) => {
-              if (r) setWanted(String(r.callId));
-            })
-          }
+          type="button"
+          disabled={disabled || busy}
+          onClick={() => void join()}
         >
-          Entra nella chiamata
+          {uiText("Entra nella chiamata")}
         </button>
-      ) : (
+      ) : wanted ? (
         <>
           <button
+            type="button"
             onClick={() => void leave().catch((e) => setError(errorText(e)))}
           >
-            Lascia chiamata
+            {uiText("Lascia chiamata")}
           </button>
           <button
+            type="button"
             disabled={status !== "Chiamata connessa"}
             onClick={() =>
               void room.current?.localParticipant
                 .setMicrophoneEnabled(muted)
                 .then(() => setMuted(!muted))
+                .catch((e) => setError(microphoneError(e)))
+            }
+          >
+            {muted ? uiText("Attiva microfono") : uiText("Disattiva microfono")}
+          </button>
+          <button
+            type="button"
+            onClick={() =>
+              void room.current
+                ?.startAudio()
                 .catch((e) => setError(errorText(e)))
             }
           >
-            {muted ? "Attiva microfono" : "Disattiva microfono"}
-          </button>
-          <button onClick={() => void room.current?.startAudio()}>
-            Abilita ascolto
+            {uiText("Abilita ascolto")}
           </button>
         </>
-      )}
+      ) : null}
       {status && <p role="status">{status}</p>}
       {current && (
         <div>
@@ -266,44 +336,73 @@ export function WorkspaceCall({
               .join(" · ")}
           </p>
           <strong role="status">
-            {current.recordings.some(
-              (r) =>
-                !r.captureFenced &&
-                ["active", "starting", "stopping", "unknown"].includes(r.state),
-            )
-              ? "Registrazione attiva o arresto da confermare"
-              : "Audio non registrato"}
+            {recording
+              ? uiText("Registrazione attiva o arresto da confermare")
+              : uiText("Audio non registrato")}
           </strong>
-          {self && wanted && !current.recordingRequested && (
-            <button
-              disabled={busy || !view?.recordingConfigured}
-              onClick={() =>
-                void act({ type: "call.recording.request", callId: current.id })
-              }
-            >
-              Richiedi registrazione
-            </button>
-          )}
-          {self && wanted && current.recordingRequested && !self.consented && (
-            <div>
-              <p>{view?.consentText}</p>
+          {self &&
+            wanted &&
+            !current.recordingRequested &&
+            (view?.recordingConfigured ? (
               <button
-                disabled={busy || self.state !== "admitted"}
+                type="button"
+                disabled={busy}
                 onClick={() =>
                   void act({
-                    type: "call.recording.consent",
+                    type: "call.recording.request",
                     callId: current.id,
-                    epoch: current.epoch,
-                    consentText: recordingConsentText,
                   })
                 }
               >
-                Acconsento personalmente
+                {uiText("Richiedi registrazione")}
+              </button>
+            ) : (
+              <p>
+                {uiText(
+                  "Puoi parlare in chiamata. Il servizio di registrazione non è configurato.",
+                )}
+              </p>
+            ))}
+          {self && wanted && current.recordingRequested && !self.consented && (
+            <div>
+              {locale === "en" && wording.success ? (
+                <>
+                  <p>{uiText(wording.data)}</p>
+                  <details>
+                    <summary>{uiText("Testo originale del consenso")}</summary>
+                    <p lang="it">{wording.data}</p>
+                  </details>
+                </>
+              ) : (
+                <p>{consentText}</p>
+              )}
+              {!wording.success && (
+                <p role="status">
+                  {uiText(
+                    "Aggiorna l’app per esprimere il consenso a queste condizioni.",
+                  )}
+                </p>
+              )}
+              <button
+                type="button"
+                disabled={busy || self.state !== "admitted" || !wording.success}
+                onClick={() => {
+                  if (wording.success)
+                    void act({
+                      type: "call.recording.consent",
+                      callId: current.id,
+                      epoch: current.epoch,
+                      consentText: wording.data,
+                    });
+                }}
+              >
+                {uiText("Acconsento personalmente")}
               </button>
             </div>
           )}
           {self && wanted && current.recordingRequested && (
             <button
+              type="button"
               onClick={() => {
                 setMuted(true);
                 setWanted(null);
@@ -314,13 +413,15 @@ export function WorkspaceCall({
                 });
               }}
             >
-              Ritira consenso · esci e rientra senza registrazione
+              {uiText("Ritira consenso · esci e rientra senza registrazione")}
             </button>
           )}
           {current.errorCode && (
             <p role="alert">
-              {errorText(current.errorCode)}. Non presumere che una
-              registrazione sia terminata finché l’arresto non è confermato.
+              {errorText(current.errorCode)}
+              {uiText(
+                ". Non presumere che una registrazione sia terminata finché l’arresto non è confermato.",
+              )}
             </p>
           )}
         </div>
@@ -330,7 +431,8 @@ export function WorkspaceCall({
         .map((c) => (
           <details key={c.id}>
             <summary>
-              Storia chiamata {c.id.slice(0, 8)} · {c.state}
+              {uiText("Storia chiamata ")}
+              {c.id.slice(0, 8)} · {c.state}
             </summary>
             {c.recordings.map((r) => (
               <div key={r.id}>
@@ -349,7 +451,9 @@ export function WorkspaceCall({
                 {r.segments.map((s) => (
                   <details key={s.id}>
                     <summary>
-                      Trascrizione da {s.startSeconds}s · fonte non accettata
+                      {uiText("Trascrizione da ")}
+                      {s.startSeconds}
+                      {uiText("s · fonte non accettata")}
                     </summary>
                     <p>{s.content}</p>
                     <small>{s.qualification}</small>
@@ -358,12 +462,13 @@ export function WorkspaceCall({
               </div>
             ))}
             <button
+              type="button"
               disabled={disabled || busy || c.state !== "ended"}
               onClick={() => void act({ type: "call.analyze", callId: c.id })}
             >
               {c.analysisRequested
-                ? "Consulta/prosegui analisi esistente"
-                : "Richiedi analisi a RIMIAM"}
+                ? uiText("Consulta/prosegui analisi esistente")
+                : uiText("Richiedi analisi a Emme")}
             </button>
             {c.recordings.some((r) =>
               ["failed", "needs_configuration"].includes(
@@ -371,20 +476,22 @@ export function WorkspaceCall({
               ),
             ) && (
               <button
+                type="button"
                 disabled={disabled || busy}
                 onClick={() =>
                   void act({ type: "call.transcription.retry", callId: c.id })
                 }
               >
-                Riprova trascrizione
+                {uiText("Riprova trascrizione")}
               </button>
             )}
             <details>
-              <summary>Consensi e storia</summary>
+              <summary>{uiText("Consensi e storia")}</summary>
               {c.events.map((e) => (
                 <p key={e.version}>
-                  {e.createdAt} · {e.kind} · {e.actorId ?? "sistema"}
-                  {e.epoch !== null && ` · consenso #${e.epoch}`}
+                  {e.createdAt} · {e.kind} · {e.actorId ?? uiText("sistema")}
+                  {e.epoch !== null &&
+                    uiText(" · consenso #{0}", String(e.epoch))}
                   {e.consentText && (
                     <>
                       <br />
@@ -398,6 +505,6 @@ export function WorkspaceCall({
         ))}
       {error && <p role="alert">{error}</p>}
       <div ref={audio} />
-    </details>
+    </ConversationAudioTool>
   );
 }

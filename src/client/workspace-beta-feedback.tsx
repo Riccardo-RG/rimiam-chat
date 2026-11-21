@@ -1,4 +1,5 @@
 "use client";
+import { useUiLanguage } from "./ui-language";
 
 import { useEffect, useRef, useState } from "react";
 import {
@@ -29,6 +30,8 @@ export function WorkspaceBetaFeedback({
   action: (run: () => Promise<void>) => Promise<void>;
   busy: boolean;
 }) {
+  const { locale: uiLocale } = useUiLanguage();
+  const { t: uiText } = useUiLanguage();
   const [content, setContent] = useState("");
   const [retry, setRetry] = useState(0);
   const [result, setResult] = useState<{
@@ -130,11 +133,13 @@ export function WorkspaceBetaFeedback({
   }
 
   return (
-    <section aria-label="Feedback beta">
+    <section aria-label={uiText("Feedback beta")}>
       <p>
-        Note condivise con i membri dello spazio, separate dal Context e dalle
-        risposte di RIMIAM. Puoi scrivere anche <code>/feedback …</code> nella
-        chat. Per correggere una nota, aggiungine una nuova.
+        {uiText(
+          "Note condivise con i membri dello spazio, separate dal Context e dalle risposte di Emme. Puoi scrivere anche ",
+        )}
+        <code>{uiText("/feedback …")}</code>
+        {uiText(" nella chat. Per correggere una nota, aggiungine una nuova.")}
       </p>
       {canContribute && (
         <form
@@ -158,56 +163,62 @@ export function WorkspaceBetaFeedback({
         >
           {message && (
             <details open>
-              <summary>Messaggio incluso nel feedback e nel report</summary>
+              <summary>
+                {uiText("Messaggio incluso nel feedback e nel report")}
+              </summary>
               <p style={{ whiteSpace: "pre-wrap" }}>{message.content}</p>
             </details>
           )}
           <label>
-            Cosa hai notato?
+            {uiText("Cosa hai notato?")}
             <textarea
               value={content}
               onChange={(event) => {
                 setContent(event.target.value);
                 setSaved(false);
               }}
-              placeholder="Cosa è successo e cosa ti aspettavi? Anche una frase basta."
+              placeholder={uiText(
+                "Cosa è successo e cosa ti aspettavi? Anche una frase basta.",
+              )}
               rows={4}
               maxLength={6000}
               required
             />
           </label>
-          <button disabled={busy || !content.trim()}>Salva feedback</button>
-          {saved && <p role="status">Feedback salvato.</p>}
+          <button disabled={busy || !content.trim()}>
+            {uiText("Salva feedback")}
+          </button>
+          {saved && <p role="status">{uiText("Feedback salvato.")}</p>}
         </form>
       )}
       <p className="hint">
-        Il report contiene le note di tutti e solo i messaggi collegati
-        esplicitamente. Controllalo prima di condividerlo fuori dallo spazio:
-        potrebbe contenere informazioni personali. Nulla viene inviato
-        automaticamente.
+        {uiText(
+          "Il report contiene le note di tutti e solo i messaggi collegati esplicitamente. Controllalo prima di condividerlo fuori dallo spazio: potrebbe contenere informazioni personali. Nulla viene inviato automaticamente.",
+        )}
       </p>
       <button
         className="quiet"
         onClick={() => (showUsage ? setShowUsage(false) : void loadUsage(days))}
       >
         {showUsage
-          ? "Nascondi utilizzo e costi"
-          : "Mostra utilizzo e costi stimati"}
+          ? uiText("Nascondi utilizzo e costi")
+          : uiText("Mostra utilizzo e costi stimati")}
       </button>
       {showUsage && (
-        <section aria-label="Utilizzo e costi stimati">
+        <section aria-label={uiText("Utilizzo e costi stimati")}>
           <p>
-            Solo AI di Conversation e Active Work nello spazio. Se aperto,
-            questo riepilogo viene incluso nel report.
+            {uiText(
+              "La stima copre le risposte in chat e le analisi svolte in questo spazio. Apri il riepilogo per includerlo nel report.",
+            )}
           </p>
           <label>
-            Periodo{" "}
+            {uiText("Periodo")}{" "}
             <select
               value={days}
               onChange={(event) => void loadUsage(Number(event.target.value))}
             >
-              <option value={7}>Ultimi 7 giorni</option>
-              <option value={30}>Ultimi 30 giorni</option>
+              <option value={7}>{uiText("Ultimi 7 giorni")}</option>
+              <option value={30}>{uiText("Ultimi 30 giorni")}</option>
             </select>
           </label>
           <button
@@ -215,104 +226,120 @@ export function WorkspaceBetaFeedback({
             disabled={usageLoading}
             onClick={() => void loadUsage(days)}
           >
-            Aggiorna consumi
+            {uiText("Aggiorna consumi")}
           </button>
-          {usageLoading && <p role="status">Lettura consumi…</p>}
+          {usageLoading && <p role="status">{uiText("Lettura consumi…")}</p>}
           {usageResult?.days === days && usageResult.error && (
             <p role="alert">{usageResult.error}</p>
           )}
           {usageResult?.days === days && usageResult.view && (
             <>
               <p className="hint">
-                Misurazione disponibile dal{" "}
+                {uiText("Misurazione disponibile dal")}{" "}
                 {usageResult.view.instrumentationSince
                   ? new Date(
                       usageResult.view.instrumentationSince,
-                    ).toLocaleDateString("it-IT")
-                  : "dato non disponibile"}
-                . Non ricostruisce i consumi precedenti.
+                    ).toLocaleDateString(uiLocale)
+                  : uiText("dato non disponibile")}
+                {uiText(". Non ricostruisce i consumi precedenti.")}
               </p>
               {usageResult.view.groups.length === 0 && (
                 <p>
-                  Nessun tentativo AI misurato nel periodo. Non significa che
-                  l’intera app non abbia costi.
+                  {uiText(
+                    "Nessun tentativo AI misurato nel periodo. Non significa che l’intera app non abbia costi.",
+                  )}
                 </p>
               )}
               {usageResult.view.groups.map((group, index) => (
                 <article key={index}>
                   <strong>
                     {group.operation === "conversation"
-                      ? "Conversation"
-                      : "Active Work"}{" "}
+                      ? uiText("Conversation")
+                      : uiText("Active Work")}{" "}
                     · {group.provider} / {group.model}
                   </strong>
                   <p>
-                    {group.attempts} tentativi · token input misurati:{" "}
-                    {group.inputTokens ?? "non disponibili"} · output:{" "}
-                    {group.outputTokens ?? "non disponibili"}.
+                    {group.attempts}
+                    {uiText(" tentativi · token input misurati:")}{" "}
+                    {group.inputTokens ?? uiText("non disponibili")}
+                    {uiText(" · output:")}{" "}
+                    {group.outputTokens ?? uiText("non disponibili")}.
                   </p>
                   <p>
-                    Subtotale stimabile:{" "}
+                    {uiText("Subtotale stimabile:")}{" "}
                     {group.estimatedSubtotalUsd === null
-                      ? "non disponibile"
-                      : `$${group.estimatedSubtotalUsd.toFixed(6)} USD`}{" "}
-                    ({group.pricedAttempts}/{group.attempts} tentativi con
-                    stima).
+                      ? uiText("non disponibile")
+                      : uiText(
+                          "${0} USD",
+                          String(group.estimatedSubtotalUsd.toFixed(6)),
+                        )}{" "}
+                    ({group.pricedAttempts}/{group.attempts}
+                    {uiText(" tentativi con stima).")}
                   </p>
                   {(group.unresolved > 0 || group.missingTokenUsage > 0) && (
                     <p>
-                      Esiti incompleti/in corso: {group.unresolved}; tentativi
-                      senza conteggi completi: {group.missingTokenUsage}. Costo
-                      sconosciuto, non zero.
+                      {uiText("Esiti incompleti/in corso: ")}
+                      {group.unresolved}
+                      {uiText("; tentativi senza conteggi completi: ")}
+                      {group.missingTokenUsage}
+                      {uiText(". Costo sconosciuto, non zero.")}
                     </p>
                   )}
                   {group.failed > 0 && (
                     <p>
-                      {group.failed} tentativi falliti: anche un risultato
-                      inutilizzabile può consumare token.
+                      {group.failed}
+                      {uiText(
+                        " tentativi falliti: anche un risultato inutilizzabile può consumare token.",
+                      )}
                     </p>
                   )}
                   <small>
                     {group.rates
-                      ? `Tariffe configurate, verificate il ${group.rates.verifiedOn}.`
-                      : "Tariffe da configurare: la stima resta sconosciuta."}
+                      ? uiText(
+                          "Tariffe configurate, verificate il {0}.",
+                          String(group.rates.verifiedOn),
+                        )
+                      : uiText(
+                          "Tariffe da configurare: la stima resta sconosciuta.",
+                        )}
                   </small>
                 </article>
               ))}
             </>
           )}
           <p className="hint">
-            Stima parziale in USD, non fattura. Esclusi voce/trascrizione,
-            immagini, Email, ricerche web, chiamate, hosting, storage,
-            abbonamenti, tasse e sconti. Il consuntivo resta quello dei
-            provider.
+            {uiText(
+              "Stima parziale in USD, non fattura. Esclusi voce/trascrizione, immagini, Email, ricerche web, chiamate, hosting, storage, abbonamenti, tasse e sconti. Il consuntivo resta quello dei provider.",
+            )}
           </p>
         </section>
       )}
       <button onClick={() => void download()} disabled={exporting}>
-        {exporting ? "Preparazione…" : "Scarica report (.md)"}
+        {exporting ? uiText("Preparazione…") : uiText("Scarica report (.md)")}
       </button>
       {exportError && <p role="alert">{exportError}</p>}
-      {!result && <p role="status">Caricamento feedback…</p>}
+      {!result && <p role="status">{uiText("Caricamento feedback…")}</p>}
       {result?.error && (
         <p role="alert">
           {result.error}{" "}
           <button className="quiet" onClick={() => setRetry((n) => n + 1)}>
-            Riprova
+            {uiText("Riprova")}
           </button>
         </p>
       )}
-      {result?.view?.entries.length === 0 && <p>Nessun feedback registrato.</p>}
+      {result?.view?.entries.length === 0 && (
+        <p>{uiText("Nessun feedback registrato.")}</p>
+      )}
       {result?.view?.entries.map((entry) => (
         <article key={entry.id}>
           <strong>{entry.authorName}</strong>{" "}
           <time dateTime={entry.createdAt}>
-            {new Date(entry.createdAt).toLocaleString("it-IT")}
+            {new Date(entry.createdAt).toLocaleString(uiLocale)}
           </time>
           <p style={{ whiteSpace: "pre-wrap" }}>{entry.content}</p>
           {entry.message && (
             <details>
-              <summary>Messaggio collegato</summary>
+              <summary>{uiText("Messaggio collegato")}</summary>
               <p style={{ whiteSpace: "pre-wrap" }}>{entry.message.content}</p>
             </details>
           )}

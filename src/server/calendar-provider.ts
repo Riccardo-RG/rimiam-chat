@@ -3,7 +3,8 @@ import type {
   ExternalCalendarEvent,
 } from "../contracts/calendar.ts";
 import { z } from "zod";
-import { googleConfiguration } from "./google-credentials.ts";
+import { integrationConfiguration } from "./google-credentials.ts";
+import { microsoftCalendarProvider } from "./microsoft-calendar.ts";
 import { googleCalendarProvider } from "./google-calendar.ts";
 
 export interface CalendarAccess {
@@ -94,6 +95,15 @@ export class CalendarNoEffect extends Error {
     super(code);
   }
 }
-export function configuredCalendarProvider(): CalendarProvider | undefined {
-  return googleConfiguration() ? googleCalendarProvider() : undefined;
+export function configuredCalendarProvider(
+  key?: string,
+): CalendarProvider | undefined {
+  if ((!key || key === "google-calendar") && integrationConfiguration("google"))
+    return googleCalendarProvider();
+  if (
+    (!key || key === "microsoft-calendar") &&
+    integrationConfiguration("microsoft")
+  )
+    return microsoftCalendarProvider();
+  return undefined;
 }

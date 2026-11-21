@@ -15,6 +15,7 @@ export const voiceSendSchema = z
   .strict();
 
 export const voiceMessagesSchema = z.object({
+  transcriptionConfigured: z.boolean().optional(),
   messages: z.array(
     z.object({
       messageId: z.uuid(),

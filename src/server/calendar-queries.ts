@@ -12,7 +12,12 @@ import {
   temporalAt,
   temporalReference,
 } from "./calendar-state.ts";
-import { configuredCalendarProvider } from "./calendar-provider.ts";
+import { integrationConfiguration } from "./google-credentials.ts";
+
+export const activeCalendarConnections = `SELECT c.workspace_id, c.person_id
+  FROM calendar_connection c JOIN membership m
+    ON m.workspace_id=c.workspace_id AND m.user_id=c.person_id AND m.version=c.membership_version
+  WHERE c.active AND m.active`;
 
 export async function calendarView(
   actor: string,
@@ -41,7 +46,7 @@ export async function calendarView(
     ).rows[0];
     const scheduled = (
       await tx.query(
-        `SELECT e.id,e.person_id,v.* FROM scheduled_event e JOIN scheduled_event_version v ON v.workspace_id=e.workspace_id AND v.event_id=e.id AND v.version=e.current_version
+        `SELECT e.id,e.person_id,v.*,ARRAY(SELECT i.person_id FROM scheduled_event_invitee i WHERE (i.workspace_id,i.event_id,i.version)=(e.workspace_id,e.id,e.current_version) ORDER BY i.person_id) AS invitees FROM scheduled_event e JOIN scheduled_event_version v ON v.workspace_id=e.workspace_id AND v.event_id=e.id AND v.version=e.current_version
       WHERE e.workspace_id=$1 AND v.starts_at<$3 AND v.ends_at>$2 ORDER BY v.starts_at,e.id`,
         [w, start, end],
       )
@@ -61,6 +66,16 @@ export async function calendarView(
       id: r.id,
       version: r.version,
       personId: r.person_id,
+      ...(r.kind === "scheduled_event"
+        ? {
+            audience:
+              r.audience === "people"
+                ? { kind: "people", people: r.invitees }
+                : r.audience === "all"
+                  ? { kind: "all" }
+                  : { kind: "calendar" },
+          }
+        : {}),
       payload: rowPayload(r),
       reason: r.reason,
       sourceMessageId: r.source_message_id ?? null,
@@ -94,7 +109,7 @@ export async function calendarView(
     ).rows;
     const observations = (
       await tx.query(
-        `SELECT o.*,r.mode,r.starts_at,r.ends_at FROM calendar_observation o JOIN calendar_read r ON r.id=o.read_id
+        `SELECT o.*,r.mode,r.starts_at,r.ends_at,r.cursor FROM calendar_observation o JOIN calendar_read r ON r.id=o.read_id
       JOIN calendar_connection c ON c.id=r.connection_id JOIN membership m ON m.workspace_id=c.workspace_id AND m.user_id=c.person_id
       WHERE o.workspace_id=$1 AND o.person_id=$2 AND c.active AND c.version=r.connection_version AND m.version=r.membership_version
       AND (r.mode='reconcile' OR (r.starts_at<$4 AND r.ends_at>$3)) ORDER BY o.observed_at DESC LIMIT 50`,
@@ -119,12 +134,31 @@ export async function calendarView(
         event: CalendarView["observations"][number]["data"]["events"][number];
       }
     >();
-    for (const o of observations)
+    // A newer, complete events window supersedes older sightings in that window.
+    // Partial pages and free/busy requests cannot establish absence.
+    const newerWindows = new Map<string, { start: number; end: number }[]>();
+    for (const o of observations) {
+      const windows = newerWindows.get(o.resource_id) ?? [];
       for (const event of o.data.events) {
         const key = `${o.resource_id}:${event.id}`;
-        if (!observed.has(key))
+        if (
+          !observed.has(key) &&
+          !windows.some(
+            (win) =>
+              Date.parse(event.payload.start) < win.end &&
+              Date.parse(event.payload.end) > win.start,
+          )
+        )
           observed.set(key, { resourceId: o.resource_id, event });
       }
+      if (o.mode === "events" && !o.cursor && o.data.complete) {
+        windows.push({
+          start: new Date(o.starts_at).getTime(),
+          end: new Date(o.ends_at).getTime(),
+        });
+        newerWindows.set(o.resource_id, windows);
+      }
+    }
     for (const p of publications) {
       const obs = observed.get(`${p.resource_id}:${p.external_id}`)?.event;
       if (
@@ -202,7 +236,16 @@ export async function calendarView(
       revision: ws.revision,
       contextRevision: ws.context_revision,
       accessRevision: ws.access_revision,
-      providerConfigured: Boolean(configuredCalendarProvider()),
+      providerConfigured: Boolean(
+        integrationConfiguration("google", "calendar") ||
+        integrationConfiguration("microsoft"),
+      ),
+      members: (
+        await tx.query(
+          'SELECT u.id,u.name FROM membership m JOIN "user" u ON u.id=m.user_id WHERE m.workspace_id=$1 AND m.active AND u.eligible AND u."emailVerified" ORDER BY u.name,u.id',
+          [w],
+        )
+      ).rows,
       ownCommitments: (
         await tx.query(
           `SELECT p.id,p.content,coalesce(t.current_version,0) AS version FROM normative_proposal p JOIN current_project_act a ON (a.workspace_id,a.proposal_id)=(p.workspace_id,p.id) LEFT JOIN commitment_time t ON (t.workspace_id,t.proposal_id)=(p.workspace_id,p.id) WHERE p.workspace_id=$1 AND p.kind='commitment' AND (SELECT array_agg(r.person_id) FROM required_project_approval r WHERE r.workspace_id=p.workspace_id AND r.proposal_id=p.id)=ARRAY[$2::text] ORDER BY p.id`,
@@ -213,6 +256,7 @@ export async function calendarView(
       temporal,
       connections: connections.map((c) => ({
         id: c.id,
+        provider: c.provider,
         version: c.version,
         label: c.label,
         active: c.active,

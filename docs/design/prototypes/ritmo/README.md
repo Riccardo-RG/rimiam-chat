@@ -16,12 +16,12 @@ python3 -m http.server 4317 --bind 127.0.0.1 --directory docs/design/prototypes/
 
 La Conversation occupa lo spazio principale. Una presenza Activity sintetica rende visibile il lavoro significativo; il dettaglio contiene perimetro, ipotesi, fonti e storia. Un solo ingresso «Lo spazio» apre la Lens. Fonti e risultati si raggiungono anche dal punto in cui emergono nel dialogo.
 
-Linguaggio visivo: carta chiara, verde profondo, superfici salvia, titoli serif e testo funzionale sans. Nessuna dashboard iniziale, percentuale di avanzamento inventata, avatar umano per RIMIAM o feed di pensieri. «Ritmo» è il nome della direzione, non un rebranding del prodotto.
+Linguaggio visivo: carta chiara, verde profondo, superfici salvia, titoli serif e testo funzionale sans. Nessuna dashboard iniziale, percentuale di avanzamento inventata, avatar umano per Emme o feed di pensieri. «Ritmo» è il nome della direzione, non un rebranding del prodotto.
 
 ## Percorso breve
 
 1. **Riprendere il filo:** leggi la Conversation e apri la fonte della stima dei servizi. «Confronta i due scenari» avvia la scena di lavoro; la pillola apre il Work Contract.
-2. **Un risultato da leggere:** la scena carica un esempio scritto di Contribution. Apri il confronto, le sue fonti e «Parliamone con RIMIAM», che prepara un messaggio con riferimento al risultato.
+2. **Un risultato da leggere:** la scena carica un esempio scritto di Contribution. Apri il confronto, le sue fonti e «Parliamone con Emme», che prepara un messaggio con riferimento al risultato.
 3. **Due indicazioni diverse:** apri il chiarimento. Chiudi il dettaglio per cambiare persona dal selettore esterno. Entrambi hanno controllo operativo; ciascuno può ritirare soltanto la propria indicazione. Pausa/ripresa non risolvono un conflitto pendente.
 4. **Lo spazio:** apri Context e la correzione attribuita, oppure il filone «Il lancio della beta». Focalizzazione, risoluzione, archivio e riapertura sono interazioni locali illustrative.
 5. **Entrare nello spazio:** prova creazione con o senza introduzione. Nessun Goal o membro aggiuntivo viene dedotto; il nuovo spazio non eredita i dati della scena della startup RIMIAM.

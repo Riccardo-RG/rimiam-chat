@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Confronto della conversazione · RIMIAM</title>
+    <style>
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: #f7f7f5;
+        color: #252724;
+        font: 1rem/1.5 "Inter", system-ui, sans-serif;
+      }
+      main { max-width: 1800px; margin: auto; padding: clamp(16px, 3vw, 48px); }
+      h1 { margin: 0; font-size: clamp(1.5rem, 2.4vw, 2.25rem); line-height: 1.2; letter-spacing: -.045em; }
+      .toolbar { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 14px 24px; margin: 24px 0 30px; }
+      fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
+      legend { padding: 0; margin-bottom: 4px; color: #535650; font-size: .8rem; }
+      .options { display: flex; background: #eaeae7; border-radius: 8px; padding: 3px; }
+      label { position: relative; }
+      input { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; }
+      label span, .open { display: inline-flex; align-items: center; justify-content: center; min-height: 38px; padding: 5px 14px; font-size: .875rem; }
+      label span { border-radius: 6px; cursor: pointer; color: #565953; }
+      input:checked + span { color: #20231e; background: white; box-shadow: 0 1px 3px #0002; }
+      input:disabled + span { color: #696d67; text-decoration: line-through; cursor: default; }
+      input:focus-visible + span, a:focus-visible { outline: 2px solid #305d8b; outline-offset: 2px; }
+      .open { gap: 8px; margin-left: auto; border: 1px solid #c6c9c2; border-radius: 7px; background: #fff; color: inherit; font-weight: 600; text-decoration: none; }
+      .open:hover { border-color: #777c73; }
+      .plate { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: clamp(16px, 2vw, 32px); }
+      figure { margin: 0; min-width: 0; }
+      figcaption { margin: 0 0 9px; font-weight: 600; letter-spacing: -.02em; }
+      .shot { display: block; cursor: zoom-in; }
+      .shot img { display: block; width: 100%; height: auto; border: 1px solid #cfd2cb; border-radius: 6px; }
+      .plate.phone { max-width: 870px; margin-inline: auto; }
+      .plate.phone figure { width: 100%; max-width: 390px; justify-self: center; }
+      footer { margin-top: 28px; border-top: 1px solid #d6d8d1; padding-top: 13px; color: #555951; font-size: .84rem; }
+      footer p { margin: 0 0 5px; }
+      footer a { color: inherit; text-underline-offset: .15em; }
+      @media (max-width: 720px) {
+        .plate { grid-template-columns: minmax(0, 1fr); gap: 23px; }
+        .toolbar { column-gap: 12px; margin: 18px 0 24px; }
+        .open { margin-left: 0; }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Confronto della conversazione</h1>
+      <div class="toolbar">
+        <fieldset>
+          <legend>Confronta con</legend>
+          <div class="options">
+            <label><input type="radio" name="baseline" value="precedente" checked /><span>Bozzetto precedente</span></label>
+            <label><input type="radio" name="baseline" value="attuale" /><span>App attuale</span></label>
+          </div>
+        </fieldset>
+        <fieldset>
+          <legend>Formato</legend>
+          <div class="options">
+            <label><input type="radio" name="format" value="desktop" checked /><span>Desktop</span></label>
+            <label><input type="radio" name="format" value="telefono" /><span>Telefono</span></label>
+          </div>
+        </fieldset>
+        <fieldset>
+          <legend>Tema</legend>
+          <div class="options">
+            <label><input type="radio" name="theme" value="chiaro" checked /><span>Chiaro</span></label>
+            <label><input type="radio" name="theme" value="scuro" /><span>Scuro</span></label>
+          </div>
+        </fieldset>
+        <a class="open" href="index.html">Prova il mockup <span aria-hidden="true">→</span></a>
+      </div>
+      <section class="plate" aria-label="Schermate a confronto">
+        <figure>
+          <figcaption id="baseline-caption">Bozzetto precedente</figcaption>
+          <a class="shot" data-version="baseline" href="precedente-chiaro.webp" target="_blank" rel="noopener">
+            <img src="precedente-chiaro.webp" alt="Apri la schermata originale della conversazione Web attuale in formato desktop chiaro" />
+          </a>
+        </figure>
+        <figure>
+          <figcaption>Nuove icone</figcaption>
+          <a class="shot" data-version="proposta" href="proposta-chiaro.webp" target="_blank" rel="noopener">
+            <img src="proposta-chiaro.webp" alt="Apri la schermata originale della conversazione proposta in formato desktop chiaro" />
+          </a>
+        </figure>
+      </section>
+      <footer>
+        <p id="hint" aria-live="polite">Seleziona una schermata per aprirla a risoluzione piena.</p>
+        <p><a href="dettaglio.html">Confronta le icone in dettaglio</a> · Web locale · 20 novembre 2026 · <a href="https://openai.com/index/introducing-the-codex-app/">Riferimento Codex</a></p>
+      </footer>
+    </main>
+    <script>
+      const plate = document.querySelector(".plate");
+      const light = document.querySelector("input[value=chiaro]");
+      const dark = document.querySelector("input[value=scuro]");
+      const hint = document.querySelector("#hint");
+      let desktopTheme = "chiaro";
+
+      function updateComparison() {
+        const phone = document.querySelector("input[name=format]:checked").value === "telefono";
+        const theme = phone ? "scuro" : desktopTheme;
+        light.disabled = phone;
+        light.checked = theme === "chiaro";
+        dark.checked = theme === "scuro";
+        plate.classList.toggle("phone", phone);
+        document.querySelector(".open").href = "index.html?tema=" + theme;
+        hint.textContent = phone
+          ? "Le catture per telefono mostrano il tema scuro in un browser a larghezza mobile. Seleziona una schermata per aprirla a risoluzione piena."
+          : "Seleziona una schermata per aprirla a risoluzione piena.";
+        for (const link of plate.querySelectorAll(".shot")) {
+          const baseline = document.querySelector('input[name="baseline"]:checked').value;
+          const version = link.dataset.version === "baseline" ? baseline : link.dataset.version;
+          const name = {attuale: "Web attuale", precedente: "del bozzetto precedente", proposta: "rivista"}[version];
+          document.querySelector("#baseline-caption").textContent = baseline === "attuale" ? "App attuale" : "Bozzetto precedente";
+          const format = phone ? "telefono" : "desktop";
+          const filename = `${version}-${phone ? "telefono" : theme}.webp`;
+          link.setAttribute("href", filename);
+          const img = link.querySelector("img");
+          img.setAttribute("src", filename);
+          img.alt = `Apri la schermata originale della conversazione ${name} in formato ${format} ${theme}`;
+        }
+      }
+      document.querySelector(".toolbar").addEventListener("change", ({ target }) => {
+        if (target.name === "theme") desktopTheme = target.value;
+        updateComparison();
+      });
+      updateComparison();
+    </script>
+  </body>
+</html>

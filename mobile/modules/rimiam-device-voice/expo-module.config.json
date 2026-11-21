@@ -1,0 +1,4 @@
+{
+  "platforms": ["android"],
+  "android": {"modules": ["chat.rimiam.devicevoice.DeviceVoiceModule"]}
+}

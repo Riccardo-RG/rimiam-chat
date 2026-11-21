@@ -1,3 +1,4 @@
+import { assistantConnectionRevision } from "../src/server/assistant-connections";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { productAssistanceSchema } from "../src/contracts/product-assistance";
 import {
@@ -52,7 +53,7 @@ describe("bounded product assistance", () => {
     expect(result).toMatchObject({
       guideVersion: PRODUCT_GUIDE_VERSION,
       screen: "tasks",
-      label: "Task e follow-up",
+      label: "Da fare e promemoria",
       field: { id: "dueAt", requirement: "optional" },
       issue: "required",
     });
@@ -109,6 +110,7 @@ const environmentKeys = [
   "OLLAMA_MODEL",
   "RESEARCH_PROVIDER",
   "BRAVE_SEARCH_API_KEY",
+  "GOOGLE_OAUTH_CAPABILITIES",
   "GOOGLE_OAUTH_CLIENT_ID",
   "GOOGLE_OAUTH_CLIENT_SECRET",
   "GOOGLE_OAUTH_REDIRECT_URI",
@@ -163,6 +165,43 @@ describe("runtime product capabilities", () => {
     );
   });
 
+  it("describes the selected conversation connector even when the deployment default is unavailable", async () => {
+    clearConfiguration();
+    vi.stubEnv(
+      "RIMIAM_ASSISTANT_CONNECTIONS",
+      JSON.stringify([
+        {
+          id: "local",
+          kind: "model",
+          provider: "ollama",
+          model: "test",
+          label: "Local",
+        },
+      ]),
+    );
+    const { tx } = database([{ contributes: true }]);
+    const selected = {
+      connectionId: "local",
+      connectionRevision: assistantConnectionRevision("local")!,
+    };
+    const capabilities = await productCapabilities(
+      tx,
+      "workspace-a",
+      "person-a",
+      false,
+      selected,
+    );
+    expect(capabilities.configuration.assistant).toBe(true);
+    expect(
+      (
+        await productCapabilities(tx, "workspace-a", "person-a", false, {
+          ...selected,
+          connectionRevision: "changed",
+        })
+      ).configuration.assistant,
+    ).toBe(false);
+    expect(JSON.stringify(capabilities)).not.toContain("127.0.0.1");
+  });
   it("only queries current eligible membership, never private service state", async () => {
     clearConfiguration();
     const { tx, query } = database([{ contributes: false }]);
@@ -252,6 +291,24 @@ describe("runtime product capabilities", () => {
     );
     expect(result.actions.find((a) => a.id === "email.send")?.limits).toContain(
       "Private connection state is unknown",
+    );
+  });
+
+  it("describes calendar-only Google availability without advertising Gmail", async () => {
+    clearConfiguration();
+    vi.stubEnv("MICROSOFT_MAIL_CLIENT_ID", undefined);
+    vi.stubEnv("GOOGLE_OAUTH_CLIENT_ID", "fixture");
+    vi.stubEnv("GOOGLE_OAUTH_CLIENT_SECRET", "fixture");
+    vi.stubEnv("GOOGLE_OAUTH_CAPABILITIES", "calendar");
+    vi.stubEnv("BETTER_AUTH_SECRET", "x".repeat(40));
+    const { tx } = database([{ contributes: true }]);
+    const result = await productCapabilities(tx, "workspace-a", "person-a");
+    expect(result.configuration).toMatchObject({
+      calendar: true,
+      email: false,
+    });
+    expect(result.actions.find((a) => a.id === "email.send")?.available).toBe(
+      false,
     );
   });
 

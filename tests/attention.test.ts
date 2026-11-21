@@ -8,6 +8,8 @@ import {
 } from "../src/server/commands";
 import { attentionView, organizeSources } from "../src/server/attention";
 import { lockWorkspace } from "../src/server/workspace-state";
+import { messages } from "../src/server/sync";
+import { workspaceDirectory } from "../src/server/conversation-reading";
 afterAll(() => pool.end());
 async function setup() {
   const actor = randomUUID();
@@ -18,6 +20,141 @@ async function setup() {
   const w = (await createWorkspace(actor, "Attention", randomUUID())).id;
   return { actor, w };
 }
+it("keeps exact attributable topic changes on the timeline without a chat alert or independent human evidence", async () => {
+  const a = await setup(),
+    b = await setup();
+  const invite = await execute(a.actor, a.w, randomUUID(), {
+    type: "invitation.create",
+    email: `${b.actor}@example.test`,
+    fullHistoryDisclosed: true,
+  });
+  await acceptInvitation(b.actor, String(invite.token), true);
+  const before = await transaction((tx) => workspaceDirectory(tx, b.actor));
+  const submit = (actor: string, c: unknown, key = randomUUID()) =>
+    execute(actor, a.w, key, c);
+  const t = await submit(a.actor, {
+    type: "workstream.save",
+    title: "Design",
+    description: "",
+  });
+  await submit(b.actor, {
+    type: "workstream.save",
+    id: t.id,
+    expectedVersion: 1,
+    title: "Ricerca",
+    description: "",
+  });
+  const transition = (
+    action: string,
+    expectedVersion: number,
+    key = randomUUID(),
+  ) =>
+    submit(
+      a.actor,
+      {
+        type: "workstream.transition",
+        workstreamId: t.id,
+        expectedVersion,
+        action,
+      },
+      key,
+    );
+  const key = randomUUID();
+  await Promise.all([
+    transition("archive", 2, key),
+    transition("archive", 2, key),
+  ]);
+  await expect(transition("restore", 2)).rejects.toThrow("STATE_STALE");
+  expect((await transition("restore", 3)).state).toBe("active");
+  const rows = (await messages(b.actor, a.w, 0, 100, 100)).messages.filter(
+    (m) => m.purpose === "workstream_event",
+  );
+  expect(rows).toHaveLength(4);
+  expect(
+    rows.map((m) => [
+      m.actorKind,
+      m.authorId,
+      m.reference?.kind,
+      m.reference?.id,
+      m.reference?.version,
+    ]),
+  ).toEqual(
+    [a.actor, b.actor, a.actor, a.actor].map((actor, i) => [
+      "human",
+      actor,
+      "workstream",
+      t.id,
+      i + 1,
+    ]),
+  );
+  expect(rows.map((m) => m.content)).toEqual([
+    "ha creato l’argomento «Design».",
+    "ha modificato l’argomento «Ricerca».",
+    "ha archiviato l’argomento «Ricerca».",
+    "ha ripristinato l’argomento «Ricerca».",
+  ]);
+  const after = await transaction((tx) => workspaceDirectory(tx, b.actor));
+  const entry = (list: typeof before) => list.find((s) => s.id === a.w);
+  expect(entry(after)).toEqual(entry(before));
+  const ids = rows.map((m) => m.id);
+  expect(
+    (
+      await pool.query(
+        "SELECT 1 FROM workspace_source WHERE id=ANY($1::uuid[])",
+        [ids],
+      )
+    ).rowCount,
+  ).toBe(0);
+  expect(
+    (
+      await pool.query(
+        "SELECT 1 FROM interpretation WHERE source_id=ANY($1::uuid[])",
+        [ids],
+      )
+    ).rowCount,
+  ).toBe(0);
+  expect(
+    (
+      await pool.query(
+        "SELECT 1 FROM web_push_delivery WHERE workspace_id=$1",
+        [a.w],
+      )
+    ).rowCount,
+  ).toBe(0);
+});
+it("restores directly archived AI suggestions to proposed after another human edit while archived", async () => {
+  const { actor, w } = await setup();
+  const source = await execute(actor, w, randomUUID(), {
+    type: "message.send",
+    content: "Ricerca clienti",
+  });
+  await transaction(async (tx) => {
+    await lockWorkspace(tx, w);
+    await organizeSources(tx, w, source.messageId, [
+      { title: "Clienti", sourceIds: [source.messageId] },
+    ]);
+  });
+  const t = (await attentionView(actor, w)).workstreams[0];
+  const transition = (action: string, version: number) =>
+    execute(actor, w, randomUUID(), {
+      type: "workstream.transition",
+      workstreamId: t.id,
+      expectedVersion: version,
+      action,
+    });
+  await transition("archive", 1);
+  await execute(actor, w, randomUUID(), {
+    type: "workstream.save",
+    id: t.id,
+    expectedVersion: 2,
+    title: "Clienti",
+    description: "Per dopo",
+  });
+  expect((await transition("restore", 3)).state).toBe("proposed");
+  expect(
+    (await attentionView(actor, w)).workstreams[0].sources.map((s) => s.id),
+  ).toEqual([source.messageId]);
+});
 it("keeps personal alignment separate from consent and excludes private operation hints", async () => {
   const { actor, w } = await setup();
   await execute(actor, w, randomUUID(), {

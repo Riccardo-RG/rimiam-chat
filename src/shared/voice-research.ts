@@ -5,7 +5,7 @@ export function voiceResearchQuery(transcript: string | null): string | null {
   const match = transcript
     .trim()
     .match(
-      /^(?:(?:ehi\s+)?(?:miriam|rimiam)[,:]?\s+)?(?:per favore\s+)?(?:cerca (?:sul web|online|su internet)|fai una ricerca (?:sul web|online|su internet))(?:\s+(?:su|per|riguardo))?\s+(.+)$/i,
+      /^(?:(?:ehi\s+)?(?:emme|miriam|rimiam)[,:]?\s+)?(?:per favore\s+)?(?:cerca (?:sul web|online|su internet)|fai una ricerca (?:sul web|online|su internet))(?:\s+(?:su|per|riguardo))?\s+(.+)$/i,
     );
   const query = match?.[1].trim();
   return query && query.length <= 500 ? query : null;

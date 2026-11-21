@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { conversationReferenceSchema } from "./activity.ts";
 const positive = z.number().int().positive();
 const text = z.string().trim().min(1).max(4000);
 export const activeWorkCommandSchema = z
@@ -60,7 +61,18 @@ export const contributionSchema = z.object({
   generation: positive,
   contractVersion: positive,
   body: z.string(),
+  objective: z.string().optional(),
   citations: z.array(z.string()),
+  sources: z
+    .array(
+      z.object({
+        key: z.string(),
+        label: z.string(),
+        reference: conversationReferenceSchema.nullable(),
+        excerpt: z.string().nullable(),
+      }),
+    )
+    .optional(),
   qualification: z.string(),
   createdAt: z.string(),
 });
@@ -120,6 +132,25 @@ export const activeWorkHistorySchema = z.object({
   issueActs: z.array(z.record(z.string(), z.unknown())),
   nextBefore: positive.nullable(),
 });
+export const activeWorkPresenceSchema = z.object({
+  ongoing: z.array(
+    z.object({
+      id: z.uuid(),
+      objective: text,
+      phase: z.enum(["queued", "working", "needs_input", "paused"]),
+      blocked: z.boolean(),
+    }),
+  ),
+  results: z.array(
+    z.object({
+      id: z.uuid(),
+      objective: text,
+      contributionId: z.uuid(),
+      validity: z.enum(["current", "potentially_outdated"]),
+    }),
+  ),
+});
+export type ActiveWorkPresence = z.infer<typeof activeWorkPresenceSchema>;
 export type ActiveWorkView = z.infer<typeof activeWorkViewSchema>;
 export type ActiveWorkItem = z.infer<typeof activeWorkItemSchema>;
 export type ActiveWorkContract = z.infer<typeof activeWorkContractSchema>;

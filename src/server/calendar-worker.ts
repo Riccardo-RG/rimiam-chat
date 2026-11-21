@@ -31,7 +31,7 @@ const failureCode = (e: unknown) =>
     ? e.code
     : "CALENDAR_PROVIDER_ERROR";
 function providerFor(key: string, p?: CalendarProvider) {
-  const provider = p ?? configuredCalendarProvider();
+  const provider = p ?? configuredCalendarProvider(key);
   requireThat(provider?.key === key, "CALENDAR_PROVIDER_UNAVAILABLE", 503);
   return provider;
 }

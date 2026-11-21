@@ -1,9 +1,12 @@
 import { transaction, type Tx } from "./db.ts";
 import { member } from "./workspace-state.ts";
+import { conversationReferenceSchema } from "../contracts/activity.ts";
+import { requireThat } from "./errors.ts";
 import { workAt, openIssues } from "./active-work-state.ts";
 import {
   activeWorkViewSchema,
   activeWorkHistorySchema,
+  activeWorkPresenceSchema,
 } from "../contracts/active-work.ts";
 
 function contract(row: Record<string, unknown>) {
@@ -27,10 +30,56 @@ function contribution(row: Record<string, unknown>) {
     generation: row.generation,
     contractVersion: row.contract_version,
     body: row.body,
+    objective: row.objective,
     citations: row.citation_keys,
     qualification: row.qualification,
     createdAt: (row.created_at as Date).toISOString(),
   };
+}
+async function contributionSources(
+  tx: Tx,
+  w: string,
+  work: string,
+  generation: number,
+  keys: string[],
+) {
+  const { rows } = await tx.query(
+    `SELECT i.input_key,i.kind,i.reference_id,i.reference_version,i.content,i.qualification,i.provenance,
+       s.title AS source_title,act.proposal_id
+     FROM active_work_input i
+     LEFT JOIN external_source s ON i.kind='source' AND (s.workspace_id,s.id)=(i.workspace_id,i.reference_id)
+     LEFT JOIN project_act act ON i.kind='commitment' AND (act.workspace_id,act.id)=(i.workspace_id,i.reference_id)
+     WHERE (i.workspace_id,i.work_id,i.generation)=($1,$2,$3) AND i.input_key=ANY($4::text[])
+     ORDER BY array_position($4::text[],i.input_key)`,
+    [w, work, generation, keys],
+  );
+  return rows.map((i) => {
+    const routed =
+      i.provenance.reference ??
+      (i.kind === "commitment"
+        ? { kind: "commitment", id: i.proposal_id, version: 1 }
+        : {
+            kind:
+              i.kind === "workstream_focus"
+                ? "workstream"
+                : i.kind === "temporal_scheduled_event"
+                  ? "scheduled_event"
+                  : i.kind,
+            id: i.reference_id,
+            version: i.reference_version,
+          });
+    const parsed = conversationReferenceSchema.safeParse(routed);
+    const label =
+      String(i.source_title || i.content)
+        .split("\n")[0]
+        .trim() || "Fonte citata";
+    return {
+      key: i.input_key,
+      label: label.length > 100 ? label.slice(0, 99) + "…" : label,
+      reference: parsed.success ? parsed.data : null,
+      excerpt: parsed.success ? null : i.content + "\n" + i.qualification,
+    };
+  });
 }
 async function events(
   tx: Tx,
@@ -45,19 +94,52 @@ async function events(
     )
   ).rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() }));
 }
+export async function activeWorkPresence(actor: string, w: string) {
+  return transaction(async (tx) => {
+    await member(tx, w, actor, false, true);
+    const ongoing = await tx.query(
+      `SELECT a.id, c.objective, a.phase, a.error_code IS NOT NULL AS blocked
+       FROM active_work a JOIN active_work_contract c ON
+         (c.workspace_id,c.work_id,c.version)=(a.workspace_id,a.id,a.contract_version)
+       WHERE a.workspace_id=$1 AND a.phase IN ('queued','working','needs_input','paused')
+       ORDER BY CASE a.phase WHEN 'needs_input' THEN 0 WHEN 'working' THEN 1
+         WHEN 'queued' THEN 2 ELSE 3 END, a.created_at DESC, a.id DESC LIMIT 6`,
+      [w],
+    );
+    const results = await tx.query(
+      `SELECT a.id, c.objective, r.id AS "contributionId", a.validity
+       FROM active_work a JOIN active_work_contract c ON
+         (c.workspace_id,c.work_id,c.version)=(a.workspace_id,a.id,a.contract_version)
+       JOIN LATERAL (SELECT id,created_at FROM active_work_contribution
+         WHERE workspace_id=a.workspace_id AND work_id=a.id AND contract_version=c.version
+         ORDER BY generation DESC LIMIT 1) r ON TRUE
+       WHERE a.workspace_id=$1 AND a.phase='completed'
+       ORDER BY r.created_at DESC,r.id DESC LIMIT 3`,
+      [w],
+    );
+    return activeWorkPresenceSchema.parse({
+      ongoing: ongoing.rows,
+      results: results.rows,
+    });
+  });
+}
 export async function activeWorkView(
   actor: string,
   w: string,
   before?: string,
+  workId?: string,
+  completion?: number,
 ) {
   return transaction(async (tx) => {
     await member(tx, w, actor);
-    const rows = (
-      await tx.query(
-        "SELECT * FROM active_work WHERE workspace_id=$1 AND ($2::uuid IS NULL OR (created_at,id)<(SELECT created_at,id FROM active_work WHERE workspace_id=$1 AND id=$2)) ORDER BY created_at DESC,id DESC LIMIT 21",
-        [w, before ?? null],
-      )
-    ).rows;
+    const rows = workId
+      ? [await workAt(tx, w, workId)]
+      : (
+          await tx.query(
+            "SELECT * FROM active_work WHERE workspace_id=$1 AND ($2::uuid IS NULL OR (created_at,id)<(SELECT created_at,id FROM active_work WHERE workspace_id=$1 AND id=$2)) ORDER BY created_at DESC,id DESC LIMIT 21",
+            [w, before ?? null],
+          )
+        ).rows;
     const works = [];
     for (const a of rows.slice(0, 20)) {
       const c = (
@@ -66,12 +148,25 @@ export async function activeWorkView(
           [w, a.id, a.contract_version],
         )
       ).rows[0];
-      const result = (
-        await tx.query(
-          "SELECT * FROM active_work_contribution WHERE workspace_id=$1 AND work_id=$2 ORDER BY generation DESC LIMIT 1",
-          [w, a.id],
-        )
-      ).rows[0];
+      const result = completion
+        ? (
+            await tx.query(
+              `SELECT r.*,c.objective FROM active_work_event e
+          JOIN active_work_contract c ON (c.workspace_id,c.work_id,c.version)=(e.workspace_id,e.work_id,e.contract_version)
+          JOIN LATERAL
+          (SELECT * FROM active_work_contribution r WHERE (r.workspace_id,r.work_id,r.contract_version)=(e.workspace_id,e.work_id,e.contract_version)
+           AND r.created_at<=e.created_at ORDER BY r.generation DESC LIMIT 1) r ON true
+          WHERE e.workspace_id=$1 AND e.work_id=$2 AND e.revision=$3 AND e.kind='completed'`,
+              [w, a.id, completion],
+            )
+          ).rows[0]
+        : (
+            await tx.query(
+              "SELECT * FROM active_work_contribution WHERE workspace_id=$1 AND work_id=$2 ORDER BY generation DESC LIMIT 1",
+              [w, a.id],
+            )
+          ).rows[0];
+      if (completion) requireThat(result, "ACTIVE_WORK_NOT_FOUND", 404);
       works.push({
         id: a.id,
         revision: a.revision,
@@ -88,7 +183,18 @@ export async function activeWorkView(
           requiredPeople: i.required_people,
           acknowledgedBy: i.acknowledged_by,
         })),
-        contribution: result ? contribution(result) : null,
+        contribution: result
+          ? {
+              ...contribution(result),
+              sources: await contributionSources(
+                tx,
+                w,
+                a.id,
+                result.generation,
+                result.citation_keys,
+              ),
+            }
+          : null,
       });
     }
     const canControl =
@@ -100,7 +206,7 @@ export async function activeWorkView(
       ).rows[0]?.contributes === true;
     return activeWorkViewSchema.parse({
       works,
-      events: await events(tx, w, null),
+      events: await events(tx, w, workId ?? null),
       next: rows.length > 20 ? rows[19].id : null,
       canControl,
       suggestions: (

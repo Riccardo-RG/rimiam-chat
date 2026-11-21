@@ -210,6 +210,25 @@ describe("PostgreSQL domain commands", () => {
       }),
     ).rejects.toThrow("GOAL_CHANGE_REQUIRES_SEPARATE_TRANSITION");
   });
+  it("requires a fresh invitation after departure, even with an unused invitation from before entry", async () => {
+    const { a, b, w } = await setup();
+    const old = await invite(a, b, w);
+    await join(a, b, w);
+    await execute(b, w, randomUUID(), {
+      type: "member.leave",
+      confirmed: true,
+    });
+    await expect(invitationDetails(b, old.token)).rejects.toThrow(
+      "INVITATION_INVALID",
+    );
+    await expect(acceptInvitation(b, old.token, true)).rejects.toThrow(
+      "INVITATION_INVALID",
+    );
+    const fresh = await invite(a, b, w);
+    await expect(acceptInvitation(b, fresh.token, true)).resolves.toEqual({
+      workspaceId: w,
+    });
+  });
   it("rejects revoked, expired, and no-longer-authorized invitations; creator history supplies no override", async () => {
     const { a, b, w } = await setup();
     const first = await invite(a, b, w);

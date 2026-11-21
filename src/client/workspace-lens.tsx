@@ -1,62 +1,88 @@
 "use client";
+import { useUiLanguage } from "./ui-language";
 
-const sections = [
-  ["goal", "Goal", "La direzione e le adesioni"],
-  ["context", "Contesto", "Ciò che sappiamo, con le sue fonti"],
-  ["work", "Lavoro", "Il lavoro delle persone e di RIMIAM"],
-  ["artifacts", "Documenti", "Risultati, bozze e materiali prodotti"],
-] as const;
+import { useEffect, useRef } from "react";
+import { WorkspaceIcon } from "./workspace-icon";
+import styles from "./workspace-lens.module.css";
 
-const tools = [
-  ["sources", "Fonti"],
-  ["people", "Persone"],
-  ["calendar", "Calendario"],
-  ["email", "Email"],
-  ["attention", "Attività e filoni"],
-  ["feedback", "Feedback beta"],
-] as const;
+import {
+  destinations,
+  index,
+  tools,
+  type Destination,
+} from "../shared/workspace-navigation";
+type OpenPanel = (destination: string) => void;
 
-/** Navigation only: each destination keeps its own data and governed commands. */
-export function WorkspaceLens({
+export function WorkspaceMenu({
   selected,
   open,
 }: {
   selected: string;
-  open: (destination: string) => void;
+  open: (destination: string, trigger: HTMLButtonElement) => void;
 }) {
-  return (
-    <nav className="lens-navigation" aria-label="Lo spazio">
-      <div className="lens-primary">
-        {sections.map(([id, title, description]) => (
-          <button
-            key={id}
-            type="button"
-            aria-current={selected === id ? "page" : undefined}
-            onClick={() => open(id)}
-          >
-            <strong>{title}</strong>
-            {selected === "lens" && <span>{description}</span>}
-          </button>
-        ))}
-      </div>
-      <details
-        className="lens-tools"
-        open={tools.some(([id]) => id === selected)}
+  const { t: uiText } = useUiLanguage();
+  const disclosure = useRef<HTMLDetailsElement>(null);
+  useEffect(() => {
+    if (disclosure.current && tools.some((id) => id === selected))
+      disclosure.current.open = true;
+  }, [selected]);
+  function item(id: Destination) {
+    const [label, icon] = destinations[id];
+    const current = selected === id;
+    return (
+      <button
+        type="button"
+        key={id}
+        className="rail-link"
+        aria-current={current ? "page" : undefined}
+        onClick={(event) => open(id, event.currentTarget)}
       >
-        <summary>Strumenti e persone</summary>
-        <div className="lens-secondary">
-          {tools.map(([id, label]) => (
-            <button
-              key={id}
-              type="button"
-              aria-current={selected === id ? "page" : undefined}
-              onClick={() => open(id)}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-      </details>
+        <WorkspaceIcon name={icon} />
+        {uiText(label)}
+      </button>
+    );
+  }
+  return (
+    <details className="sidebar-tools" ref={disclosure}>
+      <summary className="rail-link">
+        <WorkspaceIcon name="settings" />
+        {uiText(" Strumenti")}
+      </summary>
+      <nav aria-label={uiText("Strumenti dello spazio")}>{tools.map(item)}</nav>
+    </details>
+  );
+}
+
+export function WorkspaceLens({ open }: { open: OpenPanel }) {
+  const { t: uiText } = useUiLanguage();
+  return (
+    <nav
+      className={styles.directory}
+      aria-label={uiText("Indice dello spazio")}
+    >
+      <button type="button" className={styles.lead} onClick={() => open("")}>
+        {uiText(destinations[""][0])}
+        <WorkspaceIcon name="arrow" />
+      </button>
+      {index.map(({ title, views }) => (
+        <section key={title} className={styles.group}>
+          <h3>{uiText(title)}</h3>
+          <ul>
+            {views.map((id) => (
+              <li key={id}>
+                <button
+                  type="button"
+                  className={styles.row}
+                  onClick={() => open(id)}
+                >
+                  {uiText(destinations[id][0])}
+                  <WorkspaceIcon name="chevron" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ))}
     </nav>
   );
 }

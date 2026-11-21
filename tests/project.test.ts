@@ -1,3 +1,4 @@
+import { conversationMilestones } from "../src/server/conversation-milestones";
 import { randomUUID } from "node:crypto";
 import { afterAll, describe, it, expect } from "vitest";
 import { auth } from "../src/server/auth";
@@ -8,7 +9,8 @@ import {
   acceptInvitation,
 } from "../src/server/commands";
 import { projectView } from "../src/server/project-queries";
-import { state } from "../src/server/sync";
+import { referenceDetail } from "../src/server/conversation-reference";
+import { messages, state } from "../src/server/sync";
 async function person() {
   const email = `${randomUUID()}@example.test`,
     password = "Project-test-only-2026!";
@@ -179,6 +181,228 @@ async function setup(n = 3) {
 }
 afterAll(() => pool.end());
 describe("Goal and bounded project authority", () => {
+  it("records a contributor’s shared Goal edit once with exact, inspectable history and no transfer of consent or authority", async () => {
+    const s = await setup();
+    await s.command({ type: "goal.adhere", goalId: s.goalId, version: 1 }, s.b);
+    const original = await s.goal();
+    const originalProposal = String((await s.proposeGoal()).transitionId);
+    const key = randomUUID();
+    const input = {
+      type: "goal.editShared",
+      goalId: s.goalId,
+      expectedVersion: 1,
+      content: "Aprire il nostro primo locale a Milano.",
+    };
+    const result = await s.command(input, s.c, key);
+    expect(await s.command(input, s.c, key)).toEqual(result);
+    await s.command({ ...input, expectedVersion: 2 }, s.b);
+    await expect(s.approveGoal(originalProposal)).rejects.toThrow(
+      "GOAL_VERSION_STALE",
+    );
+    const goal = await s.goal();
+    expect(goal).toMatchObject({
+      version: 2,
+      content: input.content,
+      status: "active",
+      participants: [],
+      adherences: [{ personId: s.b.id, version: 1 }],
+    });
+    expect(goal.versions[1]).toEqual(original.versions[0]);
+    const timeline = (
+      await messages(
+        s.b.id,
+        s.w,
+        0,
+        (await state(s.b.id, s.w)).messageSequence,
+        100,
+      )
+    ).messages;
+    const notices = timeline.filter(
+      (message) => message.purpose === "goal_event",
+    );
+    expect(notices).toHaveLength(2);
+    for (const [index, notice] of notices.entries()) {
+      const version = index + 1,
+        actor = index === 0 ? s.a.id : s.c.id;
+      const ref = { kind: "goal" as const, id: s.goalId, version };
+      expect(notice).toMatchObject({
+        authorId: actor,
+        actorKind: "human",
+        reference: ref,
+      });
+      expect(goal.versions.find((v) => v.version === version)).toMatchObject({
+        actor,
+        sourceId: notice.id,
+      });
+      expect(await referenceDetail(s.b.id, s.w, ref)).toMatchObject({
+        actor,
+        sourceIds: [notice.id],
+        current: version === 2,
+      });
+      expect(
+        await referenceDetail(s.b.id, s.w, {
+          kind: "source",
+          id: notice.id,
+          version: 1,
+        }),
+      ).toMatchObject({
+        actor,
+        content: notice.content,
+        qualification: expect.stringContaining("operazione"),
+      });
+    }
+    const ids = notices.map((notice) => notice.id);
+    expect(
+      (
+        await pool.query(
+          "SELECT 1 FROM workspace_source WHERE workspace_id=$1 AND id=ANY($2::uuid[])",
+          [s.w, ids],
+        )
+      ).rowCount,
+    ).toBe(0);
+    expect(
+      (
+        await pool.query(
+          "SELECT 1 FROM interpretation WHERE workspace_id=$1 AND source_id=ANY($2::uuid[])",
+          [s.w, ids],
+        )
+      ).rowCount,
+    ).toBe(0);
+    const view = await s.view();
+    expect(view.mandates).toEqual([]);
+    expect(view.acts).toEqual([]);
+    for (const mode of ["complete", "replace"]) {
+      const proposal = String(
+        (
+          await s.proposeGoal(
+            mode,
+            {
+              content:
+                mode === "complete"
+                  ? goal.content
+                  : "Avviare una nuova attività",
+            },
+            s.c,
+          )
+        ).transitionId,
+      );
+      const pending = (await s.view()).goalProposals.find(
+        (p) => p.id === proposal,
+      )!;
+      expect(pending.people.sort()).toEqual([s.a.id, s.b.id].sort());
+      await expect(s.approveGoal(proposal, s.c)).rejects.toThrow(
+        "NOT_A_NAMED_APPROVER",
+      );
+      await expect(s.approveGoal(proposal, s.c, s.b.id)).rejects.toThrow(
+        "PERTINENT_MANDATE_REQUIRED",
+      );
+      await s.approveGoal(proposal, s.a);
+      expect(
+        (await s.view()).goalProposals.find((p) => p.id === proposal)?.status,
+      ).toBe("pending");
+    }
+    expect((await s.goal()).status).toBe("active");
+  });
+  it("serializes competing shared edits and rejects foreign, observer, ended and ineligible authors", async () => {
+    const s = await setup();
+    const input = {
+      type: "goal.editShared",
+      goalId: s.goalId,
+      expectedVersion: 1,
+      content: "Concentrarci sull’apertura del locale.",
+    };
+    const race = await Promise.allSettled([
+      s.command(input, s.a),
+      s.command(
+        { ...input, content: "Organizzare l’apertura di primavera." },
+        s.b,
+      ),
+    ]);
+    expect(race.filter((result) => result.status === "fulfilled")).toHaveLength(
+      1,
+    );
+    expect(race.find((result) => result.status === "rejected")).toMatchObject({
+      reason: { code: "GOAL_VERSION_STALE" },
+    });
+    const next = {
+      ...input,
+      expectedVersion: 2,
+      content: "Operazione non autorizzata",
+    };
+    const other = (await createWorkspace(s.b.id, "Altro spazio", randomUUID()))
+      .id;
+    await expect(
+      execute(s.b.id, other, randomUUID(), next, s.b.session),
+    ).rejects.toThrow("GOAL_NOT_FOUND");
+    await expect(execute(s.b.id, s.w, randomUUID(), next)).rejects.toThrow(
+      "AUTHENTICATED_SESSION_REQUIRED",
+    );
+    await pool.query(
+      "UPDATE membership SET contributes=false WHERE workspace_id=$1 AND user_id=$2",
+      [s.w, s.c.id],
+    );
+    await expect(s.command(next, s.c)).rejects.toThrow(
+      "WORKSPACE_ACCESS_DENIED",
+    );
+    await s.command({ type: "member.leave", confirmed: true }, s.b);
+    await expect(s.command(next, s.b)).rejects.toThrow(
+      "WORKSPACE_ACCESS_DENIED",
+    );
+    await pool.query('UPDATE "user" SET eligible=false WHERE id=$1', [s.a.id]);
+    await expect(s.command(next, s.a)).rejects.toThrow("ACCOUNT_INELIGIBLE");
+    expect(
+      (await s.view(s.c)).goals.find((g) => g.id === s.goalId)?.versions,
+    ).toHaveLength(2);
+    expect(
+      (
+        await pool.query(
+          "SELECT 1 FROM message WHERE workspace_id=$1 AND purpose='goal_event'",
+          [s.w],
+        )
+      ).rowCount,
+    ).toBe(2);
+  });
+  it("shows an approved decision once at the preceding message and never turns a proposal into a timeline decision", async () => {
+    const s = await setup(2),
+      outsider = await person();
+    const sent = await s.command({
+      type: "message.send",
+      content: "Confrontiamo le opzioni.",
+    });
+    const first = String(sent.messageId);
+    const proposal = String((await s.proposeAct("decision")).proposalId);
+    expect(
+      (await conversationMilestones(s.b.id, s.w, first, first)).items,
+    ).toEqual([]);
+    await s.approveAct(proposal);
+    expect(
+      (await conversationMilestones(s.b.id, s.w, first, first)).items,
+    ).toEqual([]);
+    const atApproval = (
+      await pool.query(
+        "SELECT id FROM message WHERE workspace_id=$1 ORDER BY sequence DESC LIMIT 1",
+        [s.w],
+      )
+    ).rows[0].id;
+    await s.approveAct(proposal, s.b);
+    const second = String(
+      (await s.command({ type: "message.send", content: "Andiamo avanti." }))
+        .messageId,
+    );
+    const view = await conversationMilestones(s.b.id, s.w, first, second);
+    expect(view.items).toHaveLength(1);
+    expect(view.items[0]).toMatchObject({
+      kind: "decision",
+      objectId: proposal,
+      anchor: atApproval,
+    });
+    expect(
+      (await conversationMilestones(s.a.id, s.w, second, second)).items,
+    ).toEqual([]);
+    await expect(
+      conversationMilestones(outsider.id, s.w, first, second),
+    ).rejects.toMatchObject({ code: "WORKSPACE_ACCESS_DENIED" });
+  });
   it("uses explicit pertinent consent without membership authority or transferred adherence", async () => {
     const s = await setup();
     await s.command({ type: "goal.adhere", goalId: s.goalId, version: 1 }, s.b);
@@ -347,6 +571,18 @@ describe("Goal and bounded project authority", () => {
     await expect(s.approveGoal(blocked)).rejects.toThrow(
       "GOAL_REQUIRES_SEPARATE_OBLIGATION_CHANGE",
     );
+    const blockedText = (await s.view()).goalProposals.find(
+      (p) => p.id === blocked,
+    )!.content;
+    const directEdit = {
+      type: "goal.editShared",
+      goalId: s.goalId,
+      expectedVersion: 1,
+      content: blockedText,
+    };
+    await expect(s.command(directEdit, s.c)).rejects.toThrow(
+      "GOAL_REQUIRES_SEPARATE_OBLIGATION_CHANGE",
+    );
     const duplicate = String((await s.proposeGoal()).transitionId);
     await expect(s.approveGoal(duplicate)).rejects.toThrow(
       "GOAL_REQUIRES_SEPARATE_OBLIGATION_CHANGE",
@@ -360,6 +596,12 @@ describe("Goal and bounded project authority", () => {
       ).transitionId,
     );
     await s.approveGoal(permitted);
+    await expect(
+      s.command(
+        { ...directEdit, expectedVersion: (await s.goal()).version },
+        s.c,
+      ),
+    ).rejects.toThrow("GOAL_REQUIRES_SEPARATE_OBLIGATION_CHANGE");
     expect((await s.view()).acts.find((a) => a.actId === act)?.status).toBe(
       "effective",
     );

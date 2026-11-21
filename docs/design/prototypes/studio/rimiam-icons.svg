@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg">
+  <symbol id="mark" viewBox="0 0 24 24">
+    <g fill="currentColor" stroke="none">
+      <path d="m3 1 9.3 3.6 3.7 5.1v1.7L11 9 4.5 2.6l4.7 6.5-3 4.8-2.3-3.5Z"/>
+      <path fill-rule="evenodd" d="m9.7 9.5 6.3 3v5.6l-6.8-1.6-2.4-1.8Zm.7 3.3v2.3h2.3v-2.3Z"/>
+      <path d="m17.3 12.2 4.1 3v4l-4.1-.9ZM4.7 14.5l4.1 3.1 12 2.8-5 3.2-11.1-4.1Z"/>
+    </g>
+  </symbol>
+
+  <!-- The opening on the right face stays clear at sidebar size. -->
+  <symbol id="home" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+    <path d="m2 7 11.8-5.2 8.1 3.5-11.8 5.2Z"/>
+    <path d="M2 8.8l7.2 3.1v9.5L2 18.3Z" opacity=".64"/>
+    <path d="m11 11.9 11-4.8v9.8l-3.3 1.5v-6.3L14.4 14v6.2L11 21.7Z"/>
+  </symbol>
+
+  <symbol id="side" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+    <path fill-rule="evenodd" d="M2 6a2.5 2.5 0 0 1 2.5-2.5h14.8l2.7 2.7v11.3a2.5 2.5 0 0 1-2.5 2.5h-15A2.5 2.5 0 0 1 2 17.5Zm8.8-.5V18h8.6c.4 0 .6-.2.6-.6V7.1l-1.6-1.6Z"/>
+  </symbol>
+
+  <!-- A rising sun cut through a tear-off calendar leaf. -->
+  <symbol id="clock" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+    <path d="M3 8V5.9c0-1 .8-1.8 1.8-1.8h1.5V2h2.2v2.1h7V2h2.2v2.1h1.5c1 0 1.8.8 1.8 1.8V8Z"/>
+    <path fill-rule="evenodd" d="M3 9.5h18v4.7l-6.4 6.9H5a2 2 0 0 1-2-2Zm3.4 7.1h9.2a4.6 4.6 0 0 0-9.2 0Z"/>
+    <path d="M16.7 21.1 21 16.5v3a1.6 1.6 0 0 1-1.6 1.6Z" opacity=".62"/>
+  </symbol>
+
+  <symbol id="chat" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+    <path d="M2 8.2c0-3.5 2.5-5.6 6.2-5.6h6.4c2.6 0 4.6 1.3 5.4 3.4h-7.9c-4.2 0-7.1 2.7-7.1 6.6v.9L1.6 15l1-4A5.4 5.4 0 0 1 2 8.2Z" opacity=".63"/>
+    <path fill-rule="evenodd" d="M6.7 12.8c0-3.1 2.1-5.1 5.3-5.1h4.9c3.3 0 5.4 2 5.4 5.1v1.5c0 1.4-.4 2.6-1.3 3.5l1 4.5-5.4-2.8h-4.7c-3.1 0-5.2-1.9-5.2-5Zm3.7-.5v1.8h6.8l1.7-1.8Z"/>
+  </symbol>
+
+  <!-- A drafting compass; the cut between its legs runs into the hinge. -->
+  <symbol id="sliders" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+    <path fill-rule="evenodd" d="M12 1.7c2.5 0 4.1 1.7 4.1 4.1 0 1.4-.6 2.6-1.7 3.4L8.6 19.6l-4.7 2.7 6.3-12.9A4.2 4.2 0 0 1 7.9 5.8c0-2.4 1.7-4.1 4.1-4.1Zm0 2.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Z"/>
+    <path d="m15.4 9.7 5 12.7-4-3.2-3-6Z" opacity=".75"/>
+    <path d="M8.9 13.8c2 1.3 4.2 1.6 6.6.9l.7 1.6c-3 .9-5.9.5-8.2-1Z"/>
+  </symbol>
+
+  <symbol id="share" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+    <path d="M12.5 7.2a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM1.6 19.9c0-4.7 3.1-7.5 7.1-7.5a7.25 7.25 0 0 1 6.5 3.7l-4.5 4.4H1.6Z"/>
+    <path d="m13 20.5 3-3c.3.9.5 1.9.5 3Z" opacity=".7"/>
+    <path d="M17.2 3h2.4v3h3v2.4h-3v3h-2.4v-3h-3V6h3Z"/>
+  </symbol>
+
+  <symbol id="folder" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+    <path d="M2.2 6c0-1 .8-1.8 1.8-1.8h5.5l2.4 2.5h6.4c.9 0 1.7.8 1.7 1.7v.8H7.1c-1.7 0-2.4.8-3 2.3l-1.9 4.9Z" opacity=".61"/>
+    <path d="M7.2 10.9h13.6c.9 0 1.4.6 1.1 1.5l-2.6 6.7c-.2.7-.9 1.2-1.7 1.2H2.8l3.1-8.1c.3-.8.7-1.3 1.3-1.3Z"/>
+  </symbol>
+
+  <symbol id="goal" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+    <path d="M4 21.6V2.9h2.1v18.7Z"/>
+    <path d="M7.7 4h14l-3.5 3.5 2.3 3.4H12l-4.3 3Z"/>
+    <path d="m12.7 12.4 4.2 0-4.2 3.1Z" opacity=".66"/>
+  </symbol>
+
+  <!-- One continuous bent wire with a flat, diagonally sheared tip. -->
+  <symbol id="clip" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="butt">
+    <path transform="rotate(38 12 12)" d="M17.2 14.6V6.9a5.25 5.25 0 0 0-10.5 0v10.7a3.5 3.5 0 0 0 7 0V7.9a1.7 1.7 0 0 0-3.4 0v8.3"/>
+  </symbol>
+
+  <symbol id="up" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+    <path d="M1.7 10.1 22.2 2 9.5 13.6Z"/>
+    <path d="m11 14.8 11.2-12.2-5.6 19.7Z"/>
+    <path d="m9.2 15.3 2.7 3.3-2.6 2.2Z" opacity=".65"/>
+  </symbol>
+  <symbol id="check" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+    <path d="M2.4 12.3 5.1 10l4.3 4L19 4.9h3.3l-12.8 15Z"/>
+  </symbol>
+  <symbol id="contrast" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+    <path fill-rule="evenodd" d="M12 2.4a9.6 9.6 0 1 1 0 19.2 9.6 9.6 0 0 1 0-19.2Zm5.2 3.8A7.9 7.9 0 0 0 6.2 17.3c1.8-.3 4.4-1.8 6.9-4.2 2.4-2.5 3.9-5.1 4.1-6.9Z"/>
+  </symbol>
+  <symbol id="right" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+    <path d="M7 4.7 16.8 12 7 19.3v-3.1l5.5-4.2L7 7.8Z"/>
+  </symbol>
+  <symbol id="close" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+    <path d="M4 5.7 5.7 4l6.3 6.3 6.3-6.3L20 5.7 13.7 12l6.3 6.3-1.7 1.7-6.3-6.3L5.7 20 4 18.3l6.3-6.3Z"/>
+  </symbol>
+</svg>

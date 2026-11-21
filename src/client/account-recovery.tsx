@@ -1,4 +1,6 @@
 "use client";
+import { useUiLanguage } from "./ui-language";
+
 import { useEffect, useRef, useState } from "react";
 import { auth } from "./auth-client";
 import { BrandSignature } from "@/client/brand-signature";
@@ -16,9 +18,13 @@ export function AccountRecovery({
   returnTo: string;
   invalidLink: boolean;
 }) {
+  const { t: uiText } = useUiLanguage();
   const [token, setToken] = useState(initialToken);
   const inFlight = useRef(false);
   const feedback = useRef<HTMLParagraphElement>(null);
+  const title = useRef<HTMLHeadingElement>(null);
+  const repeatPassword = useRef<HTMLInputElement>(null);
+  const [passwordMismatch, setPasswordMismatch] = useState(false);
   const [busy, setBusy] = useState(false),
     [notice, setNotice] = useState(""),
     [error, setError] = useState(
@@ -31,6 +37,12 @@ export function AccountRecovery({
   useEffect(() => {
     if (notice || error) feedback.current?.focus();
   }, [notice, error]);
+  useEffect(() => {
+    if (done) title.current?.focus();
+  }, [done]);
+  useEffect(() => {
+    if (passwordMismatch) repeatPassword.current?.focus();
+  }, [passwordMismatch]);
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get("token")) {
@@ -48,35 +60,40 @@ export function AccountRecovery({
         <a
           className="wordmark brand-home"
           href={returnTo}
-          aria-label="RIMIAM — Accesso"
+          aria-label={uiText("RIMIAM — Accesso")}
         >
           <BrandSignature />
         </a>
         <AppearanceControl />
       </header>
       <div className={styles.recoveryContent}>
-        <h1>
+        <h1 ref={title} tabIndex={done ? -1 : undefined}>
           {done
-            ? "Password aggiornata"
+            ? uiText("Password aggiornata")
             : token
-              ? "Scegli una nuova password"
+              ? uiText("Scegli una nuova password")
               : verify
-                ? "Verifica il tuo indirizzo"
-                : "Recupera l’account"}
+                ? uiText("Verifica il tuo indirizzo")
+                : uiText("Recupera l’account")}
         </h1>
         {!done && (
           <p className={styles.recoveryIntro}>
             {token
-              ? "Scegli una password che usi solo per RIMIAM."
+              ? uiText("Scegli una password che usi solo per RIMIAM.")
               : verify
-                ? "Ti invieremo un nuovo link per confermare la tua email."
-                : "Inserisci la tua email per ricevere un link di recupero."}
+                ? uiText(
+                    "Ti invieremo un nuovo link per confermare la tua email.",
+                  )
+                : uiText(
+                    "Inserisci la tua email per ricevere un link di recupero.",
+                  )}
           </p>
         )}
         {done ? (
-          <p>
-            Accedi di nuovo con la nuova password. Le sessioni precedenti sono
-            state chiuse; il tuo accesso agli spazi non cambia.
+          <p role="status">
+            {uiText(
+              "Accedi di nuovo con la nuova password. Le sessioni precedenti sono state chiuse; il tuo accesso agli spazi non cambia.",
+            )}
           </p>
         ) : (
           <form
@@ -91,11 +108,13 @@ export function AccountRecovery({
               setBusy(true);
               setError("");
               setNotice("");
+              setPasswordMismatch(false);
               try {
                 if (token) {
                   const password = String(data.get("password"));
                   if (password !== data.get("repeat")) {
-                    setError("Le due password non coincidono.");
+                    setPasswordMismatch(true);
+                    repeatPassword.current?.focus();
                     return;
                   }
                   const result = await auth.resetPassword({
@@ -105,12 +124,20 @@ export function AccountRecovery({
                   if (result.error) {
                     setError(
                       result.error.status === 429
-                        ? "Troppe richieste. Attendi prima di riprovare."
+                        ? uiText(
+                            "Troppe richieste. Attendi prima di riprovare.",
+                          )
                         : result.error.status >= 500
-                          ? "Non possiamo confermare l’esito. Prova ad accedere con la nuova password oppure richiedi un nuovo link."
+                          ? uiText(
+                              "Non possiamo confermare l’esito. Prova ad accedere con la nuova password oppure richiedi un nuovo link.",
+                            )
                           : result.error.code === "INVALID_TOKEN"
-                            ? "Il link non è valido, è scaduto o è già stato utilizzato. Richiedine uno nuovo."
-                            : "Non è stato possibile aggiornare la password. Usa da 12 a 128 caratteri e riprova; se il problema continua, richiedi un nuovo link.",
+                            ? uiText(
+                                "Il link non è valido, è scaduto o è già stato utilizzato. Richiedine uno nuovo.",
+                              )
+                            : uiText(
+                                "Non è stato possibile aggiornare la password. Usa da 12 a 128 caratteri e riprova; se il problema continua, richiedi un nuovo link.",
+                              ),
                     );
                     return;
                   }
@@ -131,20 +158,30 @@ export function AccountRecovery({
                   if (result.error) {
                     setError(
                       result.error.status === 429
-                        ? "Troppe richieste. Attendi prima di riprovare."
-                        : "Non è stato possibile elaborare la richiesta. Riprova tra poco.",
+                        ? uiText(
+                            "Troppe richieste. Attendi prima di riprovare.",
+                          )
+                        : uiText(
+                            "Non è stato possibile elaborare la richiesta. Riprova tra poco.",
+                          ),
                     );
                     return;
                   }
                   setNotice(
-                    "Se l’indirizzo richiede questa operazione, riceverai un’email con il link. Controlla anche lo spam e attendi qualche minuto prima di richiederne un’altra.",
+                    uiText(
+                      "Se possiamo completare la richiesta per questo indirizzo, riceverai un link via email. Controlla lo spam e attendi qualche minuto prima di riprovare.",
+                    ),
                   );
                 }
               } catch {
                 setError(
                   token
-                    ? "Non possiamo confermare il cambio della password. Controlla la connessione e prova ad accedere; se necessario, richiedi un nuovo link."
-                    : "Richiesta non confermata. Controlla la connessione e riprova tra poco.",
+                    ? uiText(
+                        "Non possiamo confermare il cambio della password. Controlla la connessione e prova ad accedere; se necessario, richiedi un nuovo link.",
+                      )
+                    : uiText(
+                        "Richiesta non confermata. Controlla la connessione e riprova tra poco.",
+                      ),
                 );
               } finally {
                 inFlight.current = false;
@@ -155,24 +192,33 @@ export function AccountRecovery({
             {token ? (
               <>
                 <AccountPassword
-                  label="Nuova password"
+                  label={uiText("Nuova password")}
                   signup
                   disabled={busy}
+                  onChange={() => setPasswordMismatch(false)}
                 />
                 <AccountPassword
-                  label="Ripeti la nuova password"
+                  label={uiText("Ripeti la nuova password")}
                   name="repeat"
                   signup
                   disabled={busy}
+                  inputRef={repeatPassword}
+                  error={
+                    passwordMismatch
+                      ? uiText("Le due password non coincidono.")
+                      : undefined
+                  }
+                  onChange={() => setPasswordMismatch(false)}
                 />
                 <p className={styles.help}>
-                  Dopo il cambio dovrai accedere nuovamente sui tuoi
-                  dispositivi.
+                  {uiText(
+                    "Dopo il cambio dovrai accedere nuovamente sui tuoi dispositivi.",
+                  )}
                 </p>
               </>
             ) : (
               <label>
-                Email dell’account
+                {uiText("Email dell’account")}
                 <input
                   type="email"
                   name="email"
@@ -186,12 +232,12 @@ export function AccountRecovery({
             )}
             <button className={styles.primary} disabled={busy}>
               {busy
-                ? "Invio in corso…"
+                ? uiText("Invio in corso…")
                 : token
-                  ? "Salva nuova password"
+                  ? uiText("Salva nuova password")
                   : verify
-                    ? "Reinvia verifica email"
-                    : "Richiedi link di recupero"}
+                    ? uiText("Invia un nuovo link di verifica")
+                    : uiText("Richiedi link di recupero")}
             </button>
           </form>
         )}
@@ -212,29 +258,33 @@ export function AccountRecovery({
             tabIndex={-1}
             ref={feedback}
           >
-            {error}
+            {uiText(error)}
           </p>
         )}
         {token && error && (
           <a
             href={`/account/recovery?returnTo=${encodeURIComponent(returnTo)}`}
           >
-            Richiedi un nuovo link
+            {uiText("Richiedi un nuovo link")}
           </a>
         )}
         {delivery === "local" && (
           <p>
-            <a href="/local-mail">Casella email locale di sviluppo</a>
+            <a href="/local-mail">
+              {uiText("Casella email locale di sviluppo")}
+            </a>
           </p>
         )}
         {delivery === "unconfigured" && (
           <p className="processing">
-            La consegna email non è ancora configurata in questo ambiente.
-            Ripeti la richiesta dopo l’attivazione del servizio.
+            {uiText(
+              "La consegna email non è ancora configurata in questo ambiente. Ripeti la richiesta dopo l’attivazione del servizio.",
+            )}
           </p>
         )}
         <a className={styles.recoveryBack} href={returnTo}>
-          <span aria-hidden="true">←</span> Torna all’accesso
+          <span aria-hidden="true">←</span>
+          {uiText(" Torna all’accesso")}
         </a>
       </div>
     </main>

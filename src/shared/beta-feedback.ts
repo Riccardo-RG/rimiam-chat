@@ -53,7 +53,7 @@ export function betaFeedbackMarkdown(
     );
     if (entry.message) {
       lines.push(
-        `Linked message: ${entry.message.id} (${entry.message.actorKind}, ${entry.message.createdAt})`,
+        `Linked message: ${entry.message.id} (${entry.message.actorKind === "miriam" ? "Emme (AI)" : entry.message.actorKind}, ${entry.message.createdAt})`,
         literal(entry.message.content),
       );
     } else lines.push("No specific message was linked.");

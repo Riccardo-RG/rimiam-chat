@@ -1,0 +1,23 @@
+.trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+.form {
+  display: grid;
+  grid-column: 1 / -1;
+  flex: 1 1 100%;
+  gap: 0.5rem;
+  min-width: 0;
+  margin-block: 0.4rem;
+}
+.form input {
+  width: 100%;
+  min-width: 0;
+}
+.form > div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem 1rem;
+}

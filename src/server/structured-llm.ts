@@ -10,6 +10,7 @@ import {
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createOpenAI } from "@ai-sdk/openai";
 import { z } from "zod";
+import { admitAIInvocation } from "./ai-admission.ts";
 import { DomainError, requireThat } from "./errors.ts";
 import {
   beginUsage,
@@ -26,6 +27,18 @@ export interface StructuredModel {
     timeoutMs?: number;
     maxOutputTokens?: number;
     usageScope?: UsageScope;
+    // Private capability cost guards must not expose activity in shared diagnostics.
+    admissionScope?:
+      | {
+          workspace: string;
+          operation:
+            | "email_composition"
+            | "private_recap"
+            | "private_research"
+            | "private_document";
+          directChat?: never;
+        }
+      | { directChat: string; workspace?: never; operation: "direct_recap" };
   }): Promise<z.output<T>>;
 }
 
@@ -162,20 +175,103 @@ function modelFailure(error: unknown): DomainError {
   return new DomainError("AI_PROVIDER_UNAVAILABLE", 503);
 }
 
-export function configuredStructuredModel(): StructuredModel | undefined {
-  if (process.env.AI_MODE === "openai" || process.env.AI_MODE === "anthropic") {
-    const provider = process.env.AI_MODE;
-    const apiKey = (
-      process.env.AI_MODE === "openai"
-        ? process.env.OPENAI_API_KEY
-        : process.env.ANTHROPIC_API_KEY
-    )?.trim();
-    const model = process.env.AI_MODEL?.trim();
-    if (!apiKey || !model) return undefined;
+export type StructuredConnection =
+  | {
+      provider: "openai" | "anthropic";
+      model: string;
+      baseURL: string;
+      apiKey?: string;
+    }
+  | { provider: "ollama"; model: string; baseURL: string }
+  | { provider: "agent"; model: string; baseURL: string; token?: string };
+
+export const providerBaseURL = {
+  openai: "https://api.openai.com/v1",
+  anthropic: "https://api.anthropic.com/v1",
+  ollama: "http://127.0.0.1:11434",
+} as const;
+
+export function defaultStructuredConnection():
+  StructuredConnection | undefined {
+  const provider = process.env.AI_MODE;
+  if (provider === "ollama")
+    return {
+      provider,
+      model: process.env.OLLAMA_MODEL?.trim() ?? "",
+      baseURL: process.env.OLLAMA_BASE_URL ?? providerBaseURL.ollama,
+    };
+  if (provider === "openai" || provider === "anthropic") {
+    const prefix = provider.toUpperCase();
+    return {
+      provider,
+      model: process.env.AI_MODEL?.trim() ?? "",
+      baseURL: process.env[prefix + "_BASE_URL"] ?? providerBaseURL[provider],
+      apiKey: process.env[prefix + "_API_KEY"]?.trim(),
+    };
+  }
+}
+
+/** Discard paths from public summaries; paths are only for transport/route identity. */
+export function connectionURL(address: string): URL | undefined {
+  try {
+    const url = new URL(address);
+    if (
+      !["http:", "https:"].includes(url.protocol) ||
+      url.username ||
+      url.password ||
+      url.search ||
+      url.hash
+    )
+      return undefined;
+    return url;
+  } catch {
+    return undefined;
+  }
+}
+
+async function readAgentEnvelope(response: Response): Promise<unknown> {
+  const limit = 1024 * 1024;
+  const reader = response.body?.getReader();
+  requireThat(reader, "AI_OUTPUT_PARSE_ERROR", 502);
+  let size = 0;
+  const chunks: Uint8Array[] = [];
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > limit) {
+        await reader.cancel();
+        throw new DomainError("AI_OUTPUT_PARSE_ERROR", 502);
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+}
+
+export function createStructuredModel(
+  connection: StructuredConnection | undefined,
+): StructuredModel | undefined {
+  if (!connection || !connection.model) return undefined;
+  const { provider, model } = connection;
+  const base = connectionURL(connection.baseURL);
+  if (!base) return undefined;
+  if (connection.provider === "openai" || connection.provider === "anthropic") {
+    const apiKey = connection.apiKey;
+    if (!apiKey) return undefined;
+    const options = {
+      apiKey,
+      baseURL: connection.baseURL,
+      fetch: ((input, init) =>
+        fetch(input, { ...init, redirect: "error" })) satisfies typeof fetch,
+    };
     const languageModel =
-      process.env.AI_MODE === "openai"
-        ? createOpenAI({ apiKey })(model)
-        : createAnthropic({ apiKey })(model);
+      provider === "openai"
+        ? createOpenAI(options)(model)
+        : createAnthropic(options)(model);
     return {
       async generateJSON({
         system,
@@ -184,13 +280,23 @@ export function configuredStructuredModel(): StructuredModel | undefined {
         timeoutMs = 45000,
         maxOutputTokens = 3000,
         usageScope,
+        admissionScope,
       }) {
+        await admitAIInvocation(
+          admissionScope?.operation ?? usageScope?.operation ?? "conversation",
+          admissionScope?.workspace ?? usageScope?.workspace,
+          admissionScope?.directChat,
+        );
         const attempt = await beginUsage(usageScope, provider, model);
         let usage: TokenUsage | undefined;
         let outcome: "returned" | "failed" = "failed";
         try {
           const response = await generateText({
             model: languageModel,
+            // Workspace history stays in PostgreSQL, not provider response storage.
+            ...(provider === "openai"
+              ? { providerOptions: { openai: { store: false } } }
+              : {}),
             maxRetries: 0,
             maxOutputTokens,
             abortSignal: AbortSignal.timeout(timeoutMs),
@@ -221,26 +327,11 @@ export function configuredStructuredModel(): StructuredModel | undefined {
       },
     };
   }
-  if (process.env.AI_MODE === "ollama") {
-    const model = process.env.OLLAMA_MODEL?.trim();
-    if (!model) return undefined;
-    let endpoint: URL;
-    try {
-      const base = new URL(
-        process.env.OLLAMA_BASE_URL ?? "http://127.0.0.1:11434",
-      );
-      if (
-        !["http:", "https:"].includes(base.protocol) ||
-        base.username ||
-        base.password ||
-        base.search ||
-        base.hash
-      )
-        return undefined;
-      endpoint = new URL(`${base.href.replace(/\/$/, "")}/api/chat`);
-    } catch {
-      return undefined;
-    }
+  if (connection.provider === "ollama" || connection.provider === "agent") {
+    const agent = connection.provider === "agent" ? connection : undefined;
+    const endpoint = agent
+      ? base
+      : new URL(`${base.href.replace(/\/$/, "")}/api/chat`);
     return {
       async generateJSON({
         system,
@@ -249,32 +340,51 @@ export function configuredStructuredModel(): StructuredModel | undefined {
         timeoutMs = 45000,
         maxOutputTokens = 3000,
         usageScope,
+        admissionScope,
       }) {
-        const attempt = await beginUsage(usageScope, "ollama", model);
+        await admitAIInvocation(
+          admissionScope?.operation ?? usageScope?.operation ?? "conversation",
+          admissionScope?.workspace ?? usageScope?.workspace,
+          admissionScope?.directChat,
+        );
+        const attempt = await beginUsage(usageScope, provider, model);
         let usage: TokenUsage | undefined;
         let outcome: "returned" | "failed" = "failed";
         try {
           const signal = AbortSignal.timeout(timeoutMs);
           const format = z.toJSONSchema(schema);
-          const request = {
-            model,
-            messages: [
-              {
-                role: "system",
-                content: `${system}\nReturn only JSON matching this schema:\n${JSON.stringify(format)}`,
-              },
-              { role: "user", content: prompt },
-            ],
-            stream: false,
-            options: {
-              temperature: 0.2,
-              num_predict: maxOutputTokens,
-            },
-            format,
-          } as const;
+          const request = agent
+            ? {
+                protocol: "rimiam.contribution.v1",
+                system,
+                prompt,
+                responseSchema: format,
+                maxOutputTokens,
+              }
+            : {
+                model,
+                messages: [
+                  {
+                    role: "system",
+                    content: `${system}\nReturn only JSON matching this schema:\n${JSON.stringify(format)}`,
+                  },
+                  { role: "user", content: prompt },
+                ],
+                stream: false,
+                options: {
+                  temperature: 0.2,
+                  num_predict: maxOutputTokens,
+                },
+                format,
+              };
           const response = await fetch(endpoint, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: {
+              "Content-Type": "application/json",
+              ...(agent?.token
+                ? { Authorization: `Bearer ${agent.token}` }
+                : {}),
+            },
             signal,
             redirect: "error",
             body: JSON.stringify(request),
@@ -282,6 +392,15 @@ export function configuredStructuredModel(): StructuredModel | undefined {
           if (!response.ok) {
             await response.body?.cancel();
             throw httpFailure(response.status);
+          }
+          if (agent) {
+            const envelope = parseStructuredOutput(
+              z.strictObject({ output: z.json() }),
+              await readAgentEnvelope(response),
+            );
+            const result = parseStructuredOutput(schema, envelope.output);
+            outcome = "returned";
+            return result;
           }
           const payload = parseStructuredOutput(
             z.object({
@@ -323,6 +442,10 @@ export function configuredStructuredModel(): StructuredModel | undefined {
     };
   }
   return undefined;
+}
+
+export function configuredStructuredModel(): StructuredModel | undefined {
+  return createStructuredModel(defaultStructuredConnection());
 }
 
 export function isStructuredModelConfigured(): boolean {

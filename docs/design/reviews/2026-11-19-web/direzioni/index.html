@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Traccia e Voci · Direzioni per RIMIAM Web</title>
+  <link rel="stylesheet" href="confronto.css">
+</head>
+<body>
+  <a href="#confronto" class="skip">Vai al confronto</a>
+  <header class="bar">
+    <a class="return" href="../index.html">← Galleria della Web app</a>
+    <span>RIMIAM / Revisione di design</span>
+  </header>
+  <main>
+    <header class="lead">
+      <h1>Due letture della stessa chat</h1>
+      <p>Rientro di Elena · RIMIAM, prima beta · 1440 × 900 px</p>
+    </header>
+    <section id="confronto" class="triptych" aria-label="Confronto affiancato">
+      <article>
+        <h2>Attuale</h2>
+        <a class="preview" href="../screens/c14-secondo-rientro.png" data-frame="0" aria-label="Ingrandisci la schermata originale"><img src="../screens/c14-secondo-rientro.png" width="1440" height="900" alt="La conversazione attuale con il titolo su fondo carta, la colonna dei nomi e la barra laterale blu."><span aria-hidden="true">Ingrandisci ↗</span></a>
+        <p>I nomi in margine guidano la lettura. Nell’intestazione spicca «Invita», anche dopo la decisione del gruppo.</p>
+      </article>
+      <article>
+        <h2>Traccia</h2>
+        <a class="preview" href="traccia.png" data-frame="1" aria-label="Ingrandisci la direzione Traccia"><img src="traccia.png" width="1440" height="900" alt="La direzione Traccia applicata allo stesso rientro e agli stessi messaggi."><span aria-hidden="true">Ingrandisci ↗</span></a>
+        <p>Navigazione orizzontale, caratteri senza grazie e turni compatti. La conversazione ha il ritmo di un registro di lavoro.</p>
+        <div class="actions"><a href="schermata.html?stile=traccia">Apri conversazione</a><a class="try" href="schermata.html?stile=traccia&amp;prova=decisione">Prova la decisione <span aria-hidden="true">→</span></a><a href="schermata.html?stile=traccia&amp;prova=decisione&amp;tema=scuro">Tema scuro</a></div>
+      </article>
+      <article>
+        <h2>Voci</h2>
+        <a class="preview" href="voci.png" data-frame="2" aria-label="Ingrandisci la direzione Voci"><img src="voci.png" width="1440" height="900" alt="La direzione Voci applicata allo stesso rientro e agli stessi messaggi."><span aria-hidden="true">Ingrandisci ↗</span></a>
+        <p>Caratteri con le grazie e più spazio tra i turni. Ogni intervento invita a soffermarsi, a costo di qualche scorrimento in più.</p>
+        <div class="actions"><a href="schermata.html?stile=voci">Apri conversazione</a><a class="try" href="schermata.html?stile=voci&amp;prova=decisione">Prova la decisione <span aria-hidden="true">→</span></a><a href="schermata.html?stile=voci&amp;prova=decisione&amp;tema=scuro">Tema scuro</a></div>
+      </article>
+    </section>
+    <section class="recommendation">
+      <h2>Da quale partirei</h2>
+      <div><p><strong>Partirei da Traccia.</strong> La densità aiuta a rivedere più passaggi insieme. Sceglierei Voci se nella prova emerge una preferenza per una lettura più distesa.</p>
+      <p>Sul computer ogni messaggio porta immagine, nome, data e ora. Sul telefono resta il nome. Un separatore indica l’inizio della giornata o la ripresa dopo una lunga pausa. <a href="dettaglio-firme.webp">Confronta computer e telefono ↗</a></p>
+      <p>In entrambe le prove puoi riconoscere Emme dal nome e dal testo colorati, usare «Vai in fondo», aprire la decisione dalla riga in chat e controllare le due approvazioni. Sul desktop il dettaglio si affianca al dialogo. Prova «Allarga», poi «Chiudi». La prova è circoscritta alla conversazione.</p></div>
+    </section>
+    <section class="session">
+      <h2>Cinque minuti con tua moglie</h2>
+      <ol>
+        <li><strong>Primo minuto.</strong> Apri una delle due prove e lasciale leggere lo scambio per qualche secondo. Chiedile quale intervento attribuisce a Emme.</li>
+        <li><strong>Tre minuti.</strong> Chiedile «Quante coppie hanno deciso di invitare? Fammi vedere come sai che sia Elena sia Matteo hanno approvato, poi torna alla chat». Osserva dove clicca e se trova «Chiudi» al primo tentativo.</li>
+        <li><strong>Ultimo minuto.</strong> Mostra lo stesso scambio nell’altra direzione e chiedile quale terrebbe aperta al lavoro, e perché. Al secondo giro conosce già il percorso.</li>
+      </ol>
+    </section>
+  </main>
+  <dialog id="viewer" aria-labelledby="frame-title">
+    <div class="viewer-bar"><h2 id="frame-title"></h2><button id="close-viewer" type="button" autofocus>Chiudi <span aria-hidden="true">×</span></button></div>
+    <div class="viewer-image" id="image-area" tabindex="0" aria-label="Schermata ingrandita"><img id="frame-img" width="1440" height="900" alt=""></div>
+    <div class="viewer-controls">
+      <div role="group" aria-label="Scegli la schermata"><button data-select="0" type="button">Attuale</button><button data-select="1" type="button">Traccia</button><button data-select="2" type="button">Voci</button></div>
+      <div><button id="toggle-size" type="button" aria-pressed="false">Dimensioni reali</button><a href="../screens/c14-secondo-rientro.png" id="original-png">Apri PNG ↗</a><a id="viewer-try" hidden>Prova la decisione →</a></div>
+    </div>
+  </dialog>
+  <script>
+    const previews = Array.from(document.querySelectorAll('.preview'));
+    const viewer = document.getElementById('viewer');
+    const area = document.getElementById('image-area');
+    const image = document.getElementById('frame-img');
+    const size = document.getElementById('toggle-size');
+    let openedFrom;
+    function select(index) {
+      const preview = previews[index];
+      document.getElementById('frame-title').textContent = preview.closest('article').querySelector('h2').textContent;
+      image.src = preview.href;
+      image.alt = preview.querySelector('img').alt;
+      document.getElementById('original-png').href = preview.href;
+      const demo = preview.closest('article').querySelector('.try');
+      const tryLink = document.getElementById('viewer-try');
+      tryLink.hidden = !demo;
+      if (demo) tryLink.href = demo.href;
+      else tryLink.removeAttribute('href');
+      document.querySelectorAll('[data-select]').forEach((button, i) => button.setAttribute('aria-pressed', String(i === index)));
+    }
+    previews.forEach((preview, i) => preview.addEventListener('click', event => {
+      if (!viewer.showModal || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+      event.preventDefault();
+      openedFrom = preview;
+      area.classList.remove('actual');
+      size.setAttribute('aria-pressed','false');
+      select(i); viewer.showModal();
+      area.scrollTo(0, 0);
+    }));
+    document.querySelectorAll('[data-select]').forEach(button => button.addEventListener('click', () => select(Number(button.dataset.select))));
+    document.getElementById('close-viewer').addEventListener('click', () => viewer.close());
+    viewer.addEventListener('close', () => openedFrom?.focus({preventScroll:true}));
+    size.addEventListener('click', () => {
+      size.setAttribute('aria-pressed', String(area.classList.toggle('actual')));
+      area.scrollTo(0, 0);
+    });
+  </script>
+</body>
+</html>

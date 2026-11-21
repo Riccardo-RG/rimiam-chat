@@ -1,0 +1,13 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+group = 'chat.rimiam.devicevoice'
+version = '0.1.0'
+android {
+  namespace "chat.rimiam.devicevoice"
+  defaultConfig {
+    versionCode 1
+    versionName "0.1.0"
+  }
+}

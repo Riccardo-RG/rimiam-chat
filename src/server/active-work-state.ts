@@ -42,7 +42,12 @@ export async function workEvent(
       source,
     ],
   );
-  await changed(tx, w, `work.${kind}`);
+  await changed(tx, w, `work.${kind}`, false, false, {
+    kind: "work",
+    id,
+    version: a.contract_version,
+    actor,
+  });
   return a.revision as number;
 }
 export async function queueWork(tx: Tx, w: string, id: string) {

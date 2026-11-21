@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { interpretationOutputSchema } from "../src/server/interpretation";
 import { configuredStructuredModel } from "../src/server/structured-llm";
+// Actual SDK serialization is under test; admission has separate real-DB tests.
+vi.mock("../src/server/ai-admission", () => ({ admitAIInvocation: vi.fn() }));
 
 const sourceId = "7f909388-6757-431c-91ed-dd5ac196bc91";
 const request = vi.fn<typeof fetch>();
@@ -106,6 +108,7 @@ describe("OpenAI structured output through the real SDK and local HTTP double", 
     expect(options?.method).toBe("POST");
     const body = JSON.parse(String(options?.body));
     expect(body.model).toBe("gpt-4.1-mini");
+    expect(body.store).toBe(false);
     expect(body.text.format).toMatchObject({
       type: "json_schema",
       strict: true,

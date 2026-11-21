@@ -16,7 +16,10 @@ import {
   googleHash,
   type GoogleToken,
 } from "./google-http.ts";
-import { googleCredentialToken } from "./google-credentials.ts";
+import {
+  googleCalendarWriteScope,
+  googleCredentialToken,
+} from "./google-credentials.ts";
 
 const resourceSchema = z.object({
   id: z.string(),
@@ -194,6 +197,11 @@ export function googleCalendarProvider(
     try {
       await resource(access, signal);
       auth = await token(access.accountRef, signal);
+      requireThat(
+        auth.scopes.includes(googleCalendarWriteScope),
+        "GOOGLE_CALENDAR_READ_ONLY",
+        403,
+      );
       if (effect.operation === "update") {
         requireThat(
           effect.externalId && effect.expectedRevision,
@@ -306,13 +314,16 @@ export function googleCalendarProvider(
         "GOOGLE_CALENDAR_DISCOVERY_TOO_LARGE",
         422,
       );
+      const canWriteSelf = (await token(account, signal)).scopes.includes(
+        googleCalendarWriteScope,
+      );
       return (list.items ?? [])
         .filter((r) => r.accessRole === "owner")
         .map((r) => ({
           id: r.id,
           label: r.summary ?? r.id,
           canRead: true,
-          canWriteSelf: true,
+          canWriteSelf,
         }));
     },
     async checkAccess(access, signal) {
@@ -321,7 +332,9 @@ export function googleCalendarProvider(
         id: r.id,
         label: r.summary ?? r.id,
         canRead: true,
-        canWriteSelf: true,
+        canWriteSelf: (await token(access.accountRef, signal)).scopes.includes(
+          googleCalendarWriteScope,
+        ),
       };
     },
     async read(access, input, signal) {

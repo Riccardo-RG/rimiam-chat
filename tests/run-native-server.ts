@@ -1,6 +1,7 @@
 // Local native verification ONLY. Fixed fictional accounts in a separate database;
 // never imported by the runtime or bundled into clients.
 import { spawn } from "node:child_process";
+import { once } from "node:events";
 import pg from "pg";
 const database = new URL(process.env.DATABASE_URL!);
 if (!["127.0.0.1", "localhost", "[::1]"].includes(database.hostname))
@@ -19,11 +20,30 @@ try {
   await admin.end();
 }
 database.pathname = "/miriam_native";
-process.env.DATABASE_URL = database.href;
-process.env.BETTER_AUTH_URL = "http://127.0.0.1:3102";
-process.env.API_PORT = "3102";
-process.env.LOCAL_MAIL = "true";
-process.env.AI_MODE = "unconfigured";
+// The fixture must stay local even when the developer normally uses wired services.
+Object.assign(process.env, {
+  NODE_ENV: "test",
+  DATABASE_URL: database.href,
+  API_HOST: "127.0.0.1",
+  API_PORT: "3102",
+  BETTER_AUTH_URL: "http://127.0.0.1:3102",
+  LOCAL_MAIL: "true",
+  MAIL_PROVIDER: "unconfigured",
+  AI_MODE: "unconfigured",
+  RIMIAM_ASSISTANT_CONNECTIONS: "[]",
+  RESEARCH_PROVIDER: "unconfigured",
+  TRANSCRIPTION_PROVIDER: "unconfigured",
+  WEB_PUSH_ENABLED: "false",
+  NATIVE_PUSH_ENABLED: "false",
+});
+for (const name of Object.keys(process.env)) {
+  if (
+    /^(GOOGLE_|MICROSOFT_|LIVEKIT_|CALL_STORAGE_|RESEND_|APNS_|FCM_|WEB_PUSH_VAPID_)/.test(
+      name,
+    )
+  )
+    delete process.env[name];
+}
 const migrate = spawn(
   process.execPath,
   ["--import", "tsx", "scripts/migrate.ts"],
@@ -238,11 +258,19 @@ const server = spawn(process.execPath, ["dist/backend/api.js"], {
   env: process.env,
   stdio: "inherit",
 });
+let stopping = false;
+function stopFixture() {
+  stopping = true;
+  server.kill("SIGTERM");
+  calendarWorker.kill("SIGTERM");
+}
 for (const signal of ["SIGINT", "SIGTERM"] as const)
-  process.once(signal, () => {
-    server.kill(signal);
-    calendarWorker.kill(signal);
-  });
-process.exitCode = await new Promise<number>((resolve) =>
-  server.once("exit", (code) => resolve(code ?? 0)),
-);
+  process.once(signal, stopFixture);
+try {
+  const [code] = await Promise.race(
+    [server, calendarWorker].map((child) => once(child, "exit")),
+  );
+  process.exitCode = stopping ? 0 : code || 1;
+} finally {
+  stopFixture();
+}

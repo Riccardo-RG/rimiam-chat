@@ -191,7 +191,20 @@ describe("Structured working artifacts", () => {
       },
       t.b,
     );
+    const savedAgain = await t.cmd(
+      {
+        type: "artifact.from_contribution",
+        saveToLibrary: true,
+        contributionId: work.contribution!.id,
+        title: "Confronto Milano",
+        purpose: "Condivisi",
+        nonOperative: true,
+      },
+      t.a,
+    );
+    expect(savedAgain.artifactId).toBe(draft.artifactId);
     let s = await snapshot(t.a, t.w);
+    expect(s.artifacts).toHaveLength(1);
     expect(s.artifacts[0].current_adoption_id).toBeNull();
     expect(s.artifactVersions[0].contribution_id).toBe(work.contribution!.id);
     expect(s.artifactVersions[0].body).toContain(

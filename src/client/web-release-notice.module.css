@@ -1,0 +1,31 @@
+.surface {
+  display: contents;
+}
+.startup {
+  margin: 1.5rem;
+  color: var(--muted);
+}
+.notice {
+  inline-size: min(23rem, calc(100% - 2rem));
+  box-sizing: border-box;
+  padding: 1.25rem;
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  background: var(--white);
+  color: var(--ink);
+  box-shadow: var(--shadow-panel);
+}
+.notice::backdrop {
+  background: var(--paper);
+}
+.notice h2 {
+  margin: 0;
+  font-size: 1.2rem;
+}
+.notice p {
+  margin: 0.65rem 0 1rem;
+  line-height: 1.5;
+}
+.notice button {
+  min-height: 44px;
+}

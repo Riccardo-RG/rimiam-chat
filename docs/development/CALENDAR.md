@@ -39,7 +39,7 @@ For a linked personal Scheduled Event, an external observation can prefill a cor
 
 ## Clients and verification
 
-Web, SwiftUI and Compose have real Calendar screens: date window, personal appointment creation/revision, proposal target/payload, authorize/reject, result/unknown/retry/reconciliation, scoped observations and overlap/divergence. Existing journals persist exact commands before send; recovery consults receipts and does not auto-replay consequential approvals. Web exposes shared history; detailed native history inspection remains future client work. Commitment timing is currently a common API capability, not a separate native editing flow.
+Web and the [React Native Calendar](../../mobile/src/integrations/CalendarPanel.tsx) support date window, personal appointment creation/revision, proposal target/payload, authorize/reject, result/unknown/retry/reconciliation, scoped observations and overlap/divergence. Existing journals persist exact commands before send; recovery consults receipts and does not auto-replay consequential approvals. Both clients expose shared history, including [native calendar details](../../mobile/src/integrations/CalendarDetails.tsx). Commitment timing is currently a common API capability, not a separate native editing flow.
 
 The 30-day default/31-day request maximum, 100-action pages, 50 recent observations and 200-item provider pages are transport/UI bounds, not retention or AI correctness limits. Other periods and continuation cursors can be requested; partial responses remain explicit. Existing private observations are retained. A real adapter's recovery must search the affected identity/operation independently of these display limits. General private-observation history browsing and recurring/all-day event policy are not part of this slice.
 
@@ -47,4 +47,12 @@ Targeted checks: `npm test -- tests/calendar.test.ts`, `npm run test:e2e -- test
 
 ## WIRE boundary
 
-The [Google adapter and OAuth boundary](GOOGLE_INTEGRATIONS.md) now implement discovery, encrypted credentials/refresh, protected connection and conditional writes. Actual Google consent, credentials and live verification remain pending; unconfigured runtime still supports internal appointments and reports external unavailability. No account, charge, hosting, push or release distribution has been activated. Provider-specific limits and real idempotency/reconciliation evidence still require controlled WIRE/VERIFY.
+The [Google adapter and OAuth boundary](GOOGLE_INTEGRATIONS.md) implement discovery, encrypted credentials and refresh, protected connections and conditional writes. The hosted beta has a configured Google Calendar client in external testing. Personal consent, a real event synchronization and verification of conditional writes against Google are still pending. Self-hosted installations can use internal appointments before configuring a provider.
+
+## External calendars on the Web · 20 November 2026
+
+In **I tuoi spazi**, **Collega calendario** opens the private Google Calendar and Outlook connections even when **Oggi** is collapsed. After the first connection the entry reads **Calendari collegati**. In a shared space, open **Strumenti → Calendario**. Each connection belongs to its person and workspace. Home uses the private personal archive. A calendar grant is separate from signing in and connecting email.
+
+Choose a calendar, a date and **Sincronizza eventi** or **Solo disponibilità**. The worker retrieves that 30-day window and records a dated, private observation. **Continua lettura** loads a further page. Refreshing is explicit. Earlier observations retain their provenance. Disconnecting hides the observations and prevents queued reads from contacting that provider. Checking a calendar never publishes incoming events or sends invitations. Google events in Home and all Outlook calendars are read-only. Shared spaces retain the separate Google proposal and exact authorization workflow for owned calendars.
+
+Google Home requests calendar-list read and owned-event read scopes. Outlook uses delegated Microsoft Graph `Calendars.ReadBasic`, `User.Read` and `offline_access`. Discovery only offers calendars owned by the connecting account. [Google Calendar scopes](https://developers.google.com/workspace/calendar/api/auth) · [Microsoft calendarView](https://learn.microsoft.com/en-us/graph/api/calendar-list-calendarview?view=graph-rest-1.0) · [Activation](DEPLOY_EXTERNAL_SERVICES.md#calendari-esterni)

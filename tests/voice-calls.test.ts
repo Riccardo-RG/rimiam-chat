@@ -15,7 +15,10 @@ import { voiceMessages } from "../src/server/voice";
 import { processDocument } from "../src/server/media-worker";
 import { processCall, recoverCalls } from "../src/server/call-worker";
 import { callConnection, callView } from "../src/server/calls";
-import { recordingConsentText } from "../src/contracts/calls";
+import {
+  recordingConsentText,
+  currentRecordingConsentText,
+} from "../src/contracts/calls";
 import type { CallTransport } from "../src/server/call-provider";
 import {
   claimInterpretation,
@@ -109,7 +112,7 @@ async function consent(a: string, w: string, id: string) {
   const view = await callView(a, w);
   return act(a, w, "call.recording.consent", id, {
     epoch: view.calls[0].epoch,
-    consentText: recordingConsentText,
+    consentText: view.currentConsentText ?? view.consentText,
   });
 }
 
@@ -143,7 +146,7 @@ it("voice retains original history, explicit address and unaccepted transcript; 
   ).rows[0];
   const claim = await claimInterpretation(i.id);
   expect(claim?.context.trigger.qualification).toContain(
-    "esplicitamente indirizzato",
+    "explicitly addressed this voice message to Emme",
   );
   await publishInterpretation(claim!, {
     proposals: [],
@@ -160,7 +163,7 @@ it("voice retains original history, explicit address and unaccepted transcript; 
         first.messageId,
       ])
     ).rows[0].content,
-  ).toBe("Messaggio vocale a RIMIAM");
+  ).toBe("Messaggio vocale a Emme");
   expect(
     (
       await pool.query(
@@ -189,7 +192,23 @@ it("requires all personal consents; new admission waits for confirmed stop; with
   await callConnection(a, w, id, p.transport);
   await callConnection(b, w, id, p.transport);
   await act(a, w, "call.recording.request", id);
-  await consent(a, w, id);
+  const view = await callView(a, w);
+  expect(view.consentText).toBe(recordingConsentText);
+  expect(view.currentConsentText).toBe(currentRecordingConsentText);
+  expect(view.currentConsentText).toBe(
+    view.consentText.replace("L'analisi di RIMIAM", "L'analisi di Emme"),
+  );
+  await expect(
+    act(a, w, "call.recording.consent", id, {
+      epoch: view.calls[0].epoch,
+      consentText: "Consento solo alla registrazione.",
+    }),
+  ).rejects.toThrow();
+  // A prior Web bundle sent this exact literal after showing view.consentText.
+  await act(a, w, "call.recording.consent", id, {
+    epoch: view.calls[0].epoch,
+    consentText: recordingConsentText,
+  });
   await tick(id, p.transport);
   expect(p.recordings).toHaveLength(0);
   await consent(b, w, id);
@@ -202,7 +221,9 @@ it("requires all personal consents; new admission waits for confirmed stop; with
     )!;
     expect(consentEvent.participantId).toBe(recording.participantId);
     expect(consentEvent.epoch).toBe(recording.consentEpoch);
-    expect(consentEvent.consentText).toBe(recordingConsentText);
+    expect(consentEvent.consentText).toBe(
+      consentEvent.actorId === a ? view.consentText : view.currentConsentText,
+    );
   }
   await act(c, w, "call.join");
   await tick(id, p.transport);
@@ -228,8 +249,8 @@ it("requires all personal consents; new admission waits for confirmed stop; with
   expect(
     (
       await pool.query(
-        "SELECT 1 FROM call_event WHERE call_id=$1 AND consent_text=$2",
-        [id, recordingConsentText],
+        "SELECT 1 FROM call_event WHERE call_id=$1 AND consent_text=ANY($2::text[])",
+        [id, [recordingConsentText, currentRecordingConsentText]],
       )
     ).rowCount,
   ).toBe(3);

@@ -1,11 +1,17 @@
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { transaction, type Tx } from "./db.ts";
-import { member, changed, lockWorkspace } from "./workspace-state.ts";
+import {
+  member,
+  changed,
+  lockWorkspace,
+  authenticatedSession,
+} from "./workspace-state.ts";
 import { requireThat } from "./errors.ts";
 import {
   callCommandSchemas,
   callViewSchema,
+  currentRecordingConsentText,
   recordingConsentText,
 } from "../contracts/calls.ts";
 import {
@@ -167,7 +173,7 @@ export async function applyCall(
     c.type,
     actor,
     p.id,
-    c.type === "call.recording.consent" ? recordingConsentText : null,
+    c.type === "call.recording.consent" ? c.consentText : null,
   );
   await queueCall(tx, call.id);
   return { callId: call.id };
@@ -178,11 +184,14 @@ export async function callConnection(
   actor: string,
   w: string,
   id: string,
-  transport: CallTransport = callTransport(),
+  transport?: CallTransport,
+  sessionId?: string,
 ) {
   return transaction(async (tx) => {
-    await lockWorkspace(tx, w);
+    const ws = await lockWorkspace(tx, w);
     await member(tx, w, actor, true, true);
+    requireThat(!ws.personal_owner_id, "PERSONAL_SPACE_UNSUPPORTED", 403);
+    if (sessionId) await authenticatedSession(tx, actor, sessionId);
     const p = (
       await tx.query(
         `SELECT p.* FROM call_participant p JOIN audio_call c ON c.id=p.call_id
@@ -197,7 +206,7 @@ export async function callConnection(
       [p.id],
     );
     return {
-      ...(await transport.connect(id, p.id)),
+      ...(await (transport ?? callTransport()).connect(id, p.id)),
       participantId: p.id,
       callId: id,
     };
@@ -297,6 +306,7 @@ export async function callView(actor: string, w: string) {
       configured: callConfigured(),
       recordingConfigured: recordingConfigured(),
       consentText: recordingConsentText,
+      currentConsentText: currentRecordingConsentText,
       calls,
     });
   });

@@ -1,3 +1,4 @@
+import { conversationMilestones } from "../src/server/conversation-milestones";
 import { randomUUID } from "node:crypto";
 import { afterAll, describe, it, expect } from "vitest";
 import { auth } from "../src/server/auth";
@@ -9,12 +10,13 @@ import {
 } from "../src/server/commands";
 import {
   processActiveWork,
-  recoverActiveWork,
+  recoverWorkspaceWork,
   considerAutonomousWork,
 } from "../src/server/active-work-worker";
 import {
   activeWorkView,
   activeWorkHistory,
+  activeWorkPresence,
 } from "../src/server/active-work-queries";
 import { fixtureAnalysis } from "./support/fixture-analysis";
 import type { AnalysisSpecialist } from "../src/server/analysis-specialist";
@@ -105,6 +107,111 @@ function held() {
 }
 afterAll(() => pool.end());
 describe("Active Work / governed Contributions", () => {
+  it("projects only shared work status and existing results for currently eligible members", async () => {
+    const t = await setup();
+    const url = `http://localhost/api/v1/workspaces/${t.w}/active-work-presence`;
+    const read = (cookie: string) =>
+      handleAPI(new Request(url, { headers: { cookie } }));
+    expect(await (await read(t.a.cookie)).json()).toEqual({
+      ongoing: [],
+      results: [],
+    });
+    const id = String((await t.start()).workId);
+    expect((await activeWorkPresence(t.b.id, t.w)).ongoing).toEqual([
+      { id, objective: "locali Milano", phase: "queued", blocked: false },
+    ]);
+    await processActiveWork(t.w, id, {
+      name: "brief-with-conclusion",
+      async analyze(input) {
+        const result = (await fixtureAnalysis.analyze(input)) as {
+          body: string;
+        };
+        return {
+          ...result,
+          body:
+            "Conclusione: Occorre verificare il costo del locale.\n\n" +
+            result.body,
+        };
+      },
+    });
+    const messages = await pool.query(
+      "SELECT id FROM message WHERE workspace_id=$1 ORDER BY sequence",
+      [t.w],
+    );
+    const range = await conversationMilestones(
+      t.b.id,
+      t.w,
+      messages.rows[0].id,
+      messages.rows.at(-1)!.id,
+    );
+    expect(
+      range.items.filter((item) => item.kind === "completed"),
+    ).toHaveLength(1);
+    expect(range.items.find((item) => item.kind === "completed")).toMatchObject(
+      {
+        objectId: id,
+        label: "locali Milano",
+        conclusion: "Occorre verificare il costo del locale.",
+      },
+    );
+    const work = await t.view(id);
+    const entry = range.items.find((item) => item.kind === "completed")!;
+    const historical = (
+      await activeWorkView(t.b.id, t.w, undefined, id, entry.completionRevision)
+    ).works[0].contribution!;
+    expect(historical.id).toBe(work.contribution!.id);
+    expect(historical.sources).toHaveLength(1);
+    expect(historical.sources![0].reference).toMatchObject({
+      kind: "source",
+      version: 1,
+    });
+    expect(historical.sources![0].label).toContain("locale Milano");
+    await expect(activeWorkView(t.b.id, t.w, undefined, id, 1)).rejects.toThrow(
+      "ACTIVE_WORK_NOT_FOUND",
+    );
+    expect(await (await read(t.b.cookie)).json()).toEqual({
+      ongoing: [],
+      results: [
+        {
+          id,
+          objective: "locali Milano",
+          contributionId: work.contribution!.id,
+          validity: "current",
+        },
+      ],
+    });
+    await pool.query(
+      "UPDATE active_work SET validity='potentially_outdated' WHERE id=$1",
+      [id],
+    );
+    expect((await activeWorkPresence(t.b.id, t.w)).results[0].validity).toBe(
+      "potentially_outdated",
+    );
+    const selectedUrl = url.replace(
+      "active-work-presence",
+      `active-work?workId=${id}`,
+    );
+    const selected = await handleAPI(
+      new Request(selectedUrl, { headers: { cookie: t.b.cookie } }),
+    );
+    expect(await selected.json()).toMatchObject({
+      works: [{ id }],
+      next: null,
+    });
+    const otherWorkspace = (
+      await createWorkspace(t.a.id, "Other project", randomUUID())
+    ).id;
+    const cross = await handleAPI(
+      new Request(selectedUrl.replace(t.w, otherWorkspace), {
+        headers: { cookie: t.a.cookie },
+      }),
+    );
+    expect(cross.status).toBe(404);
+    const outsider = await person();
+    expect((await read(outsider.cookie)).status).toBe(403);
+    await t.cmd({ type: "member.leave", confirmed: true }, t.b);
+    expect((await read(t.b.cookie)).status).toBe(403);
+  });
   it("preserves safe provider failure codes and cannot report a late failure over a human pause", async () => {
     const t = await setup();
     const id = String((await t.start()).workId);
@@ -469,7 +576,7 @@ describe("Active Work / governed Contributions", () => {
     const v = await t.view(id);
     expect(v.phase).toBe("completed");
     expect(v.validity).toBe("potentially_outdated");
-    await recoverActiveWork();
+    await recoverWorkspaceWork(t.w, false);
     expect((await t.view(id)).phase).toBe("completed");
   });
   it("preserves anchors across contract revisions and rejects late old-contract publication", async () => {
@@ -629,7 +736,7 @@ describe("Active Work / governed Contributions", () => {
       "UPDATE active_work SET lease_until=now()-interval '1 second' WHERE id=$1",
       [id],
     );
-    await recoverActiveWork();
+    await recoverWorkspaceWork(t.w, false);
     h.release();
     await running;
     await Promise.all([
@@ -640,7 +747,7 @@ describe("Active Work / governed Contributions", () => {
       (await activeWorkHistory(t.a.id, t.w, id)).contributions,
     ).toHaveLength(1);
     await t.control(id, "ferma", t.b);
-    await recoverActiveWork();
+    await recoverWorkspaceWork(t.w, false);
     await processActiveWork(t.w, id, fixtureAnalysis);
     expect((await t.view(id)).phase).toBe("stopped");
   });

@@ -32,7 +32,7 @@ const code = (e: unknown) =>
 const operationKey = (a: Record<string, unknown>) =>
   `miriam-email:${a.id}:${a.draft_version}`;
 function providerFor(key: string, p?: EmailProvider) {
-  const result = p ?? configuredEmailProvider();
+  const result = p ?? configuredEmailProvider(key);
   requireThat(result?.key === key, "EMAIL_PROVIDER_UNAVAILABLE", 503);
   return result;
 }
@@ -76,7 +76,12 @@ async function validate(tx: Tx, w: string, id: string) {
       ws.access_revision === approval.access_revision,
     "EMAIL_APPROVAL_STALE",
   );
-  return { a, r, contents };
+  return {
+    a,
+    r,
+    contents,
+    authorizedAt: new Date(approval.created_at).toISOString(),
+  };
 }
 async function failure(
   w: string,
@@ -106,11 +111,13 @@ async function success(
   w: string,
   a: Awaited<ReturnType<typeof sendVersion>>,
   raw: EmailReceipt,
+  provider: string,
 ) {
   const receipt = emailReceiptSchema.parse(raw);
   requireThat(
     receipt.operationKey === operationKey(a) &&
-      receipt.envelopeHash === a.envelope_hash,
+      receipt.envelopeHash === a.envelope_hash &&
+      (receipt.providerMessageId !== null || provider === "microsoft-outlook"),
     "EMAIL_EFFECT_NOT_PROVEN",
   );
   await tx.query(
@@ -204,6 +211,7 @@ export async function processEmailSend(id: string, provider?: EmailProvider) {
     const receipt = await p.send(
       access,
       {
+        authorizedAt: claim.authorizedAt,
         operationKey: operationKey(a),
         envelopeHash: a.envelope_hash,
         envelope: contents.envelope,
@@ -219,7 +227,7 @@ export async function processEmailSend(id: string, provider?: EmailProvider) {
         current.attempt_id === attempt &&
         ["EXECUTING", "OUTCOME_UNKNOWN"].includes(current.status)
       )
-        await success(tx, w, current, receipt);
+        await success(tx, w, current, receipt, p.key);
     });
   } catch (e) {
     await failure(w, id, attempt, !(e instanceof EmailNoEffect), code(e));
@@ -392,7 +400,7 @@ export async function processEmailRead(id: string, provider?: EmailProvider) {
         const a = await sendVersion(tx, w, request.actionId, r.person_id);
         if (a.status === "OUTCOME_UNKNOWN") {
           if (reconciliation.outcome === "accepted")
-            await success(tx, w, a, reconciliation.receipt);
+            await success(tx, w, a, reconciliation.receipt, p.key);
           else if (reconciliation.outcome === "not_accepted") {
             requireThat(
               typeof reconciliation.proof === "string" &&

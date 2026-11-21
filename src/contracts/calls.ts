@@ -1,7 +1,16 @@
 import { z } from "zod";
 
+const recordingDisclosure =
+  "Acconsento personalmente alla registrazione del mio audio, alla trascrizione e alla conservazione come Fonte condivisa del Workspace. Audio, trascrizione e relativa storia saranno visibili ai membri idonei secondo ADR-0009, inclusi i membri ammessi successivamente. Il ritiro interrompe le acquisizioni future, non elimina il materiale già autorizzato.";
+// Existing v1 clients display consentText and submit the original bundled literal.
 export const recordingConsentText =
-  "Acconsento personalmente alla registrazione del mio audio, alla trascrizione e alla conservazione come Fonte condivisa del Workspace. Audio, trascrizione e relativa storia saranno visibili ai membri idonei secondo ADR-0009, inclusi i membri ammessi successivamente. Il ritiro interrompe le acquisizioni future, non elimina il materiale già autorizzato. L'analisi di RIMIAM richiede una richiesta separata.";
+  `${recordingDisclosure} L'analisi di RIMIAM richiede una richiesta separata.` as const;
+export const currentRecordingConsentText =
+  `${recordingDisclosure} L'analisi di Emme richiede una richiesta separata.` as const;
+export const recordingConsentWordingSchema = z.enum([
+  recordingConsentText,
+  currentRecordingConsentText,
+]);
 export const callCommandSchemas = [
   z.object({ type: z.literal("call.join") }).strict(),
   z
@@ -21,7 +30,7 @@ export const callCommandSchemas = [
       type: z.literal("call.recording.consent"),
       callId: z.uuid(),
       epoch: z.number().int().positive(),
-      consentText: z.literal(recordingConsentText),
+      consentText: recordingConsentWordingSchema,
     })
     .strict(),
 ] as const;
@@ -29,6 +38,7 @@ export const callViewSchema = z.object({
   configured: z.boolean(),
   recordingConfigured: z.boolean(),
   consentText: z.string(),
+  currentConsentText: z.string().optional(),
   calls: z.array(
     z.object({
       id: z.uuid(),

@@ -8,7 +8,13 @@ export const workstreamStateSchema = z.enum([
   "resolved",
   "archived",
 ]);
-const lifecycleAction = z.enum(["activate", "resolve", "archive", "reopen"]);
+const lifecycleAction = z.enum([
+  "activate",
+  "resolve",
+  "archive",
+  "reopen",
+  "restore",
+]);
 export const workstreamFocusSchema = z
   .object({
     workstreamId: z.uuid(),

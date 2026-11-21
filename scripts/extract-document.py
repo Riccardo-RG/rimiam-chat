@@ -11,11 +11,14 @@ MAX_TEXT = 200000
 
 def main():
     # Keep untrusted compressed input inside a disposable, bounded parser process.
-    resource.setrlimit(resource.RLIMIT_CPU, (45, 45))
+    preview = sys.argv[2:] == ["preview"]
+    cpu = 4 if preview else 45
+    resource.setrlimit(resource.RLIMIT_CPU, (cpu, cpu))
     # Darwin reports infinite DATA/AS limits but rejects setting a portable cap.
     # Linux deployment can enforce address-space memory; macOS retains CPU/input/output bounds.
     if sys.platform.startswith("linux"):
-        resource.setrlimit(resource.RLIMIT_AS, (512 * 1024 * 1024, 512 * 1024 * 1024))
+        memory = (256 if preview else 512) * 1024 * 1024
+        resource.setrlimit(resource.RLIMIT_AS, (memory, memory))
     raw = sys.stdin.buffer.read(MAX_INPUT + 1)
     if len(raw) > MAX_INPUT:
         raise ValueError("DOCUMENT_TOO_LARGE")
@@ -32,6 +35,9 @@ def main():
         for index, page in enumerate(reader.pages):
             text = page.extract_text() or ""
             size += len(text)
+            if preview and size > 16000:
+                sections.append(f"[Pagina {index + 1}]\n{text[:16001]}")
+                break
             if size > MAX_TEXT:
                 raise ValueError("DOCUMENT_TEXT_TOO_LARGE")
             if text.strip():
@@ -53,12 +59,17 @@ def main():
         # Iteration preserves paragraph/table order; never executes embedded content.
         from docx.text.paragraph import Paragraph
         from docx.table import Table
+        size = 0
         for block in document.iter_inner_content():
+            previous = len(sections)
             if isinstance(block, Paragraph):
                 sections.append(block.text)
             elif isinstance(block, Table):
                 sections.extend(" | ".join(c.text for c in row.cells) for row in block.rows)
-            if sum(map(len, sections)) > MAX_TEXT:
+            size += sum(len(section) for section in sections[previous:])
+            if preview and size > 16000:
+                break
+            if size > MAX_TEXT:
                 raise ValueError("DOCUMENT_TEXT_TOO_LARGE")
         text = "\n".join(sections)
         provider = f"python-docx/{docx.__version__}"
@@ -66,6 +77,8 @@ def main():
             raise ValueError("DOCUMENT_TEXT_UNAVAILABLE")
     else:
         raise ValueError("DOCUMENT_FORMAT_UNSUPPORTED")
+    if preview:
+        text = text[:16001]
     if len(text) > MAX_TEXT:
         raise ValueError("DOCUMENT_TEXT_TOO_LARGE")
     print(json.dumps({"text": text, "provider": provider, "qualification": "Estrazione testuale locale; layout, immagini, annotazioni o contenuti incorporati possono richiedere ispezione dell'originale. Non costituisce informazione accettata o un impegno."}))

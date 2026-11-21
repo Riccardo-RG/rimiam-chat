@@ -1,7 +1,12 @@
 import { randomUUID } from "node:crypto";
 import type { Tx } from "./db.ts";
 import { requireThat } from "./errors.ts";
-import { member, changed, type WorkspaceRow } from "./workspace-state.ts";
+import {
+  member,
+  changed,
+  authenticatedSession,
+  type WorkspaceRow,
+} from "./workspace-state.ts";
 import {
   actionVersion,
   calendarResource,
@@ -39,6 +44,55 @@ export async function applyCalendar(
   sessionId?: string,
 ): Promise<Record<string, unknown>> {
   const w = ws.id;
+  if (c.type === "temporal.respond") {
+    await member(tx, w, actor, false, true);
+    await authenticatedSession(tx, actor, sessionId);
+    const event = (
+      await tx.query(
+        `SELECT e.current_version, v.audience, m.version AS membership_version,
+      EXISTS(SELECT 1 FROM scheduled_event_invitee i WHERE (i.workspace_id,i.event_id,i.version,i.person_id,i.membership_version)=(v.workspace_id,v.event_id,v.version,m.user_id,m.version)) AS named
+      FROM scheduled_event e JOIN scheduled_event_version v ON (v.workspace_id,v.event_id,v.version)=(e.workspace_id,e.id,e.current_version)
+      JOIN membership m ON m.workspace_id=e.workspace_id AND m.user_id=$3 AND m.active WHERE e.workspace_id=$1 AND e.id=$2`,
+        [w, c.eventId, actor],
+      )
+    ).rows[0];
+    requireThat(
+      event && event.current_version === c.expectedVersion,
+      "CALENDAR_EVENT_STALE",
+    );
+    requireThat(
+      !ws.personal_owner_id && (event.audience === "all" || event.named),
+      "CALENDAR_NOT_INVITED",
+      403,
+    );
+    const existing = (
+      await tx.query(
+        "SELECT response FROM scheduled_event_response WHERE workspace_id=$1 AND event_id=$2 AND version=$3 AND person_id=$4 AND membership_version=$5",
+        [w, c.eventId, c.expectedVersion, actor, event.membership_version],
+      )
+    ).rows[0];
+    requireThat(
+      !existing || existing.response === c.response,
+      "CALENDAR_ALREADY_RESPONDED",
+    );
+    if (!existing)
+      await tx.query(
+        "INSERT INTO scheduled_event_response(workspace_id,event_id,version,person_id,membership_version,response) VALUES($1,$2,$3,$4,$5,$6)",
+        [
+          w,
+          c.eventId,
+          c.expectedVersion,
+          actor,
+          event.membership_version,
+          c.response,
+        ],
+      );
+    return {
+      eventId: c.eventId,
+      version: c.expectedVersion,
+      response: c.response,
+    };
+  }
   await member(tx, w, actor, true);
   if (c.type === "temporal.create" || c.type === "temporal.revise") {
     requireThat(
@@ -109,9 +163,14 @@ export async function applyCalendar(
         [w, eventId, version],
       );
     }
+    requireThat(
+      !ws.personal_owner_id || !c.audience || c.audience.kind === "calendar",
+      "PERSONAL_SPACE_UNSUPPORTED",
+      403,
+    );
     await tx.query(
-      `INSERT INTO scheduled_event_version(workspace_id,event_id,version,title,starts_at,ends_at,time_zone,actor_id,reason,source_message_id,source_observation_id,source_external_event_id)
-      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+      `INSERT INTO scheduled_event_version(workspace_id,event_id,version,title,starts_at,ends_at,time_zone,actor_id,reason,source_message_id,source_observation_id,source_external_event_id,audience)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,COALESCE($13,(SELECT audience FROM scheduled_event_version WHERE workspace_id=$1 AND event_id=$2 AND version=$3::int-1),'calendar'))`,
       [
         w,
         eventId,
@@ -125,8 +184,27 @@ export async function applyCalendar(
         c.sourceMessageId ?? null,
         observationId,
         externalEventId,
+        c.audience?.kind ?? null,
       ],
     );
+    if (c.audience?.kind === "people") {
+      const people = c.audience.people;
+      const added = await tx.query(
+        `INSERT INTO scheduled_event_invitee(workspace_id,event_id,version,person_id,membership_version)
+        SELECT $1,$2,$3,m.user_id,m.version FROM membership m JOIN "user" u ON u.id=m.user_id AND u.eligible AND u."emailVerified" WHERE m.workspace_id=$1 AND m.active AND m.user_id=ANY($4::text[])`,
+        [w, eventId, version, people],
+      );
+      requireThat(
+        added.rowCount === people.length,
+        "CALENDAR_INVITEE_UNAVAILABLE",
+        409,
+      );
+    } else if (!c.audience && version > 1) {
+      await tx.query(
+        `INSERT INTO scheduled_event_invitee SELECT workspace_id,event_id,$3,person_id,membership_version FROM scheduled_event_invitee WHERE workspace_id=$1 AND event_id=$2 AND version=$3::int-1`,
+        [w, eventId, version],
+      );
+    }
     await changed(tx, w, c.type, true);
     return { eventId, version };
   }

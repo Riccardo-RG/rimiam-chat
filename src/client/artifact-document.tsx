@@ -1,5 +1,7 @@
 /* eslint-disable @next/next/no-img-element -- Private same-origin source URLs require authenticated original-media delivery. */
 "use client";
+import { useUiLanguage } from "./ui-language";
+
 import { useState } from "react";
 import type { ArtifactBlock } from "@/contracts/artifact-document";
 import type { ConversationHandoff } from "@/contracts/conversation-handoff";
@@ -38,6 +40,7 @@ export function ArtifactInformationSelection({
   onChange: (selected: ArtifactInformationReference[]) => void;
   allowHistorical?: boolean;
 }) {
+  const { t: uiText } = useUiLanguage();
   const stale = staleArtifactInformation(selected, state.information);
   return (
     <>
@@ -45,8 +48,12 @@ export function ArtifactInformationSelection({
         <div role="status" className="processing">
           <p>
             {allowHistorical
-              ? "Alcuni riferimenti selezionati non sono correnti. La bozza conserva quelle versioni come riferimenti storici. Puoi mantenerle oppure esaminare e selezionare esplicitamente le versioni correnti."
-              : "Alcuni riferimenti selezionati sono cambiati. La tua selezione non è stata aggiornata: esamina e seleziona la versione corrente, oppure rimuovi il riferimento prima di salvare."}
+              ? uiText(
+                  "Alcuni riferimenti selezionati non sono correnti. La bozza conserva quelle versioni come riferimenti storici. Puoi mantenerle oppure esaminare e selezionare esplicitamente le versioni correnti.",
+                )
+              : uiText(
+                  "Alcuni riferimenti selezionati sono cambiati. La tua selezione non è stata aggiornata: esamina e seleziona la versione corrente, oppure rimuovi il riferimento prima di salvare.",
+                )}
           </p>
           {stale.map((ref) => {
             const item = state.information.find((i) => i.id === ref.id);
@@ -55,17 +62,20 @@ export function ArtifactInformationSelection({
             );
             return (
               <p key={ref.id}>
-                {item?.subject ?? "Informazione non disponibile"} · selezionata
-                v{ref.version}
+                {item?.subject ?? uiText("Informazione non disponibile")}
+                {uiText(" · selezionata v")}
+                {ref.version}
                 {historical ? `: ${historical.content}` : ""}{" "}
                 <button
                   type="button"
                   className="quiet"
+                  data-changes-document
                   onClick={() =>
                     onChange(selected.filter((i) => i.id !== ref.id))
                   }
                 >
-                  Rimuovi riferimento v{ref.version}
+                  {uiText("Rimuovi riferimento v")}
+                  {ref.version}
                 </button>
               </p>
             );
@@ -91,7 +101,9 @@ export function ArtifactInformationSelection({
               )
             }
           />
-          {item.subject} · v{item.current_version}: {item.content}
+          {item.subject}
+          {uiText(" · v")}
+          {item.current_version}: {item.content}
         </label>
       ))}
     </>
@@ -123,20 +135,24 @@ export function ArtifactRevisionReview({
   current: Snapshot["artifactVersions"][number] | undefined;
   onReviewed: () => void;
 }) {
+  const { t: uiText } = useUiLanguage();
   return (
     <div role="status" className="processing">
       <p>
-        La tua bozza resta basata sulla v{base?.version ?? "non disponibile"}.
+        {uiText("La tua bozza resta basata sulla v")}
+        {base?.version ?? uiText("non disponibile")}.
         {current
-          ? ` È ora disponibile la v${current.version}.`
-          : " Il documento corrente non è disponibile."}{" "}
-        Il tuo testo è conservato. Prima di salvare, confronta le modifiche:
-        usare una nuova base non le incorpora automaticamente nella tua bozza.
+          ? uiText(" È ora disponibile la v{0}.", String(current.version))
+          : uiText(" Il documento corrente non è disponibile.")}{" "}
+        {uiText(
+          "Il tuo testo è conservato. Prima di salvare, confronta le modifiche: usare una nuova base non le incorpora automaticamente nella tua bozza.",
+        )}
       </p>
       {current && (
         <details>
           <summary>
-            Confronta con la versione corrente · v{current.version}
+            {uiText("Confronta con la versione corrente · v")}
+            {current.version}
           </summary>
           <h4>{current.title}</h4>
           {current.purpose && <p>{current.purpose}</p>}
@@ -146,8 +162,11 @@ export function ArtifactRevisionReview({
             workspace={state.workspace.id}
           />
           <p className="hint">
-            Riferimenti della v{current.version}: la tua selezione rimane
-            distinta e non viene sostituita durante il confronto.
+            {uiText("Riferimenti della v")}
+            {current.version}
+            {uiText(
+              ": la tua selezione rimane distinta e non viene sostituita durante il confronto.",
+            )}
           </p>
           <ul>
             {state.artifactInformation
@@ -159,14 +178,17 @@ export function ArtifactRevisionReview({
               .map((r) => (
                 <li key={r.information_id}>
                   {state.information.find((i) => i.id === r.information_id)
-                    ?.subject ?? "Informazione accettata"}{" "}
-                  · v{r.information_version}:{" "}
+                    ?.subject ?? uiText("Informazione accettata")}{" "}
+                  {uiText("· v")}
+                  {r.information_version}:{" "}
                   {state.versions.find(
                     (v) =>
                       v.information_id === r.information_id &&
                       v.version === r.information_version,
                   )?.content ??
-                    "contenuto storico consultabile nei riferimenti del documento"}
+                    uiText(
+                      "contenuto storico consultabile nei riferimenti del documento",
+                    )}
                 </li>
               ))}
             {state.artifactSources
@@ -177,16 +199,22 @@ export function ArtifactRevisionReview({
               )
               .map((r) => (
                 <li key={r.source_id}>
-                  Fonte:{" "}
+                  {uiText("Fonte:")}{" "}
                   {state.sources.find((s) => s.id === r.source_id)?.title ??
                     state.messages.find((m) => m.id === r.source_id)?.content ??
                     r.source_id}
                 </li>
               ))}
           </ul>
-          <button type="button" className="quiet" onClick={onReviewed}>
-            Ho confrontato: usa v{current.version} come base e conserva la mia
-            bozza
+          <button
+            type="button"
+            className="quiet"
+            data-changes-document
+            onClick={onReviewed}
+          >
+            {uiText("Ho confrontato: usa v")}
+            {current.version}
+            {uiText(" come base e conserva la mia bozza")}
           </button>
         </details>
       )}
@@ -203,6 +231,7 @@ export function ArtifactBody({
   body: string;
   workspace: string;
 }) {
+  const { t: uiText } = useUiLanguage();
   if (!blocks) return <div className="artifact-body">{body}</div>;
   return (
     <div className="document-body">
@@ -215,7 +244,11 @@ export function ArtifactBody({
           <ul className="document-checklist" key={i}>
             {b.items.map((x, n) => (
               <li key={n}>
-                <span aria-label={x.checked ? "Spuntato" : "Non spuntato"}>
+                <span
+                  aria-label={
+                    x.checked ? uiText("Spuntato") : uiText("Non spuntato")
+                  }
+                >
                   {x.checked ? "☑" : "☐"}
                 </span>{" "}
                 {x.text}
@@ -258,6 +291,18 @@ export function ArtifactBody({
     </div>
   );
 }
+const blockLabels: Record<ArtifactBlock["type"], string> = {
+  paragraph: "Testo",
+  heading: "Sezione",
+  checklist: "Checklist",
+  table: "Tabella",
+  image: "Immagine",
+};
+
+function emptyParagraph(block: ArtifactBlock) {
+  return block.type === "paragraph" && !block.text.trim();
+}
+
 export function ArtifactDocumentEditor({
   state,
   artifactId,
@@ -265,16 +310,21 @@ export function ArtifactDocumentEditor({
   command,
   action,
   onSaved,
+  onCancel,
   handoff,
+  personal = false,
 }: {
+  personal?: boolean;
   state: Snapshot;
   artifactId?: string;
   busy: boolean;
   command: (c: Command) => Promise<unknown>;
   action: (fn: () => Promise<void>) => Promise<void>;
   onSaved: () => void;
+  onCancel: () => void;
   handoff?: ConversationHandoff;
 }) {
+  const { t: uiText } = useUiLanguage();
   const { base, current, stale, setBase } = useArtifactEditBase(
     state,
     artifactId,
@@ -313,16 +363,19 @@ export function ArtifactDocumentEditor({
   const update = (index: number, b: ArtifactBlock) =>
     setBlocks((old) => old.map((x, i) => (i === index ? b : x)));
   const add = (type: ArtifactBlock["type"]) =>
-    setBlocks((old) => [
-      ...old,
-      type === "paragraph" || type === "heading"
-        ? { type, text: "" }
-        : type === "checklist"
-          ? { type, items: [{ text: "", checked: false }] }
-          : type === "table"
-            ? { type, columns: ["Voce", "Dettaglio"], rows: [["", ""]] }
-            : { type, sourceId: "", alt: "", caption: "" },
-    ]);
+    setBlocks((old) => {
+      const block: ArtifactBlock =
+        type === "paragraph" || type === "heading"
+          ? { type, text: "" }
+          : type === "checklist"
+            ? { type, items: [{ text: "", checked: false }] }
+            : type === "table"
+              ? { type, columns: ["Voce", "Dettaglio"], rows: [["", ""]] }
+              : { type, sourceId: "", alt: "", caption: "" };
+      return old.length === 1 && emptyParagraph(old[0])
+        ? [block]
+        : [...old, block];
+    });
   return (
     <form
       className="document-editor"
@@ -369,7 +422,7 @@ export function ArtifactDocumentEditor({
         />
       )}
       <label>
-        Titolo
+        {uiText("Titolo")}
         <input
           required
           maxLength={160}
@@ -378,32 +431,46 @@ export function ArtifactDocumentEditor({
         />
       </label>
       <label>
-        A cosa ci serve?
+        {personal ? uiText("A cosa ti serve?") : uiText("A cosa ci serve?")}
         <input
           required
           maxLength={2000}
           value={purpose}
           onChange={(e) => setPurpose(e.target.value)}
-          placeholder="Per esempio: confrontare tre ipotesi per la beta di RIMIAM"
+          placeholder={
+            personal
+              ? uiText("Per esempio: raccogliere le idee da approfondire")
+              : uiText(
+                  "Per esempio: confrontare tre ipotesi per la beta di RIMIAM",
+                )
+          }
         />
       </label>
       {blocks.map((b, i) => (
         <fieldset key={i}>
           <legend>
-            {i + 1}.{" "}
-            {
-              {
-                paragraph: "Testo",
-                heading: "Sezione",
-                checklist: "Checklist",
-                table: "Tabella",
-                image: "Immagine",
-              }[b.type]
-            }
+            {i + 1}. {uiText(blockLabels[b.type])}
           </legend>
+          {!(blocks.length === 1 && emptyParagraph(b)) && (
+            <button
+              type="button"
+              className="quiet"
+              data-changes-document
+              onClick={() =>
+                setBlocks((old) =>
+                  old.length === 1
+                    ? [{ type: "paragraph", text: "" }]
+                    : old.filter((_, n) => n !== i),
+                )
+              }
+            >
+              {uiText("Rimuovi ")}
+              {uiText(blockLabels[b.type]).toLowerCase()}
+            </button>
+          )}
           {(b.type === "paragraph" || b.type === "heading") && (
             <label className="block-input">
-              Contenuto
+              {uiText("Contenuto")}
               <textarea
                 value={b.text}
                 required
@@ -419,7 +486,7 @@ export function ArtifactDocumentEditor({
                 <div className="checklist-edit" key={n}>
                   <input
                     type="checkbox"
-                    aria-label={`Spunta voce ${n + 1}`}
+                    aria-label={uiText("Spunta voce {0}", String(n + 1))}
                     checked={x.checked}
                     onChange={(e) =>
                       update(i, {
@@ -431,7 +498,7 @@ export function ArtifactDocumentEditor({
                     }
                   />
                   <input
-                    aria-label={`Voce ${n + 1}`}
+                    aria-label={uiText("Voce {0}", String(n + 1))}
                     required
                     maxLength={2000}
                     value={x.text}
@@ -447,7 +514,8 @@ export function ArtifactDocumentEditor({
                   <button
                     type="button"
                     className="quiet"
-                    aria-label={`Rimuovi voce ${n + 1}`}
+                    data-changes-document
+                    aria-label={uiText("Rimuovi voce {0}", String(n + 1))}
                     disabled={b.items.length === 1}
                     onClick={() =>
                       update(i, {
@@ -456,13 +524,14 @@ export function ArtifactDocumentEditor({
                       })
                     }
                   >
-                    ×
+                    {uiText("Rimuovi")}
                   </button>
                 </div>
               ))}
               <button
                 type="button"
                 className="quiet"
+                data-changes-document
                 onClick={() =>
                   update(i, {
                     ...b,
@@ -470,11 +539,12 @@ export function ArtifactDocumentEditor({
                   })
                 }
               >
-                Aggiungi voce
+                {uiText("Aggiungi voce")}
               </button>
               <small>
-                Le spunte sono contenuto della bozza; non completano Task o
-                impegni.
+                {uiText(
+                  "Le spunte aggiornano solo il documento. Lo stato delle attività e degli impegni resta invariato.",
+                )}
               </small>
             </>
           )}
@@ -487,7 +557,7 @@ export function ArtifactDocumentEditor({
                       {b.columns.map((v, n) => (
                         <th key={n}>
                           <input
-                            aria-label={`Colonna ${n + 1}`}
+                            aria-label={uiText("Colonna {0}", String(n + 1))}
                             value={v}
                             maxLength={160}
                             onChange={(e) =>
@@ -509,7 +579,11 @@ export function ArtifactDocumentEditor({
                         {row.map((cell, k) => (
                           <td key={k}>
                             <input
-                              aria-label={`Riga ${n + 1}, colonna ${k + 1}`}
+                              aria-label={uiText(
+                                "Riga {0}, colonna {1}",
+                                String(n + 1),
+                                String(k + 1),
+                              )}
                               maxLength={2000}
                               value={cell}
                               onChange={(e) =>
@@ -536,6 +610,7 @@ export function ArtifactDocumentEditor({
                 <button
                   type="button"
                   className="quiet"
+                  data-changes-document
                   onClick={() =>
                     update(i, {
                       ...b,
@@ -543,12 +618,13 @@ export function ArtifactDocumentEditor({
                     })
                   }
                 >
-                  Aggiungi riga
+                  {uiText("Aggiungi riga")}
                 </button>
                 <button
                   type="button"
                   className="quiet"
                   disabled={b.columns.length >= 12}
+                  data-changes-document
                   onClick={() =>
                     update(i, {
                       ...b,
@@ -557,7 +633,7 @@ export function ArtifactDocumentEditor({
                     })
                   }
                 >
-                  Aggiungi colonna
+                  {uiText("Aggiungi colonna")}
                 </button>
               </div>
             </>
@@ -565,7 +641,9 @@ export function ArtifactDocumentEditor({
           {b.type === "image" && (
             <>
               <label>
-                Immagine condivisa
+                {personal
+                  ? uiText("Immagine personale")
+                  : uiText("Immagine condivisa")}
                 <select
                   required
                   value={b.sourceId}
@@ -573,18 +651,22 @@ export function ArtifactDocumentEditor({
                     update(i, { ...b, sourceId: e.target.value })
                   }
                 >
-                  <option value="">Scegli una fonte immagine</option>
+                  <option value="">
+                    {uiText("Scegli una fonte immagine")}
+                  </option>
                   {state.sources
                     .filter((s) => s.media_type?.startsWith("image/"))
                     .map((s) => (
                       <option key={s.id} value={s.id}>
-                        {s.title} · v{s.document_version}
+                        {s.title}
+                        {uiText(" · v")}
+                        {s.document_version}
                       </option>
                     ))}
                 </select>
               </label>
               <label>
-                Descrizione accessibile
+                {uiText("Descrizione accessibile")}
                 <input
                   required
                   maxLength={500}
@@ -593,7 +675,7 @@ export function ArtifactDocumentEditor({
                 />
               </label>
               <label>
-                Didascalia
+                {uiText("Didascalia")}
                 <input
                   maxLength={2000}
                   value={b.caption}
@@ -602,11 +684,11 @@ export function ArtifactDocumentEditor({
               </label>
             </>
           )}
-          <div className="actions">
+          {i > 0 && (
             <button
               type="button"
               className="quiet"
-              disabled={i === 0}
+              data-changes-document
               onClick={() =>
                 setBlocks((old) => {
                   const next = [...old];
@@ -615,84 +697,94 @@ export function ArtifactDocumentEditor({
                 })
               }
             >
-              Sposta su
+              {uiText("Sposta su")}
             </button>
-            <button
-              type="button"
-              className="quiet"
-              disabled={blocks.length === 1}
-              onClick={() => setBlocks((old) => old.filter((_, n) => n !== i))}
-            >
-              Rimuovi dalla bozza
-            </button>
-          </div>
+          )}
         </fieldset>
       ))}
-      <div className="actions" aria-label="Aggiungi al documento">
+      <div className="actions" aria-label={uiText("Aggiungi al documento")}>
         {(["paragraph", "heading", "checklist", "table", "image"] as const).map(
           (type) => (
             <button
               key={type}
               type="button"
               className="quiet"
+              aria-label={uiText(
+                "Aggiungi {0}",
+                String(uiText(blockLabels[type]).toLowerCase()),
+              )}
+              data-changes-document
               onClick={() => add(type)}
             >
-              ＋{" "}
-              {
-                {
-                  paragraph: "Testo",
-                  heading: "Sezione",
-                  checklist: "Checklist",
-                  table: "Tabella",
-                  image: "Immagine",
-                }[type]
-              }
+              + {uiText(blockLabels[type])}
             </button>
           ),
         )}
       </div>
-      <details>
-        <summary>Collega fonti e informazioni accettate</summary>
-        <ArtifactInformationSelection
-          state={state}
-          selected={selected}
-          onChange={setSelected}
-          allowHistorical
-        />
-        {state.sources.map((s) => (
-          <label className="check" key={s.id}>
-            <input
-              type="checkbox"
-              checked={sourceIds.includes(s.id)}
-              onChange={(e) =>
-                setSources((old) =>
-                  e.target.checked
-                    ? [...old, s.id]
-                    : old.filter((x) => x !== s.id),
-                )
-              }
-            />
-            {s.title} · fonte non automaticamente accettata
-          </label>
-        ))}
-      </details>
+      {!personal && (
+        <details>
+          <summary>{uiText("Collega fonti e informazioni accettate")}</summary>
+          <ArtifactInformationSelection
+            state={state}
+            selected={selected}
+            onChange={setSelected}
+            allowHistorical
+          />
+          {state.sources.map((s) => (
+            <label className="check" key={s.id}>
+              <input
+                type="checkbox"
+                checked={sourceIds.includes(s.id)}
+                onChange={(e) =>
+                  setSources((old) =>
+                    e.target.checked
+                      ? [...old, s.id]
+                      : old.filter((x) => x !== s.id),
+                  )
+                }
+              />
+              {s.title}
+              {uiText(" · fonte non automaticamente accettata")}
+            </label>
+          ))}
+        </details>
+      )}
       {base && (
         <label>
-          Motivo della revisione
+          {uiText("Motivo della revisione")}
           <input name="reason" required maxLength={4000} />
         </label>
       )}
       <p className="hint">
-        Salva una bozza condivisa, con storia e fonti. Non adotta il contenuto
-        né modifica impegni, decisioni o permessi.
+        {personal
+          ? uiText(
+              "Il documento e le sue versioni restano nella tua area personale.",
+            )
+          : uiText(
+              "Salva una bozza condivisa, con storia e fonti. Non adotta il contenuto né modifica impegni, decisioni o permessi.",
+            )}
       </p>
-      {staleArtifactInformation(selected, state.information).length > 0 && (
-        <p className="processing">
-          La bozza conserva riferimenti storici. Puoi esaminarli e aggiornarli
-          esplicitamente in «Collega fonti e informazioni accettate».
-        </p>
-      )}
-      <button disabled={busy || stale}>Salva bozza</button>
+      {!personal &&
+        staleArtifactInformation(selected, state.information).length > 0 && (
+          <p className="processing">
+            {uiText(
+              "La bozza conserva riferimenti storici. Puoi esaminarli e aggiornarli esplicitamente in «Collega fonti e informazioni accettate».",
+            )}
+          </p>
+        )}
+      <div className="actions">
+        <button disabled={busy || stale}>
+          {personal ? uiText("Salva documento") : uiText("Salva bozza")}
+        </button>
+        <button
+          type="button"
+          className="quiet"
+          disabled={busy}
+          onClick={onCancel}
+        >
+          {uiText("Annulla")}
+        </button>
+      </div>
     </form>
   );
 }

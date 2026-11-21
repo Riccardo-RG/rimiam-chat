@@ -1,0 +1,59 @@
+.spaces {
+  padding-block-end: 0.75rem;
+  margin-block-end: 0.75rem;
+  border-block-end: 1px solid var(--line);
+}
+.spacesHeading {
+  display: flex;
+  gap: 0.25rem;
+  align-items: center;
+}
+.spacesHeading > :first-child {
+  flex: 1;
+  min-inline-size: 0;
+}
+.spaces .spacesList {
+  margin-inline-start: 0.8rem;
+  padding-inline-start: 0.4rem;
+  border-inline-start: 1px solid var(--line);
+  margin-block-start: 0.25rem;
+}
+.spacesList:empty {
+  display: none;
+}
+.toggleGlyph {
+  flex: none;
+  inline-size: 1.5rem;
+  block-size: 1.5rem;
+}
+:global(.rail-icon):has(> .toggleGlyph) {
+  min-inline-size: 44px;
+  min-block-size: 44px;
+  color: var(--soft-ink);
+}
+:global(.rail-body):has(.signature) {
+  display: flex;
+  flex-direction: column;
+}
+:global(.rail-body):has(.signature) > * {
+  flex-shrink: 0;
+}
+.signature {
+  margin-block-start: auto;
+  padding: clamp(1.1rem, 4vh, 2.4rem) 0.7rem 0.55rem;
+  color: var(--muted);
+  opacity: 0.23;
+  pointer-events: none;
+}
+.signature svg {
+  width: 2.4rem;
+  height: 2.4rem;
+}
+.personalPane {
+  min-inline-size: 0;
+}
+@media (max-height: 640px) {
+  .signature {
+    display: none;
+  }
+}

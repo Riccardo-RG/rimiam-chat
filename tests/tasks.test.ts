@@ -10,7 +10,14 @@ import {
   execute,
   acceptInvitation,
 } from "../src/server/commands";
-import { tasksView, tasksHistory } from "../src/server/tasks-queries";
+import {
+  tasksView,
+  tasksHistory,
+  taskComments,
+} from "../src/server/tasks-queries";
+import { tasksHistorySchema, taskCommentsSchema } from "../src/contracts/tasks";
+import { workspaceSchedule } from "../src/server/agenda";
+import { validWorkReference } from "../src/server/tasks-state";
 import { processFollowup, recoverFollowups } from "../src/server/tasks-worker";
 import { handleAPI } from "../src/server/api";
 const content = {
@@ -87,6 +94,208 @@ async function setup() {
 }
 afterAll(() => pool.end());
 describe("Tasks and follow-up boundaries", () => {
+  it("attributes comments without invalidating an offer or accepted responsibility, and treats standby as reversible operational state", async () => {
+    const t = await setup();
+    await t.cmd({
+      type: "task.revise",
+      taskId: t.id,
+      expectedVersion: 1,
+      reason: "Chiedi a B",
+      content: { ...content, suggestedPerson: t.b.id },
+    });
+    const comment = {
+      type: "task.comment",
+      taskId: t.id,
+      expectedVersion: 2,
+      body: "Primo aggiornamento",
+    };
+    const key = randomUUID();
+    const [first, replay] = await Promise.all([
+      t.cmd(comment, t.a, key),
+      t.cmd(comment, t.a, key),
+    ]);
+    expect(first).toEqual(replay);
+    await expect(
+      t.cmd({ ...comment, body: "Altro" }, t.a, key),
+    ).rejects.toThrow("COMMAND_ID_REUSED");
+    expect((await taskComments(t.b.id, t.w, t.id)).comments).toMatchObject([
+      {
+        id: first.commentId,
+        actor: t.a.id,
+        body: comment.body,
+        taskVersion: 2,
+      },
+    ]);
+    const accept = {
+      type: "task.accept",
+      taskId: t.id,
+      expectedVersion: 2,
+      reason: "Me ne occupo",
+      representSelf: true,
+    };
+    await expect(t.cmd(accept, t.a)).rejects.toThrow("TASK_NOT_OFFERED");
+    await t.cmd(accept, t.b);
+    await expect(t.cmd({ ...comment, body: "Vecchia copia" })).rejects.toThrow(
+      "TASK_VERSION_STALE",
+    );
+    await t.cmd(
+      { ...comment, expectedVersion: 3, body: "Sto aspettando il preventivo" },
+      t.a,
+    );
+    const standby = {
+      type: "task.status",
+      taskId: t.id,
+      expectedVersion: 3,
+      status: "standby",
+      reason: "In attesa di conferma",
+      noNormativeEffect: true,
+    };
+    await expect(t.cmd(standby, t.a)).rejects.toThrow("TASK_NOT_RESPONSIBLE");
+    await t.cmd(standby, t.b);
+    expect((await tasksView(t.b.id, t.w)).tasks[0]).toMatchObject({
+      status: "standby",
+      version: 4,
+      acceptedVersion: 2,
+      responsible: t.b.id,
+    });
+    expect(
+      (await workspaceSchedule(t.b.id, t.w, true, 20)).entries.map((x) => x.id),
+    ).toContain(t.id);
+    expect(
+      await transaction((tx) =>
+        validWorkReference(
+          tx,
+          t.w,
+          { kind: "task", id: t.id, version: 4 },
+          true,
+        ),
+      ),
+    ).toBe(true);
+    await t.cmd({ ...standby, status: "in_progress", expectedVersion: 4 }, t.b);
+    await t.cmd(
+      {
+        type: "task.relinquish",
+        taskId: t.id,
+        expectedVersion: 5,
+        reason: "Non posso",
+        representSelf: true,
+      },
+      t.b,
+    );
+    expect((await tasksView(t.a.id, t.w)).tasks[0]).toMatchObject({
+      status: "open",
+      responsible: null,
+      suggestedPerson: null,
+    });
+    expect(
+      (
+        await pool.query(
+          "SELECT count(*)::int AS n FROM workspace_change WHERE workspace_id=$1 AND kind='task.comment'",
+          [t.w],
+        )
+      ).rows[0].n,
+    ).toBe(2);
+  });
+  it("rejects closed offers and protects comments from outsiders, former members and read-only members", async () => {
+    const t = await setup();
+    const other = (await createWorkspace(t.a.id, "Altro", randomUUID())).id;
+    const offer = await t.cmd({
+      type: "task.create",
+      content: { ...content, suggestedPerson: t.b.id },
+    });
+    const task = {
+      taskId: offer.taskId,
+      expectedVersion: 1,
+      reason: "Risposta",
+    };
+    await t.cmd({ type: "task.decline", ...task }, t.b);
+    await expect(
+      t.cmd({ type: "task.accept", ...task, representSelf: true }, t.b),
+    ).rejects.toThrow("TASK_NOT_OFFERED");
+    const comment = {
+      type: "task.comment",
+      taskId: t.id,
+      expectedVersion: 1,
+      body: "Nel gruppo",
+    };
+    await expect(
+      execute(t.a.id, other, randomUUID(), comment, t.a.session),
+    ).rejects.toThrow("TASK_NOT_FOUND");
+    await expect(taskComments(t.a.id, other, t.id)).rejects.toThrow(
+      "TASK_NOT_FOUND",
+    );
+    await expect(taskComments(t.b.id, other, t.id)).rejects.toThrow(
+      "WORKSPACE_ACCESS_DENIED",
+    );
+    await pool.query(
+      "UPDATE membership SET contributes=false,version=version+1 WHERE workspace_id=$1 AND user_id=$2",
+      [t.w, t.b.id],
+    );
+    await expect(t.cmd(comment, t.b)).rejects.toThrow(
+      "WORKSPACE_ACCESS_DENIED",
+    );
+    await expect(
+      t.cmd({
+        type: "task.create",
+        content: { ...content, suggestedPerson: t.b.id },
+      }),
+    ).rejects.toThrow("WORKSPACE_ACCESS_DENIED");
+    expect(await taskComments(t.b.id, t.w, t.id)).toEqual({
+      comments: [],
+      next: null,
+    });
+    await pool.query(
+      "UPDATE membership SET active=false,version=version+1 WHERE workspace_id=$1 AND user_id=$2",
+      [t.w, t.b.id],
+    );
+    await expect(taskComments(t.b.id, t.w, t.id)).rejects.toThrow(
+      "WORKSPACE_ACCESS_DENIED",
+    );
+    await expect(t.cmd(comment, t.b)).rejects.toThrow(
+      "WORKSPACE_ACCESS_DENIED",
+    );
+  });
+  it("pages immutable task comments in stable order when another member contributes between reads", async () => {
+    const t = await setup();
+    const add = (n: number) =>
+      t.cmd(
+        {
+          type: "task.comment",
+          taskId: t.id,
+          expectedVersion: 1,
+          body: `Nota ${n}`,
+        },
+        n % 2 ? t.a : t.b,
+      );
+    for (let i = 1; i <= 31; i++) await add(i);
+    const url = new URL(
+      `http://localhost/api/v1/workspaces/${t.w}/task-comments?id=${t.id}`,
+    );
+    const get = async () =>
+      handleAPI(new Request(url, { headers: { cookie: t.b.cookie } }));
+    const initial = await get();
+    expect(initial.status).toBe(200);
+    const first = taskCommentsSchema.parse(await initial.json());
+    expect(first.comments).toHaveLength(30);
+    expect(first.comments[0]).toMatchObject({
+      body: "Nota 31",
+      actor: t.a.id,
+      taskVersion: 1,
+    });
+    expect(first.comments.at(-1)?.body).toBe("Nota 2");
+    await add(32);
+    url.searchParams.set("before", first.next!);
+    const last = taskCommentsSchema.parse(await (await get()).json());
+    expect(last.comments.map((c) => c.body)).toEqual(["Nota 1"]);
+    expect(last.next).toBeNull();
+    url.searchParams.set("before", "invalid");
+    expect((await get()).status).toBe(400);
+    await expect(
+      pool.query("UPDATE task_comment SET body='rewritten' WHERE id=$1", [
+        first.comments[0].id,
+      ]),
+    ).rejects.toThrow("immutable");
+  });
   it("completion and relinquishment preserve an actual linked adopted commitment", async () => {
     const t = await setup();
     await t.cmd({
@@ -553,6 +762,270 @@ describe("Tasks and follow-up boundaries", () => {
     ).toBe(1);
     expect(await processFollowup(t.w, String(r.followupId), 1)).toBe(
       "delivered",
+    );
+  });
+  it("keeps the rule's wall-clock time through both Europe/Rome clock changes", async () => {
+    const next = async (
+      anchor: string,
+      after: string | null,
+      until: string | null = null,
+    ) => {
+      const r = await pool.query(
+        "SELECT followup_next_occurrence($1, 'Europe/Rome', ARRAY[1,2,3,4,5,6,7]::smallint[], $2, $3) AS at",
+        [anchor, until, after],
+      );
+      return r.rows[0].at?.toISOString() ?? null;
+    };
+    const spring = "2026-03-28T01:30:00.000Z";
+    // The nonexistent 02:30 on Sunday moves into the gap's next hour. Monday is 02:30 again.
+    expect(await next(spring, spring)).toBe("2026-03-29T01:30:00.000Z");
+    expect(await next(spring, "2026-03-29T01:30:00.000Z")).toBe(
+      "2026-03-30T00:30:00.000Z",
+    );
+    expect(
+      await next(spring, "2026-03-29T01:30:00.000Z", "2026-03-29"),
+    ).toBeNull();
+    const autumn = "2026-10-24T00:30:00.000Z";
+    expect(await next(autumn, autumn)).toBe("2026-10-25T01:30:00.000Z");
+    // When the initial date itself is ambiguous, preserve the precise instant the client supplied.
+    expect(await next("2026-10-25T00:30:00.000Z", null)).toBe(
+      "2026-10-25T00:30:00.000Z",
+    );
+  });
+  it("expires a finite recurring reminder after downtime without notifying or requesting authority", async () => {
+    const t = await setup();
+    const anchor = "2020-01-01T10:00:00.000Z";
+    const created = await t.cmd({
+      type: "followup.create",
+      content: "Rivedere le note",
+      kind: "review",
+      remindAt: anchor,
+      timeZone: "UTC",
+      reference: null,
+      recurrence: { weekdays: [1, 2, 3, 4, 5, 6, 7], until: "2020-01-02" },
+    });
+    const id = String(created.followupId);
+    await processFollowup(t.w, id, 1, anchor);
+    expect(
+      (
+        await pool.query(
+          "SELECT outcome FROM followup_delivery WHERE followup_id=$1",
+          [id],
+        )
+      ).rows,
+    ).toEqual([{ outcome: "expired" }]);
+    expect((await tasksView(t.a.id, t.w)).followups[0]).toMatchObject({
+      deliveredAt: null,
+      nextRemindAt: null,
+      needsReview: false,
+    });
+  });
+  it("schedules the selected local weekdays, including the final date, and preserves the rule in older-client revisions", async () => {
+    const t = await setup();
+    // 2030-03-29 is Friday. At the first selected Monday Rome is already on summer time.
+    const anchor = "2030-03-29T08:00:00.000Z";
+    const rule = { weekdays: [1, 4], until: "2030-04-01" };
+    const fields = {
+      content: "Controllare i preventivi",
+      kind: "check",
+      remindAt: anchor,
+      timeZone: "Europe/Rome",
+      reference: null,
+    };
+    const created = await t.cmd({
+      type: "followup.create",
+      ...fields,
+      recurrence: rule,
+    });
+    const id = String(created.followupId);
+    const read = async () =>
+      (await tasksView(t.a.id, t.w)).followups.find((f) => f.id === id)!;
+    expect(await read()).toMatchObject({
+      remindAt: anchor,
+      nextRemindAt: "2030-04-01T07:00:00.000Z",
+      recurrence: rule,
+    });
+    const revision = {
+      type: "followup.revise",
+      followupId: id,
+      reason: "Rendere più preciso il testo",
+      ...fields,
+      content: "Rileggere i preventivi",
+    };
+    await t.cmd({ ...revision, expectedVersion: 1 });
+    expect(await read()).toMatchObject({ version: 2, recurrence: rule });
+    await expect(
+      t.cmd({ ...revision, expectedVersion: 2, recurrence: null }, t.b),
+    ).rejects.toThrow("FOLLOWUP_NOT_OWNER");
+    await t.cmd({ ...revision, expectedVersion: 2, recurrence: null });
+    expect(await read()).toMatchObject({
+      version: 3,
+      nextRemindAt: anchor,
+      recurrence: null,
+    });
+    await expect(
+      t.cmd({
+        type: "followup.create",
+        ...fields,
+        recurrence: { weekdays: [1], until: "2030-03-31" },
+      }),
+    ).rejects.toThrow();
+    expect((await tasksView(t.a.id, t.w)).followups).toHaveLength(1);
+  });
+  it("coalesces missed recurring wake-ups, journals one delivery, and fences late jobs after stop", async () => {
+    const t = await setup();
+    const anchor = new Date(Date.now() - 8 * 86400000).toISOString();
+    const c = {
+      type: "followup.create",
+      content: "Verifica giornaliera",
+      kind: "check",
+      timeZone: "UTC",
+      remindAt: anchor,
+      reference: null,
+      recurrence: { weekdays: [1, 2, 3, 4, 5, 6, 7] },
+    };
+    const key = randomUUID();
+    const created = await t.cmd(c, t.a, key);
+    expect(await t.cmd(c, t.a, key)).toEqual(created);
+    const id = String(created.followupId);
+    await recoverFollowups();
+    await Promise.all([
+      processFollowup(t.w, id, 1, anchor),
+      processFollowup(t.w, id, 1, anchor),
+    ]);
+    const current = (await tasksView(t.a.id, t.w)).followups[0];
+    expect(current.version).toBe(1);
+    expect(current.deliveredAt).toBeTruthy();
+    expect(Date.parse(current.nextRemindAt!)).toBeGreaterThan(Date.now());
+    expect(Date.parse(current.nextRemindAt!) - Date.now()).toBeLessThanOrEqual(
+      86400000,
+    );
+    expect(
+      (
+        await pool.query(
+          "SELECT outcome FROM followup_delivery WHERE followup_id=$1",
+          [id],
+        )
+      ).rows,
+    ).toEqual([{ outcome: "delivered" }]);
+    await recoverFollowups();
+    await t.cmd({
+      ...c,
+      type: "followup.revise",
+      followupId: id,
+      expectedVersion: 1,
+      reason: "Dettaglio",
+      content: "Verifica giornaliera aggiornata",
+    });
+    expect((await tasksView(t.a.id, t.w)).followups[0].nextRemindAt).toBe(
+      current.nextRemindAt,
+    );
+    await t.cmd({
+      type: "followup.close",
+      followupId: id,
+      expectedVersion: 2,
+      reason: "Fine della verifica",
+      status: "cancelled",
+    });
+    expect(await processFollowup(t.w, id, 1, current.nextRemindAt!)).toBe(
+      "obsolete",
+    );
+    expect((await tasksView(t.a.id, t.w)).followups[0]).toMatchObject({
+      status: "cancelled",
+      nextRemindAt: null,
+    });
+  });
+  it("halts a recurring reminder if its referenced task changes", async () => {
+    const t = await setup();
+    const anchor = new Date(Date.now() - 30000).toISOString();
+    const { followupId } = await t.cmd({
+      type: "followup.create",
+      content: "Controllo",
+      kind: "check",
+      timeZone: "UTC",
+      remindAt: anchor,
+      reference: { kind: "task", id: t.id, version: 1 },
+      recurrence: { weekdays: [1, 2, 3, 4, 5, 6, 7] },
+    });
+    await t.accept();
+    expect(await processFollowup(t.w, String(followupId), 1, anchor)).toBe(
+      "suppressed",
+    );
+    expect((await tasksView(t.a.id, t.w)).followups[0]).toMatchObject({
+      needsReview: true,
+      nextRemindAt: null,
+      deliveredAt: null,
+    });
+  });
+  it("pages all recurring delivery receipts across versions without overlaps or omissions", async () => {
+    const t = await setup();
+    const fields = {
+      content: "Ricorda la verifica",
+      kind: "check",
+      reference: null,
+      timeZone: "UTC",
+      remindAt: "2020-01-01T10:00:00.123456Z",
+      recurrence: { weekdays: [1, 2, 3, 4, 5, 6, 7] },
+    };
+    const { followupId } = await t.cmd({ type: "followup.create", ...fields });
+    const id = String(followupId);
+    await t.cmd({
+      type: "followup.revise",
+      followupId: id,
+      expectedVersion: 1,
+      ...fields,
+      content: "Ricorda la seconda verifica",
+      reason: "Test della cronologia",
+    });
+    // Seed retained receipts directly: workers and their delivery effects are covered separately.
+    // Identical schedules in two immutable versions exercise both components of the cursor.
+    await pool.query(
+      `INSERT INTO followup_delivery(workspace_id, followup_id, version, scheduled_at, outcome, reason)
+       SELECT $1, $2, v, $3::timestamptz + n * interval '1 day', 'delivered', format('%s/%s', v, n)
+       FROM generate_series(1, 2) v CROSS JOIN generate_series(0, 50) n`,
+      [t.w, id, fields.remindAt],
+    );
+    async function page(
+      after?: { version: number; scheduledAt: string } | null,
+    ) {
+      const url = new URL(
+        `http://localhost/api/v1/workspaces/${t.w}/tasks-history`,
+      );
+      url.searchParams.set("id", id);
+      url.searchParams.set("kind", "followup");
+      if (after) {
+        url.searchParams.set("beforeDeliveryVersion", String(after.version));
+        url.searchParams.set("beforeDeliveryAt", after.scheduledAt);
+      }
+      const result = await handleAPI(
+        new Request(url, { headers: { cookie: t.b.cookie } }),
+      );
+      expect(result.status).toBe(200);
+      return tasksHistorySchema.parse(await result.json());
+    }
+    const first = await page();
+    expect(first.proposals).toHaveLength(50);
+    expect(first.nextDelivery).toEqual({
+      version: 2,
+      scheduledAt: "2020-01-02T10:00:00.123456Z",
+    });
+    const second = await page(first.nextDelivery);
+    expect(second.proposals).toHaveLength(50);
+    expect(second.nextDelivery).toEqual({
+      version: 1,
+      scheduledAt: "2020-01-03T10:00:00.123456Z",
+    });
+    const third = await page(second.nextDelivery);
+    expect(third.proposals).toHaveLength(2);
+    expect(third.nextDelivery).toBeNull();
+    expect(
+      [first, second, third].flatMap((part) =>
+        part.proposals.map((r) => r.reason),
+      ),
+    ).toEqual(
+      [2, 1].flatMap((version) =>
+        Array.from({ length: 51 }, (_, index) => `${version}/${50 - index}`),
+      ),
     );
   });
   it("exposes common validated API with access-checked history", async () => {

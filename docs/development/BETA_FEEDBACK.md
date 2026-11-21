@@ -4,10 +4,10 @@ Small testing aid requested by the user on 2026-09-26, extended in the same conv
 
 ## Web use
 
-- Write `/feedback Your observation` in the Conversation composer, or open a message’s existing source/origin details and choose **Feedback**. A visible composer hint distinguishes the explicit command from ordinary chat; natural messages are not silently intercepted.
-- **Lens → Feedback beta** collects the Workspace's shared notes. A contributor can add an attributed note; eligible members can read/export retained notes under the existing shared-history policy. Corrections are additional notes. Feedback never becomes a Conversation source, model input, Context candidate, accepted information or project task.
+- Write `/feedback Your observation` in the Conversation composer, or open a message’s options and choose **Feedback**. A visible hint identifies the note before submission.
+- **Feedback beta** collects the Workspace's shared notes. In the [Web chat](WEB_WORKFLOWS.md), selecting `/feedback` by itself opens this tool. A contributor can add an attributed note; eligible members can read/export retained notes under the existing shared-history policy. Corrections are additional notes. Feedback never becomes a Conversation source, model input, Context candidate, accepted information or project task.
 - **Scarica report (.md)** exports original notes and only explicitly linked messages, with attribution/time and safe configuration at capture. Configuration at capture is not execution provenance for an older message. Review the file before sharing it with Codex: user text may contain sensitive information. Nothing is sent automatically.
-- **Mostra utilizzo e costi stimati** explicitly reads the last 7/30 days. No cost counters, cost messages, warnings or automatic summaries appear in Conversation. Usage is included in the downloaded report only while this section is open; export rechecks current access and rereads current data.
+- **Mostra utilizzo e costi stimati** explicitly reads the last 7/30 days. Cost estimates stay in this tool. A usage limit that prevents an explicitly requested reply is a separate delivery status on that request. Usage is included in the downloaded report only while this section is open; export rechecks current access and rereads current data.
 
 This aid currently has a web UI and authenticated common API; native beta-report screens are not implemented. It does not change existing native product capabilities. Report reads above 1,000 notes fail explicitly rather than silently truncate; subdivided export is not implemented.
 

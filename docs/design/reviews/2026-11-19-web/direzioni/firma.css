@@ -1,0 +1,21 @@
+.turn .author { align-items: center; flex-wrap: wrap; gap: 6px; }
+.turn .profile-image { width: 19px; height: 19px; border-radius: 50%; flex: none; }
+.turn .sent-at {
+  margin-inline-start: 3px;
+  color: var(--muted, var(--secondary));
+  font: 400 11.5px/1.4 var(--sans, var(--ui));
+  font-variant-numeric: tabular-nums;
+  letter-spacing: .01em;
+}
+.time-break { display: none; }
+@media (max-width: 760px) {
+  .reading > .day, .turn .author > :is(.profile-image, svg, .sent-at) { display: none; }
+  .timeline .time-break {
+    display: flex; align-items: center; gap: 12px;
+    margin: 12px 0 15px;
+    color: var(--muted, var(--secondary));
+    font: 600 12px/1.5 var(--sans, var(--ui));
+  }
+  .time-break::before, .time-break::after { content: ""; height: 1px; flex: 1; background: var(--rule); }
+  .time-break time { font-variant-numeric: tabular-nums; }
+}

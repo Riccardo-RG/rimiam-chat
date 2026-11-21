@@ -1,6 +1,7 @@
 import { z } from "zod";
-import { googleConfiguration } from "./google-credentials.ts";
+import { integrationConfiguration } from "./google-credentials.ts";
 import { googleEmailProvider } from "./google-email.ts";
+import { microsoftEmailProvider } from "./microsoft-email.ts";
 import type {
   EmailEnvelope,
   EmailMessage,
@@ -23,6 +24,7 @@ export type EmailAccess = {
 };
 export type EmailReceipt = z.infer<typeof emailReceiptSchema>;
 export type EmailEffect = {
+  authorizedAt: string;
   operationKey: string;
   envelopeHash: string;
   envelope: EmailEnvelope;
@@ -89,6 +91,12 @@ export interface EmailProvider {
     signal: AbortSignal,
   ): Promise<EmailReconciliation>;
 }
-export function configuredEmailProvider(): EmailProvider | undefined {
-  return googleConfiguration() ? googleEmailProvider() : undefined;
+export function configuredEmailProvider(
+  key: string,
+): EmailProvider | undefined {
+  if (key === "google-gmail" && integrationConfiguration("google"))
+    return googleEmailProvider();
+  if (key === "microsoft-outlook" && integrationConfiguration("microsoft"))
+    return microsoftEmailProvider();
+  return undefined;
 }

@@ -52,6 +52,8 @@ const create = {
 it("recognizes explicit named requests but leaves ambiguous, quoted, private and compound requests to clarification", () => {
   for (const text of [
     create.content,
+    "@Emme, puoi creare un filone Marketing?",
+    "@Emme, puoi creare un argomento Marketing?",
     "Miriam, puoi creare un filone Marketing?",
     "Apri un subthread chiamato «Marketing».",
     "@Rimiam open a workstream called Marketing",
@@ -122,7 +124,11 @@ it("commits a shared attributed workstream and honest receipt once under concurr
   ).toHaveLength(0);
   const through = (await state(t.actor, t.w)).messageSequence;
   const synced = (await messages(t.actor, t.w, 0, through, 100)).messages;
+  expect(synced.filter((m) => m.purpose === "workstream_event")).toHaveLength(
+    0,
+  );
   const receipt = synced.find((m) => m.id === first.replyMessageId)!;
+  expect(receipt.content).toContain("l’argomento «Marketing»");
   expect(receipt).toMatchObject({
     actorKind: "miriam",
     operationResult: first.operationResult,

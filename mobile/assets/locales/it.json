@@ -1,0 +1,10 @@
+{
+  "ios": {
+    "NSPhotoLibraryUsageDescription": "Scegli le foto da condividere nella conversazione.",
+    "NSCameraUsageDescription": "Scatta una foto da allegare al messaggio.",
+    "NSMicrophoneUsageDescription": "Usa il microfono per messaggi vocali e chiamate audio."
+  },
+  "android": {
+    "rimiam_space_activity": "Ci sono aggiornamenti in uno dei tuoi spazi."
+  }
+}

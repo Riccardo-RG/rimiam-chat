@@ -1,4 +1,7 @@
 "use client";
+import { preferredVoiceLanguage } from "../shared/i18n/locale";
+import { useUiLanguage } from "./ui-language";
+
 import { humanCallActive } from "./call-audio-focus";
 import {
   createContext,
@@ -14,20 +17,53 @@ import { voiceMessagesSchema } from "../contracts/voice";
 import type { Command } from "../contracts/commands";
 import type { ConversationReference } from "../contracts/activity";
 import { api, errorText } from "./api";
+import { ConversationAudioTool } from "./conversation-audio-tool";
+import { microphoneError, microphoneUnavailable } from "./microphone-access";
 import { SpeechPlayback } from "./speech-playback";
 
 type Voice = z.infer<typeof voiceMessagesSchema>["messages"][number];
 const VoiceContext = createContext<{
   workspace: string;
   voices: Voice[];
+  throughSequence: number;
+  audioTools?: ReactNode;
   research?: (query: string) => void;
 }>({
   workspace: "",
   voices: [],
+  throughSequence: 0,
 });
+export function ConversationAudioActions() {
+  return useContext(VoiceContext).audioTools;
+}
+async function readVoices(workspace: string) {
+  return voiceMessagesSchema.parse(
+    await api<unknown>(`/api/v1/workspaces/${workspace}/voice`),
+  );
+}
+export function useMessageQuestionSource(id: string, sequence: number) {
+  const { workspace, voices, throughSequence } = useContext(VoiceContext);
+  const voice = voices.find((item) => item.messageId === id);
+  return {
+    waitingForTranscript: !!voice && !voice.transcript,
+    resolve: async () => {
+      // A just-arrived message may precede the regular voice metadata refresh.
+      const current =
+        !voice && sequence > throughSequence
+          ? (await readVoices(workspace)).messages.find(
+              (item) => item.messageId === id,
+            )
+          : voice;
+      if (current && !current.transcript)
+        throw new Error("La trascrizione del vocale non è ancora disponibile.");
+      return current?.sourceId ?? id;
+    },
+  };
+}
 export function VoiceMessage({ id }: { id: string }) {
+  const { t: uiText } = useUiLanguage();
   const { workspace, voices, research } = useContext(VoiceContext),
-    voice = voices.find((v) => v.messageId === id);
+    voice = voices.find((item) => item.messageId === id);
   if (!voice) return null;
   return (
     <div>
@@ -35,20 +71,21 @@ export function VoiceMessage({ id }: { id: string }) {
         controls
         preload="none"
         src={`/api/v1/workspaces/${workspace}/source-file?id=${voice.sourceId}`}
-        aria-label="Messaggio vocale originale"
+        aria-label={uiText("Messaggio vocale originale")}
       />
       <p>
         {voice.transcript ??
           (voice.errorCode
             ? errorText(voice.errorCode)
-            : "Trascrizione in elaborazione…")}
+            : uiText("Trascrizione in elaborazione…"))}
       </p>
       <small>{voice.qualification}</small>
       {voice.researchQuery && (
         <p>
-          Ricerca proposta: {voice.researchQuery}
+          {uiText("Ricerca proposta: ")}
+          {voice.researchQuery}
           <button onClick={() => research?.(voice.researchQuery!)}>
-            Invia questa query al servizio di ricerca
+            {uiText("Invia questa query al servizio di ricerca")}
           </button>
         </p>
       )}
@@ -62,6 +99,7 @@ export function ConversationVoice({
   command,
   messages,
   children,
+  tools,
   workstreamFocus,
   focusLabel,
   focusWritable = true,
@@ -73,21 +111,28 @@ export function ConversationVoice({
   command: (c: Command) => Promise<Record<string, unknown>>;
   messages: {
     id: string;
+    sequence: number;
     content: string;
     reply_to_source_id: string | null;
     actor_kind: string;
   }[];
   children: ReactNode;
+  tools: ReactNode;
   workstreamFocus?: { workstreamId: string; version: number };
   focusLabel?: string;
   focusWritable?: boolean;
   reference?: { reference: ConversationReference; title: string };
 }) {
+  const { t: uiText, locale } = useUiLanguage();
   const [voices, setVoices] = useState<Voice[]>([]),
+    [transcriptionConfigured, setTranscriptionConfigured] = useState<boolean>(),
+    [throughSequence, setThroughSequence] = useState(0),
     [consent, setConsent] = useState(false),
+    [openingMic, setOpeningMic] = useState(false),
     [recording, setRecording] = useState(false),
     [clip, setClip] = useState<Blob | null>(null),
     [busy, setBusy] = useState(false),
+    [sent, setSent] = useState(false),
     [error, setError] = useState(""),
     [dialog, setDialog] = useState(false),
     [pending, setPending] = useState<string | null>(null);
@@ -126,6 +171,7 @@ export function ConversationVoice({
     dialogRef.current = false;
     setDialog(false);
     generation.current++;
+    setOpeningMic(false);
     stopCapture();
     speech.current?.stop();
     setPending(null);
@@ -155,7 +201,9 @@ export function ConversationVoice({
       setError(
         voice.errorCode
           ? errorText(voice.errorCode)
-          : "La risposta richiede attenzione. Il messaggio è conservato; consulta il Context.",
+          : uiText(
+              "La risposta richiede attenzione. Il messaggio è conservato; consulta il Context.",
+            ),
       );
       end();
       return;
@@ -167,7 +215,9 @@ export function ConversationVoice({
     setPending(null);
     if (!("speechSynthesis" in window)) {
       setError(
-        "Voce del dispositivo non disponibile; la risposta è leggibile in Conversation.",
+        uiText(
+          "Voce del dispositivo non disponibile; la risposta è leggibile in Conversation.",
+        ),
       );
       end();
       return;
@@ -176,31 +226,41 @@ export function ConversationVoice({
     speech.current.speak(
       reply.id,
       reply.content,
-      navigator.language || "it-IT",
+      preferredVoiceLanguage(locale, navigator.language),
       (failure) => {
         if (failure) {
-          setError(failure);
+          setError(uiText(failure));
           end();
         } else if (dialogRef.current && mounted.current) void start(true);
       },
     );
     // Only a response to this device's explicit voice turn is auto-spoken.
   });
+  const lastSeenSequence = useEffectEvent(() => messages.at(-1)?.sequence ?? 0);
   useEffect(() => {
     mounted.current = true;
     let alive = true;
-    const load = () =>
-      void api<unknown>(`/api/v1/workspaces/${workspace}/voice`)
-        .then((x) => {
+    let loading = false;
+    const load = () => {
+      if (loading) return;
+      loading = true;
+      const latest = lastSeenSequence();
+      void readVoices(workspace)
+        .then((next) => {
           if (alive) {
-            const next = voiceMessagesSchema.parse(x).messages;
-            setVoices(next);
-            receiveVoices(next);
+            setVoices(next.messages);
+            setTranscriptionConfigured(next.transcriptionConfigured);
+            setThroughSequence(latest);
+            receiveVoices(next.messages);
           }
         })
         .catch((e) => {
           if (alive) setError(errorText(e));
+        })
+        .finally(() => {
+          loading = false;
         });
+    };
     load();
     const timer = setInterval(load, 2500);
     const suspend = () => {
@@ -265,6 +325,7 @@ export function ConversationVoice({
         setClip(null);
         setClipReference(undefined);
         if (mode === "miriam") setPending(String(result.sourceId));
+        else setSent(true);
       }
     } catch (e) {
       if (mounted.current && token === generation.current) {
@@ -277,7 +338,12 @@ export function ConversationVoice({
   }
   async function start(asDialog = false) {
     if (humanCallActive()) {
-      setError("Termina la chiamata prima di avviare il dialogo vocale.");
+      setError(
+        uiText(
+          "Termina la chiamata prima di usare il microfono per un vocale.",
+        ),
+      );
+      end();
       return;
     }
     if (disabled || !consent || !focusWritable || recorder.current) return;
@@ -287,6 +353,7 @@ export function ConversationVoice({
       : undefined;
     const capturedReference = reference;
     setError("");
+    setSent(false);
     setClip(null);
     setClipFocus(undefined);
     setClipReference(undefined);
@@ -295,6 +362,18 @@ export function ConversationVoice({
       new CustomEvent("miriam:microphone", { detail: "voice" }),
     );
     try {
+      const unavailable = microphoneUnavailable();
+      if (unavailable) throw new Error(unavailable);
+      const type =
+        typeof MediaRecorder !== "undefined" &&
+        ["audio/webm;codecs=opus", "audio/mp4"].find((t) =>
+          MediaRecorder.isTypeSupported(t),
+        );
+      if (!type)
+        throw new Error(
+          "Registrazione audio non supportata da questo browser.",
+        );
+      setOpeningMic(true);
       const media = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true },
         video: false,
@@ -304,13 +383,6 @@ export function ConversationVoice({
         return;
       }
       stream.current = media;
-      const type = ["audio/webm;codecs=opus", "audio/mp4"].find((t) =>
-        MediaRecorder.isTypeSupported(t),
-      );
-      if (!type)
-        throw new Error(
-          "Registrazione audio non supportata da questo browser.",
-        );
       const r = new MediaRecorder(media, { mimeType: type });
       recorder.current = r;
       const chunks: BlobPart[] = [];
@@ -324,6 +396,11 @@ export function ConversationVoice({
         media.getTracks().forEach((t) => t.stop());
         if (!mounted.current || token !== generation.current) return;
         const blob = new Blob(chunks, { type });
+        if (!blob.size) {
+          setError(uiText("L’audio è vuoto. Registra di nuovo il messaggio."));
+          end();
+          return;
+        }
         setRecording(false);
         if (asDialog && dialogRef.current)
           void send(blob, "miriam", capturedFocus, capturedReference);
@@ -335,7 +412,7 @@ export function ConversationVoice({
       };
       r.onerror = () => {
         if (!mounted.current || token !== generation.current) return;
-        setError("Registrazione interrotta: riprova.");
+        setError(uiText("Registrazione interrotta: riprova."));
         end();
       };
       r.start(250);
@@ -361,91 +438,122 @@ export function ConversationVoice({
           if (heard && Date.now() - lastSpeech > 1600) stopCapture();
           else if (Date.now() - started > 120000) {
             setError(
-              "Turno vocale lungo: invia o riprendi con un nuovo messaggio.",
+              uiText(
+                "Turno vocale lungo: invia o riprendi con un nuovo messaggio.",
+              ),
             );
             stopCapture();
           }
         }, 150);
       }
     } catch (e) {
-      stopCapture();
-      setError(errorText(e));
-      end();
+      if (mounted.current && token === generation.current) {
+        setError(microphoneError(e));
+        end();
+      }
+    } finally {
+      if (mounted.current && token === generation.current) setOpeningMic(false);
     }
   }
 
-  return (
-    <VoiceContext.Provider
-      value={{
-        workspace,
-        voices,
-        research: (query) => {
-          void command({
-            type: "research.request",
-            query,
-            discloseQuery: true,
-          }).catch((e) => setError(errorText(e)));
-        },
-      }}
-    >
-      {children}
-      <details className="voice-composer">
-        <summary>
-          {dialog
-            ? "Dialogo vocale con RIMIAM attivo"
-            : recording
-              ? "Registrazione vocale in corso"
-              : clip
-                ? "Messaggio vocale pronto da inviare"
-                : "Voce · messaggio o dialogo con RIMIAM"}
-          {busy || pending ? " · in elaborazione" : ""}
-          {error ? " · richiede attenzione" : ""}
-        </summary>
+  const voiceStatus = dialog
+    ? "Dialogo vocale attivo"
+    : recording
+      ? "Registrazione in corso"
+      : clip
+        ? "Vocale pronto"
+        : busy || pending
+          ? "Voce in elaborazione"
+          : error
+            ? "Voce da verificare"
+            : undefined;
+  const audioTools = (
+    <>
+      <ConversationAudioTool
+        icon="microphone"
+        title={uiText("Voce")}
+        status={voiceStatus}
+        onClose={() => {
+          if (openingMic) end();
+        }}
+      >
+        {transcriptionConfigured === false && (
+          <p role="status">
+            {uiText(
+              "La trascrizione non è configurata. Puoi registrare e condividere un vocale. Il dialogo a voce con Emme richiede la trascrizione.",
+            )}
+          </p>
+        )}
+        {disabled || !focusWritable ? (
+          <p role="status">
+            {disabled
+              ? uiText(
+                  "Puoi leggere la chat. Per inviare un vocale serve il permesso di scrivere.",
+                )
+              : uiText(
+                  "Questo argomento non accetta nuovi messaggi. Apri la conversazione per registrare un vocale.",
+                )}
+          </p>
+        ) : null}
         <label>
           <input
             type="checkbox"
             checked={consent}
-            disabled={recording || dialog || busy}
+            disabled={openingMic || recording || dialog || busy}
             onChange={(e) => setConsent(e.target.checked)}
           />
-          Condivido l’audio nel Workspace e autorizzo la trascrizione con il
-          servizio configurato.
+          {uiText(
+            "Autorizzo la condivisione dell’audio in questo spazio e la sua trascrizione quando il servizio è disponibile.",
+          )}
         </label>
         <button
+          type="button"
           disabled={
             disabled ||
             !consent ||
+            openingMic ||
             busy ||
             dialog ||
             (!recording && !focusWritable)
           }
           onClick={() => (recording ? stopCapture() : void start())}
         >
-          {recording ? "Ferma nota vocale" : "Registra messaggio vocale"}
+          {recording
+            ? uiText("Ferma nota vocale")
+            : uiText("Registra messaggio vocale")}
         </button>
         {clip && (
           <>
             <p className="hint">
               {clipFocus
-                ? `Registrato per il filone ${clipFocus.label ?? "selezionato"} · v${clipFocus.version}. L’invio conserva questo riferimento.`
-                : "Registrato per la conversazione dello Workspace."}
+                ? uiText(
+                    "Registrato per l’argomento {0} · v{1}. L’invio conserva questo riferimento.",
+                    String(clipFocus.label ?? "selezionato"),
+                    String(clipFocus.version),
+                  )
+                : uiText("Vocale registrato per la chat dello spazio.")}
             </p>
             {clipReference && (
               <p className="hint">
-                Riferimento conservato: {clipReference.title} · versione{" "}
-                {clipReference.reference.version}. La registrazione resta
-                riferita a questo passaggio.
+                {uiText("Riferimento conservato: ")}
+                {clipReference.title}
+                {uiText(" · versione")} {clipReference.reference.version}
+                {uiText(
+                  ". La registrazione resta riferita a questo passaggio.",
+                )}
               </p>
             )}
             <button
-              disabled={busy || disabled}
+              type="button"
+              disabled={busy || disabled || !consent}
               onClick={() =>
                 void send(clip, "message", clipFocus, clipReference)
               }
             >
-              Invia messaggio vocale
+              {uiText("Invia messaggio vocale")}
             </button>
             <button
+              type="button"
               className="quiet"
               disabled={busy}
               onClick={() => {
@@ -454,14 +562,16 @@ export function ConversationVoice({
                 setClipReference(undefined);
               }}
             >
-              Scarta registrazione locale
+              {uiText("Scarta registrazione locale")}
             </button>
           </>
         )}
         <button
+          type="button"
           disabled={
             disabled ||
             !consent ||
+            (!dialog && (openingMic || transcriptionConfigured === false)) ||
             busy ||
             (recording && !dialog) ||
             (!dialog && !focusWritable)
@@ -475,25 +585,55 @@ export function ConversationVoice({
             }
           }}
         >
-          {dialog ? "Termina dialogo vocale" : "Parla con RIMIAM"}
+          {dialog ? uiText("Termina dialogo vocale") : uiText("Parla con Emme")}
         </button>
-        {dialog && (
+        {openingMic && (
+          <p role="status">{uiText("Attendo l’accesso al microfono…")}</p>
+        )}
+        {sent && <p role="status">{uiText("Vocale inviato in chat.")}</p>}
+        {dialog && !openingMic && (
           <p role="status">
             {recording
-              ? "Ti ascolto. Una pausa invia il turno; puoi terminare in qualsiasi momento."
+              ? uiText(
+                  "Ti ascolto. Una pausa invia il turno; puoi terminare in qualsiasi momento.",
+                )
               : pending
-                ? "Trascrizione e risposta in preparazione…"
-                : "RIMIAM sta rispondendo…"}{" "}
-            Le azioni consequenziali richiedono sempre i controlli di conferma.
+                ? uiText("Trascrizione e risposta in preparazione…")
+                : uiText("Emme sta rispondendo…")}{" "}
+            {uiText(
+              "Le azioni consequenziali richiedono sempre i controlli di conferma.",
+            )}
           </p>
         )}
         {recording && !dialog && (
           <p role="status">
-            Registrazione locale in corso; usa Invia per condividerla.
+            {uiText(
+              "Registrazione locale in corso; usa Invia per condividerla.",
+            )}
           </p>
         )}
         {error && <p role="alert">{error}</p>}
-      </details>
+      </ConversationAudioTool>
+      {tools}
+    </>
+  );
+  return (
+    <VoiceContext.Provider
+      value={{
+        workspace,
+        voices,
+        throughSequence,
+        audioTools,
+        research: (query) => {
+          void command({
+            type: "research.request",
+            query,
+            discloseQuery: true,
+          }).catch((e) => setError(errorText(e)));
+        },
+      }}
+    >
+      {children}
     </VoiceContext.Provider>
   );
 }

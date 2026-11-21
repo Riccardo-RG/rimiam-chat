@@ -11,10 +11,13 @@ import { DomainError, requireThat } from "./errors.ts";
 import {
   googleJSON,
   GoogleHTTPError,
+  microsoftJSON,
+  MicrosoftHTTPError,
   type GoogleAuthorization,
 } from "./google-http.ts";
 
 export type GoogleCapability = "calendar" | "email";
+export type IntegrationProvider = "google" | "microsoft";
 const scopeBase = "https://www.googleapis.com/auth/";
 export const googleScopes = {
   calendar: [
@@ -30,23 +33,117 @@ export const googleScopes = {
     `${scopeBase}gmail.send`,
   ],
 } satisfies Record<GoogleCapability, string[]>;
+export const googleCalendarWriteScope = scopeBase + "calendar.events.owned";
+export const googlePersonalCalendarScopes = googleScopes.calendar.map((s) =>
+  s === googleCalendarWriteScope ? s + ".readonly" : s,
+);
+const microsoftPermissions = {
+  email: ["User.Read", "Mail.Read", "Mail.Send"],
+  calendar: ["User.Read", "Calendars.ReadBasic"],
+} satisfies Record<GoogleCapability, string[]>;
+export function microsoftScopes(capability: GoogleCapability) {
+  return [...microsoftPermissions[capability], "offline_access"];
+}
+export async function microsoftMailboxIdentity(
+  accessToken: string,
+  signal: AbortSignal,
+  fetcher: typeof fetch = fetch,
+) {
+  const account = z
+    .object({ id: z.string().min(1).max(500), mail: z.email().toLowerCase() })
+    .parse(
+      await microsoftJSON(
+        "https://graph.microsoft.com/v1.0/me?$select=id,mail,userPrincipalName",
+        {
+          signal,
+          headers: { Authorization: `Bearer ${accessToken}` },
+        },
+        fetcher,
+        32000,
+      ),
+    );
+  // The sign-in name (UPN) can differ from the address Exchange actually uses.
+  return { sub: account.id, email: account.mail };
+}
+export function hasIntegrationScopes(
+  provider: IntegrationProvider,
+  capability: GoogleCapability,
+  granted: string[],
+) {
+  if (provider === "google")
+    return googleScopes[capability].every(
+      (scope) =>
+        granted.includes(scope) ||
+        (capability === "calendar" &&
+          scope === googleCalendarWriteScope &&
+          granted.includes(scope + ".readonly")),
+    );
+  const normalized = new Set(
+    granted.map((scope) =>
+      scope.toLowerCase().replace(/^https:\/\/graph\.microsoft\.com\//, ""),
+    ),
+  );
+  return microsoftPermissions[capability].every((scope) =>
+    normalized.has(scope.toLowerCase()),
+  );
+}
 export function googleConfiguration() {
-  const clientId = process.env.GOOGLE_OAUTH_CLIENT_ID?.trim(),
-    clientSecret = process.env.GOOGLE_OAUTH_CLIENT_SECRET?.trim();
+  return integrationConfiguration("google");
+}
+// This installation policy governs new grants. Existing connections still use
+// their own stored scopes and can be revoked independently.
+export function integrationCapabilities(
+  provider: IntegrationProvider,
+): GoogleCapability[] {
+  const supported: GoogleCapability[] = ["calendar", "email"];
+  const policy = process.env.GOOGLE_OAUTH_CAPABILITIES;
+  if (provider !== "google" || policy === undefined) return supported;
+  const allowed = policy.split(",").map((part) => part.trim());
+  if (
+    allowed.some((part) => !supported.some((capability) => capability === part))
+  )
+    return [];
+  return supported.filter((capability) => allowed.includes(capability));
+}
+
+export function integrationConfiguration(
+  provider: IntegrationProvider,
+  newGrant?: GoogleCapability,
+) {
+  if (newGrant && !integrationCapabilities(provider).includes(newGrant))
+    return undefined;
+  const microsoft = provider === "microsoft";
+  const clientId = (
+      microsoft
+        ? process.env.MICROSOFT_MAIL_CLIENT_ID
+        : process.env.GOOGLE_OAUTH_CLIENT_ID
+    )?.trim(),
+    clientSecret = (
+      microsoft
+        ? process.env.MICROSOFT_MAIL_CLIENT_SECRET
+        : process.env.GOOGLE_OAUTH_CLIENT_SECRET
+    )?.trim();
   if (
     !clientId ||
     !clientSecret ||
     (process.env.BETTER_AUTH_SECRET?.length ?? 0) < 32
   )
     return undefined;
-  const base = new URL(process.env.BETTER_AUTH_URL ?? "http://127.0.0.1:3000");
-  const redirect = new URL(
-    process.env.GOOGLE_OAUTH_REDIRECT_URI ??
-      "/api/v1/integrations/google/callback",
-    base,
-  );
+  let base: URL, redirect: URL;
+  const path = `/api/v1/integrations/${provider}/callback`;
+  try {
+    base = new URL(process.env.BETTER_AUTH_URL ?? "http://127.0.0.1:3000");
+    redirect = new URL(
+      (microsoft
+        ? process.env.MICROSOFT_MAIL_REDIRECT_URI
+        : process.env.GOOGLE_OAUTH_REDIRECT_URI) ?? path,
+      base,
+    );
+  } catch {
+    return undefined;
+  }
   if (
-    redirect.pathname !== "/api/v1/integrations/google/callback" ||
+    redirect.pathname !== path ||
     redirect.search ||
     redirect.hash ||
     redirect.username ||
@@ -64,6 +161,12 @@ export function googleConfiguration() {
     redirectUri: redirect.href,
     launchOrigin: redirect.origin,
     appOrigin: base.origin,
+    tokenUrl: microsoft
+      ? "https://login.microsoftonline.com/common/oauth2/v2.0/token"
+      : "https://oauth2.googleapis.com/token",
+    authorizeUrl: microsoft
+      ? "https://login.microsoftonline.com/common/oauth2/v2.0/authorize"
+      : "https://accounts.google.com/o/oauth2/v2/auth",
   };
 }
 function key() {
@@ -76,6 +179,15 @@ function key() {
   return createHash("sha256")
     .update(`miriam/google-credentials/v1\0${process.env.BETTER_AUTH_SECRET}`)
     .digest();
+}
+export function integrationSecretPurpose(
+  provider: IntegrationProvider,
+  id: string,
+  field: "access" | "refresh" | "oauth",
+) {
+  return provider === "google"
+    ? `${id}:${field}`
+    : `${provider}:${id}:${field}`;
 }
 export function encryptGoogleSecret(value: string, purpose: string) {
   const iv = randomBytes(12),
@@ -120,7 +232,11 @@ export const googleTokenSchema = z.object({
   scope: z.string().max(20000).optional(),
 });
 
-async function current(id: string, capability: GoogleCapability) {
+async function current(
+  id: string,
+  capability: GoogleCapability,
+  provider: IntegrationProvider,
+) {
   z.uuid().parse(id);
   const row = (
     await pool.query(
@@ -129,14 +245,14 @@ async function current(id: string, capability: GoogleCapability) {
     JOIN "user" u ON u.id=g.person_id
     LEFT JOIN calendar_connection c ON c.id=g.calendar_connection_id
     LEFT JOIN mailbox_connection e ON e.id=g.mailbox_connection_id
-    WHERE g.id=$1 AND g.capability=$2 AND g.status='active' AND m.active AND m.contributes AND u.eligible AND u."emailVerified"
+    WHERE g.id=$1 AND g.capability=$2 AND g.provider=$3 AND g.status='active' AND m.active AND m.contributes AND u.eligible AND u."emailVerified"
       AND m.version=g.membership_version
       AND ((g.capability='calendar' AND c.active AND c.person_id=g.person_id AND c.membership_version=m.version)
         OR (g.capability='email' AND e.active AND e.person_id=g.person_id AND e.membership_version=m.version))`,
-      [id, capability],
+      [id, capability, provider],
     )
   ).rows[0];
-  requireThat(row, "GOOGLE_CONNECTION_UNAVAILABLE", 403);
+  requireThat(row, `${provider.toUpperCase()}_CONNECTION_UNAVAILABLE`, 403);
   return row;
 }
 export async function googleCredentialToken(
@@ -145,20 +261,35 @@ export async function googleCredentialToken(
   signal: AbortSignal,
   fetcher: typeof fetch = fetch,
 ): Promise<GoogleAuthorization> {
-  let row = await current(id, capability);
+  return integrationCredentialToken(id, capability, signal, fetcher, "google");
+}
+export async function integrationCredentialToken(
+  id: string,
+  capability: GoogleCapability,
+  signal: AbortSignal,
+  fetcher: typeof fetch,
+  provider: IntegrationProvider,
+): Promise<GoogleAuthorization> {
+  const code = provider.toUpperCase();
+  const json = provider === "microsoft" ? microsoftJSON : googleJSON;
+  let row = await current(id, capability, provider);
   if (new Date(row.expires_at).getTime() <= Date.now() + 30000) {
-    const config = googleConfiguration();
-    requireThat(config && row.refresh_cipher, "GOOGLE_RECONNECT_REQUIRED", 503);
+    const config = integrationConfiguration(provider);
+    requireThat(
+      config && row.refresh_cipher,
+      `${code}_RECONNECT_REQUIRED`,
+      503,
+    );
     const attempt = randomUUID();
     const claimed = await pool.query(
       "UPDATE google_credential SET refresh_attempt=$2,refresh_until=now()+interval '45 seconds' WHERE id=$1 AND status='active' AND version=$3 AND (refresh_until IS NULL OR refresh_until<now()) RETURNING id",
       [id, attempt, row.version],
     );
-    requireThat(claimed.rowCount, "GOOGLE_REFRESH_IN_PROGRESS", 503);
+    requireThat(claimed.rowCount, `${code}_REFRESH_IN_PROGRESS`, 503);
     try {
       const tokens = googleTokenSchema.parse(
-        await googleJSON(
-          "https://oauth2.googleapis.com/token",
+        await json(
+          config.tokenUrl,
           {
             method: "POST",
             signal,
@@ -169,7 +300,7 @@ export async function googleCredentialToken(
               grant_type: "refresh_token",
               refresh_token: decryptGoogleSecret(
                 row.refresh_cipher,
-                `${id}:refresh`,
+                integrationSecretPurpose(provider, id, "refresh"),
               ),
             }),
           },
@@ -181,28 +312,35 @@ export async function googleCredentialToken(
         ? tokens.scope.split(" ")
         : (row.scopes as string[]);
       requireThat(
-        googleScopes[capability].every((s) => scopes.includes(s)),
-        "GOOGLE_SCOPE_REQUIRED",
+        hasIntegrationScopes(provider, capability, scopes),
+        `${code}_SCOPE_REQUIRED`,
         403,
       );
-      await current(id, capability);
+      await current(id, capability, provider);
       const changed = await pool.query(
         "UPDATE google_credential SET access_cipher=$3,refresh_cipher=$4,expires_at=$5,scopes=$6,version=version+1,refresh_attempt=NULL,refresh_until=NULL WHERE id=$1 AND refresh_attempt=$2 AND status='active' RETURNING id",
         [
           id,
           attempt,
-          encryptGoogleSecret(tokens.access_token, `${id}:access`),
+          encryptGoogleSecret(
+            tokens.access_token,
+            integrationSecretPurpose(provider, id, "access"),
+          ),
           tokens.refresh_token
-            ? encryptGoogleSecret(tokens.refresh_token, `${id}:refresh`)
+            ? encryptGoogleSecret(
+                tokens.refresh_token,
+                integrationSecretPurpose(provider, id, "refresh"),
+              )
             : row.refresh_cipher,
           new Date(Date.now() + tokens.expires_in * 1000),
           scopes,
         ],
       );
-      requireThat(changed.rowCount, "GOOGLE_CONNECTION_UNAVAILABLE", 403);
+      requireThat(changed.rowCount, `${code}_CONNECTION_UNAVAILABLE`, 403);
     } catch (error) {
       const permanent =
-        error instanceof GoogleHTTPError &&
+        (error instanceof GoogleHTTPError ||
+          error instanceof MicrosoftHTTPError) &&
         [400, 401].includes(error.httpStatus);
       await pool.query(
         "UPDATE google_credential SET status=CASE WHEN $3 THEN 'reconnect_required' ELSE status END,access_cipher=CASE WHEN $3 THEN NULL ELSE access_cipher END,refresh_cipher=CASE WHEN $3 THEN NULL ELSE refresh_cipher END,refresh_attempt=NULL,refresh_until=NULL,error_code=$4 WHERE id=$1 AND refresh_attempt=$2",
@@ -210,17 +348,21 @@ export async function googleCredentialToken(
           id,
           attempt,
           permanent,
-          permanent ? "GOOGLE_RECONNECT_REQUIRED" : "GOOGLE_REFRESH_FAILED",
+          permanent ? `${code}_RECONNECT_REQUIRED` : `${code}_REFRESH_FAILED`,
         ],
       );
       throw error;
     }
-    row = await current(id, capability);
+    row = await current(id, capability, provider);
   }
-  requireThat(row.access_cipher, "GOOGLE_RECONNECT_REQUIRED", 503);
+  requireThat(row.access_cipher, `${code}_RECONNECT_REQUIRED`, 503);
   return {
-    accessToken: decryptGoogleSecret(row.access_cipher, `${id}:access`),
+    accessToken: decryptGoogleSecret(
+      row.access_cipher,
+      integrationSecretPurpose(provider, id, "access"),
+    ),
     email: row.email,
     scopes: row.scopes,
+    subject: row.google_subject,
   };
 }

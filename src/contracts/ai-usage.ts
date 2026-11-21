@@ -2,7 +2,7 @@ import { z } from "zod";
 
 export const usageRatesSchema = z
   .object({
-    provider: z.enum(["openai", "anthropic", "ollama"]),
+    provider: z.enum(["openai", "anthropic", "ollama", "agent"]),
     model: z.string().min(1).max(200),
     inputPerMillionUsd: z.number().nonnegative().max(1000000),
     cachedInputPerMillionUsd: z.number().nonnegative().max(1000000).optional(),

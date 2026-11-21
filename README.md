@@ -1,56 +1,58 @@
 # RIMIAM
 
-<img src="public/brand/rimiam-mark.svg" alt="Logo RIMIAM" width="60" />
+<img src="public/brand/rimiam-mark.svg" alt="RIMIAM logo" width="60" />
 
-RIMIAM è un workspace collaborativo AI-native: persone e AI lavorano nello stesso spazio, a partire dalla conversazione, verso un obiettivo comune. Miriam è l’intelligenza nativa del workspace; aiuta a comprendere, cercare, preparare e portare avanti il lavoro mantenendo un contesto condiviso persistente, consultabile e correggibile.
+**A conversation-first collaborative workspace with persistent context and explicit human control over AI-generated work.**
 
-Messaggi, fonti, informazioni accettate, decisioni e azioni restano distinti. Comprendere una richiesta non conferisce il permesso di agire; una proposta AI non diventa automaticamente una decisione del gruppo. Storia, versioni e provenienza appartengono al workspace.
+People and Emme work in a shared Conversation. The server preserves sources, accepted information, decisions, tasks and work results as distinct, inspectable records. A model can propose a change; it cannot turn its interpretation into another person's consent or permission to act.
 
-**Stato al 7 ottobre 2026:** MVP implementato nel perimetro documentato, con sperimentazione Web in corso e infrastruttura Render attiva. OpenAI è configurato e ha completato inferenze reali; Resend è configurato, ma la consegna email resta da verificare. L’accettazione complessiva con utenti, provider e dispositivi è ancora aperta: il prodotto non è pronto per un rilascio generale. [Stato, prove e limiti correnti →](docs/development/STATUS.md)
+**Web beta · 21 November 2026.** The latest recorded Railway release runs the Web app and worker through database migration 075. The Home screen opens with conversations, followed by personal tools and the daily agenda. Two test accounts have exchanged messages, received an invitation by email and checked a contextual reply from Emme. [Open the beta](https://rimiam-chat-web-production.up.railway.app/) · [Deployment record](docs/development/RAILWAY_DEPLOYMENT.md#current-setup).
 
-## Come leggere il repository
+**In this checkout.** The next release candidate adds a direct route to the daily agenda and keeps workspace navigation available in personal tools. In a populated space, you can browse shared screenshots, files and links by date or type and return to the original message. These changes have been tested locally. The React Native apps can be built for iOS and Android. Distribution to testers and physical-device acceptance are pending. [Current status and evidence](docs/development/STATUS.md) · [Technical case study](docs/development/PORTFOLIO_CASE_STUDY.md).
 
-**RIMIAM** è il nome corrente del prodotto. **Allinagent** è il nome storico della discovery; **MIRIAM** rimane nei percorsi e negli identificatori tecnici. Questi nomi non indicano prodotti diversi.
+## What you can explore
 
-La [specifica canonica](docs/product/MVP_SPEC_v0.1.md) mantiene il nome storico `MVP_SPEC_v0.1.md` per preservare riferimenti e continuità: incorpora le decisioni approvate successive, fino ad ADR-0015. **“v0.1” non è la versione corrente dell’app né una specifica abbandonata.** La [v0.2_DRAFT](docs/product/MVP_SPEC_v0.2_DRAFT.md) è una bozza conservata come evoluzione proposta; il suo numero non la rende una sostituzione approvata. La [riconciliazione](docs/product/MVP_V0.2_RECONCILIATION.md) spiega come è stata usata nel BUILD.
+Start with the [Web workflow guide](docs/development/WEB_WORKFLOWS.md) for a two-person walkthrough and links from each feature to its implementation and verification. Local Web, iOS and Android builds offer [Italian and English](docs/development/INTERFACE_LANGUAGES.md). Use `/h` in a workspace conversation to [draw and attach a sketch](docs/development/RICH_INPUTS.md#draw-in-a-workspace-conversation).
 
-| Per trovare…                                                  | Leggere…                                                                                                        |
-| ------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| Modello del prodotto e confini approvati                      | [Specifica canonica](docs/product/MVP_SPEC_v0.1.md) e [decisioni ADR](docs/decisions/)                          |
-| Cosa funziona, cosa è stato verificato e cosa manca           | [STATUS](docs/development/STATUS.md)                                                                            |
-| Punti d’ingresso nel codice e riferimenti per tema            | [CODEMAP](docs/development/CODEMAP.md)                                                                          |
-| Metodo di lavoro nel repository                               | [AGENTS.md](AGENTS.md)                                                                                          |
-| Configurazione, attivazioni, recupero e verifiche dei servizi | [Guida al deploy e ai servizi esterni](docs/development/DEPLOY_EXTERNAL_SERVICES.md)                            |
-| Posizionamento e ipotesi commerciali                          | [Product Discovery / GTM](docs/product/MVP_GTM_PRODUCT_DISCOVERY.md), nei suoi espliciti limiti di approvazione |
+| Area                  | Implemented behavior                                                                                        | Verification boundary                                                                      |
+| --------------------- | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| Shared workspace      | Separate accounts, invitations, retained Conversation, Goal, membership and scoped authority                | Real local PostgreSQL/auth/API and selected two-account browser scenarios                  |
+| Context and proposals | Attributed statements, Accepted Information, source references, versioned corrections and explicit adoption | Deterministic domain checks; real-model judgment needs live acceptance                     |
+| Tasks and Active Work | Accepted responsibility, follow-up, shared steering, pause/stop/resume and inspectable Contributions        | Local command/worker/browser checks; model usefulness is not implied                       |
+| Sources and outputs   | Documents, research, provenance and versioned Artifacts                                                     | Local extraction and provider-double tests; service-dependent paths need activation        |
+| Optional integrations | Google and Microsoft calendars and mailboxes, transcription, voice and human audio calls                    | Implementation present; configuration, permissions and live/device validation are separate |
 
-Le date e i limiti degli atti storici ne conservano la provenienza. Per lo stato implementativo attuale fa fede STATUS; le proposte architetturali e le bozze non sostituiscono le decisioni approvate.
+The hosted app works in a browser on desktop, tablet and smartphone. To add the Web beta to an iPhone Home Screen and test notifications, follow the [physical iPhone guide](docs/development/PROVA_IPHONE.md).
 
-## Cosa comprende
+## Architecture in brief
 
-- **Collaborazione e contesto:** account e inviti, Conversation, Goal e adesioni, informazioni accettate, domande aperte, decisioni, mandati e accesso protetto. Filoni di lavoro, attività e riepiloghi rendono consultabile lo stato senza spostare la storia.
-- **Fonti e risultati:** documenti versionati, immagini e audio, ricerca web con provenienza e Artifacts con revisione e adozione esplicita. [Formati e limiti degli input](docs/development/RICH_INPUTS.md).
-- **Lavoro persistente:** [Tasks e follow-up](docs/development/TASKS.md), [Active Work](docs/development/ACTIVE_WORK.md) controllabile dal gruppo e contributi specialistici che restano da adottare.
-- **Calendario ed email:** appuntamenti interni e bozze utilizzabili senza collegare account esterni; [Calendar](docs/development/CALENDAR.md) e [Workspace Email](docs/development/EMAIL.md) separano osservazioni private, condivisione e azioni autorizzate.
-- **Voce e chiamate audio:** messaggi vocali, dialogo con Miriam e chiamate fra persone. Nelle chiamate fra persone, registrazione e trascrizione richiedono il consenso personale di tutti i partecipanti catturati; l’analisi post-call richiede una richiesta separata. [Implementazione e verifiche ancora necessarie](docs/development/VOICE_CALLS.md).
-- **Assistenza nell’app e feedback beta:** [aiuto contestuale](docs/development/PRODUCT_ASSISTANCE.md) e [feedback con consumi consultabili su richiesta](docs/development/BETA_FEEDBACK.md), separati dal Context del progetto.
+```mermaid
+flowchart LR
+    Web[Next.js / React Web] --> API[Authenticated application boundary]
+    Mobile[React Native iOS and Android] --> API
+    API --> Commands[Validated domain commands]
+    Commands --> PG[(PostgreSQL current state + immutable history)]
+    PG --> Worker[Graphile Worker]
+    Worker --> Models[Replaceable model / service adapters]
+    Models --> Candidates[Validated proposals / Contributions]
+    Candidates --> PG
+    PG --> Reads[Authorized views + SSE invalidation hints]
+    Reads --> Web
+```
 
-La presenza di una capability nel codice non implica che il relativo servizio esterno sia attivo o validato dal vivo.
+- **TypeScript / Node.js modular monolith:** Web routes and a standalone API reuse the same application modules and versioned contracts. Exact versions are pinned in [package.json](package.json) and its lockfile.
+- **PostgreSQL is authoritative:** normal reads use materialized current state; source, version and provenance history is retained. The application does not reconstruct current state by replaying model output.
+- **Commands own effects:** current access, authority, expected versions and idempotency are validated server-side. The browser's local command journal helps recover uncertain outcomes without inventing success.
+- **AI output is untrusted input:** structured adapters validate output; retrieval follows Minimum Sufficient Context. Active Work produces Contributions, with separate governed paths for adoption or consequential effects.
+- **Asynchronous work is durable:** Graphile Worker uses the existing database. SSE tells clients to refresh authorized views; it is not a domain ledger or proof of worker health.
 
-## Stack e client
+Start at [CODEMAP](docs/development/CODEMAP.md) for verified code entry points and the topic-to-ADR index. See [the approved decisions](docs/decisions/) for rationale and invariants.
 
-Il backend è un monolite modulare **TypeScript / Node.js**, con **PostgreSQL** per stato corrente, storia, versioni e provenienza. **Graphile Worker** esegue il lavoro asincrono; **Better Auth** gestisce l’autenticazione. Comandi validati e transazioni applicano sul server isolamento, autorizzazioni e passaggi con conseguenze. L’output dei modelli è input non fidato.
+## Run locally
 
-| Client  | Tecnologia       | Stato                                                                                      |
-| ------- | ---------------- | ------------------------------------------------------------------------------------------ |
-| Web     | Next.js / React  | Superficie attualmente in test; redesign del 7 ottobre 2026                                |
-| iOS     | Swift / SwiftUI  | Implementazione presente; allineamento alle ultime modifiche Web e pubblicazione differiti |
-| Android | Kotlin / Compose | Implementazione presente; allineamento alle ultime modifiche Web e pubblicazione differiti |
+Requirements: **Node.js 24.x**, npm and PostgreSQL. The supplied Docker Compose file runs PostgreSQL locally; Docker is optional if you provide a compatible local database yourself.
 
-I client condividono il backend e il contratto server versionato; nessun client possiede lo stato canonico o l’autorità. La fase corrente modifica soltanto il frontend Web: non implica parità visiva o di rilascio con i nativi. [Setup e verifiche multi-client](docs/development/MULTICLIENT.md).
-
-## Avvio locale
-
-Servono **Node.js 24.x**, npm e PostgreSQL. Il percorso locale verificato usa Node **24.20.0** e PostgreSQL **18.3**; [Docker Compose](compose.yaml) fornisce il database. Eseguire dalla radice del repository, con Docker avviato:
+From a checkout, with Docker running:
 
 ```sh
 npm ci
@@ -60,53 +62,61 @@ npm run db:migrate
 npm run dev
 ```
 
-In un secondo terminale, dalla stessa directory:
+In a second terminal:
 
 ```sh
 npm run worker
 ```
 
-Aprire [http://127.0.0.1:3000](http://127.0.0.1:3000), usando sempre questo hostname per cookie e controlli di origine. Il worker è necessario per le elaborazioni asincrone. Per i client nativi, avviare anche `npm run api` sulla porta locale **3002**.
+Open [http://127.0.0.1:3000](http://127.0.0.1:3000). Keep this hostname consistent for cookies and origin checks. The worker handles asynchronous processing; starting the Web process alone is insufficient.
 
-`setup:env` crea `.env` da [.env.example](.env.example), genera il segreto di autenticazione e preserva un file già esistente. I file `.env*`, salvo l’esempio, sono esclusi da Git. PostgreSQL ascolta su `127.0.0.1:54329`; il volume nominato conserva i dati. Le migrazioni in [migrations/](migrations/) sono applicate dal runner con controllo dei checksum: rieseguire `npm run db:migrate` dopo aggiornamenti che ne aggiungono.
+`setup:env` creates `.env` from [.env.example](.env.example), generates a random local authentication secret and preserves an existing file. The example database credentials are **local-only**. Compose binds PostgreSQL to `127.0.0.1:54329` and preserves data in a named volume. The migration runner checks previously applied migration contents; do not edit an applied SQL file.
 
-Per fermare l’ambiente, usare Ctrl-C nei terminali applicativi e `docker compose stop` per il database, conservandone il volume.
+Stop application terminals with Ctrl-C and use `docker compose stop` to stop the database without deleting its volume. Do not use a production database for local setup or tests.
 
-### Primo giro con due persone
+### Run the React Native app
 
-1. Registrare un account con password di almeno **12 caratteri**. Aprire [/local-mail](http://127.0.0.1:3000/local-mail) nella **stessa sessione del browser** per il link di verifica. Con la configurazione locale le email restano qui: non vengono consegnate a caselle esterne. Il viewer richiede `LOCAL_MAIL=true`, loopback e ambiente non production.
-2. Creare un Workspace, conversare e, quando utile, stabilire il Goal iniziale come proprio intento. L’adesione al Goal è un atto distinto dalla partecipazione allo spazio.
-3. Invitare un secondo account per email esatta, usando un altro profilo del browser o una sessione privata. Il destinatario può registrarsi dal link; l’ingresso richiede accettazione esplicita della visibilità della storia condivisa conservata. Non concede automaticamente adesioni o autorità di progetto.
-4. Con un modello configurato, chiamare Miriam esplicitamente e verificare proposte, fonti e correzioni. L’intervento proattivo richiede opt-in. Senza AI si possono comunque usare conversazione, fonti e operazioni manuali disponibili.
+Keep the local server running. From the repository root, install the mobile dependencies with `npm ci --prefix mobile`. Run `npm --prefix mobile run ios` for the iOS simulator (macOS, Xcode and CocoaPods), or `npm --prefix mobile run android` for the Android emulator (Android Studio, Android SDK and JDK 17). At sign-in, enter `http://127.0.0.1:3000` on the iOS simulator or `http://10.0.2.2:3000` on the standard Android emulator. See [mobile setup and checks](docs/development/MULTICLIENT.md#run-the-mobile-app) for the two-account fixture and provider setup.
 
-**Password dimenticata** e **Reinvia verifica email** usano la stessa inbox locale. Il reset revoca le sessioni esistenti; non ripristina membership o autorità terminate.
+### Try two accounts
+
+1. Register with a password of at least 12 characters. With the default configuration, use [/local-mail](http://127.0.0.1:3000/local-mail) in that same browser session to verify the account. No external email is sent. The viewer is restricted to local development.
+2. Create a Workspace and send a message. A Goal and adherence are explicit acts, separate from membership.
+3. Select **Invita** in the chat header and enter the second person's email. In a separate browser profile, sign in with that verified address. Open the incoming invitation, review the shared-history notice and accept. The personal link also works, including when email delivery was not requested.
+4. Try `/guida` in the local Web composer to explore the available commands. With a real model configured, use **Chiedi a Emme** to request a reply. Inspect the sources and proposed result before adopting anything.
+
+Password recovery and verification resend use the same local-mail mechanism. Real external delivery requires a configured mail provider.
 
 <a id="local-document-parsers"></a>
 
-### PDF e DOCX
+### Optional local document extraction
 
-Per l’estrazione locale, il runtime verificato è Python 3.13:
+PDF/DOCX extraction uses Python and the pinned packages in [requirements-documents.txt](requirements-documents.txt). The previously verified local Python runtime is 3.13:
 
 ```sh
 python3.13 -m venv .venv
 .venv/bin/pip install -r requirements-documents.txt
 ```
 
-Impostare `DOCUMENT_PYTHON_PATH` in `.env` al percorso assoluto di `.venv/bin/python`, quindi riavviare i processi interessati. I parser sono fissati in [requirements-documents.txt](requirements-documents.txt); non serve un runtime Codex.
+Set `DOCUMENT_PYTHON_PATH` in `.env` to the absolute path of `.venv/bin/python` and restart the worker. The Docker runtime has its own Python environment; it does not depend on a developer's tools.
 
-## AI e servizi esterni
+## Configure real AI and services
 
-Un nuovo ambiente locale parte con AI, ricerca e trascrizione **non configurate**. Gli adapter deterministici esistono solo nei test; `AI_MODE=fixture` non produce risposte simulate nel runtime normale.
+A fresh environment intentionally has no model, research or transcription service enabled. Missing configuration is reported as unavailable; production does not fall back to a fabricated response. Deterministic providers belong to tests only.
 
-Per l’adapter OpenAI, configurare sul server `AI_MODE=openai`, `OPENAI_API_KEY` e `AI_MODEL` con un modello compatibile con output strutturato e, se usate, immagini. Anthropic e Ollama sono alternative supportate; il cambio di provider non modifica i concetti di dominio e non esiste fallback automatico fra provider.
+For text/analysis with OpenAI, configure the server-side `AI_MODE=openai`, `OPENAI_API_KEY` and `AI_MODEL` using a compatible structured-output model. Anthropic and Ollama adapters are alternatives; there is no automatic cross-provider fallback. Never put provider keys in client-side variables or source control.
 
-Ricerca Brave, trascrizione, Google Calendar/Gmail, chiamate LiveKit e storage delle registrazioni hanno configurazioni e consensi separati. Il login Google è distinto dall’accesso Gmail/Calendar. Resend consegna le email di account e gli inviti richiesti: non implementa Workspace Email.
+**Self-hosting with Google.** Register your own Google Cloud project and two Web OAuth clients for sign-in and Calendar. Each installation uses its own domain and credentials. Members choose separately whether to connect a calendar. Microsoft sign-in is optional and uses its own Entra registration. [Google self-hosting setup](docs/development/GOOGLE_INTEGRATIONS.md#self-hosting-with-google) · [Microsoft sign-in](docs/development/MICROSOFT_SIGN_IN.md).
 
-Seguire la [guida ai servizi esterni](docs/development/DEPLOY_EXTERNAL_SERVICES.md) per variabili, autorizzazioni, controlli reali e recupero; poi riavviare i processi interessati. I retry espliciti rivalidano le condizioni applicabili; un esito esterno incerto non autorizza a ripetere alla cieca un invio o un’azione.
+Mail delivery, Brave research, transcription, personal mailbox access and LiveKit calling have separate configuration and consent requirements. Recording consent does not authorize AI analysis or adoption. Existing queued work can incur usage after a provider or worker is activated. [Mailbox setup and live verification](docs/development/DEPLOY_EXTERNAL_SERVICES.md#caselle-personali-gmail-e-outlook).
 
-## Verifiche di sviluppo
+Use [DEPLOY_EXTERNAL_SERVICES](docs/development/DEPLOY_EXTERNAL_SERVICES.md) for configuration, costs requiring verification, required consents and exact live checks. Historical deployment notes are evidence of past actions, not proof that a service or credential still works today.
 
-Con PostgreSQL avviato, inizializzare o aggiornare il database di test e scegliere i controlli pertinenti alla modifica:
+Before reactivating a worker, follow the [release runbook](docs/development/RELEASE_RUNBOOK.md). `npm run release:preflight` collects read-only local migration/queue/domain aggregates without calling providers; it does not authorize activation or certify that queued work is safe to resume.
+
+## Verify a change
+
+With the local database running:
 
 ```sh
 npm run test:setup
@@ -114,7 +124,14 @@ npm test -- tests/sources-research.test.ts
 npm run typecheck
 ```
 
-Alle milestone, a fine sessione e prima del rilascio, secondo [AGENTS.md](AGENTS.md):
+For a focused browser flow:
+
+```sh
+npx playwright install chromium
+npm run test:e2e -- tests/e2e/slice01.spec.ts
+```
+
+At a release milestone:
 
 ```sh
 npm run check
@@ -123,16 +140,29 @@ npm run build
 npm run build:backend
 ```
 
-`check` comprende TypeScript, lint, formattazione e test. Per un percorso browser mirato usare, ad esempio, `npm run test:e2e -- tests/e2e/sources.spec.ts`. Se Chromium manca, installarlo con `npx playwright install chromium`.
+`check` runs TypeScript, lint, formatting and tests. Domain tests use `miriam_test`; the E2E harness creates/migrates `miriam_e2e`, runs Web and a test worker on port 3100 and stops those processes afterward. External-provider doubles and deliberate network faults test recovery deterministically; they do not certify real provider behavior. Browser viewport checks do not establish native-app or physical-device acceptance.
 
-I test di dominio usano **miriam_test**. L’harness E2E crea e migra **miriam_e2e**, avvia web e worker isolati sulla porta **3100**, usa `.next-e2e` e ferma i processi al termine. I double dei provider non vengono collegati al database di sviluppo. I dati dei test restano disponibili per diagnosi; report e trace sono esclusi da Git. I test di recupero account rispettano i limiti di frequenza e possono richiedere circa due minuti.
+Tests require permission to create the separate local test databases. Some account-recovery checks intentionally respect rate-limit windows. Follow [CONTRIBUTING](CONTRIBUTING.md) for the targeted-development and milestone-verification workflow.
 
-Se una sandbox blocca l’IPC del launcher `tsx`, il comando equivalente per le migrazioni è `node --env-file=.env --import tsx scripts/migrate.ts`. Per build e verifiche native seguire la [guida multi-client](docs/development/MULTICLIENT.md).
+The [Web quality workflow](.github/workflows/web-ci.yml) defines isolated database checks, a bounded Chromium smoke and Docker runtime validation without production credentials. Its presence is not evidence of a successful GitHub Actions run; remote CI and deployment results must be recorded separately.
 
-## Deployment e limiti della beta
+## Documentation and project history
 
-[render.yaml](render.yaml), [Dockerfile](Dockerfile) e gli script di avvio descrivono il deployment esistente. La [guida operativa](docs/development/DEPLOY_EXTERNAL_SERVICES.md) conserva attivazioni, prove live, scadenze, manutenzione delle credenziali e recupero; STATUS registra la distinzione fra modifica locale, pubblicazione e accettazione effettiva.
+| Need                                                 | Start here                                                                  |
+| ---------------------------------------------------- | --------------------------------------------------------------------------- |
+| Current implementation, evidence and next checkpoint | [STATUS](docs/development/STATUS.md)                                        |
+| Code navigation and impact analysis                  | [CODEMAP](docs/development/CODEMAP.md)                                      |
+| Canonical product semantics                          | [MVP specification](docs/product/MVP_SPEC_v0.1.md), [ADRs](docs/decisions/) |
+| Engineering decisions demonstrated by the code       | [Technical case study](docs/development/PORTFOLIO_CASE_STUDY.md)            |
+| Setup, deployment and recovery                       | [External services guide](docs/development/DEPLOY_EXTERNAL_SERVICES.md)     |
+| Contribution and security reporting                  | [CONTRIBUTING](CONTRIBUTING.md), [SECURITY](SECURITY.md)                    |
 
-Restano da completare le verifiche reali multiutente, la qualità collaborativa complessiva, la consegna email, l’attivazione degli altri provider, backup/restore e monitoraggio, accettazione visiva e su dispositivi, firma e distribuzione native. Le regole d’uso beta pubblicate non sostituiscono l’informativa privacy e le policy di conservazione/cancellazione ancora da completare. Le eventuali bozze legali locali non sono documentazione pubblicata o approvata.
+**RIMIAM** is the workspace. **Emme** is the AI you talk to in its chat. **Allinagent** appears in historical discovery; **MIRIAM** remains in paths and technical identifiers. The canonical filename `MVP_SPEC_v0.1.md` is historical and stable, not the current application version. Later drafts and architecture proposals do not override approved ADRs. Product documentation intentionally retains its original language and decision provenance.
 
-Videochiamate, push fuori app, billing, marketplace pubblico di agenti e memoria personale nascosta negli spazi condivisi non sono inclusi. Scope e futuro del prodotto restano quelli della specifica e delle decisioni approvate.
+## Release boundaries and license
+
+The two-account beta smoke check covers a limited conversation and email delivery. Broader real-model collaboration, backup/restore and physical-device behavior still need live verification. Native distribution and advanced integrations are not prerequisites for reviewing the Web engineering work. Published beta-use rules do not replace the operator's privacy, retention and deletion arrangements.
+
+The hosted beta currently limits Google Calendar connections to approved OAuth testers. Microsoft activation is deferred. Operators can use the [manual Web deployment guide](docs/development/DEPLOY_WEB_MANUALE.md) for the local release candidate. [Release checkpoint](docs/development/WEB_RELEASE.md) · [Phase 2 backlog](docs/development/WEB_FASE_2.md).
+
+Licensed under the [MIT License](LICENSE). Third-party dependencies retain their respective licenses.

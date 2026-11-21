@@ -4,7 +4,7 @@ import { member } from "./workspace-state.ts";
 import { requireThat } from "./errors.ts";
 import { emailViewSchema } from "../contracts/email.ts";
 import { mailbox, draftVersion } from "./email-state.ts";
-import { configuredEmailProvider } from "./email-provider.ts";
+import { integrationConfiguration } from "./google-credentials.ts";
 export async function emailView(
   actor: string,
   w: string,
@@ -55,7 +55,7 @@ export async function emailView(
     ).rows;
     const sources = (
       await tx.query(
-        `SELECT s.id,s.document_version AS version,s.content_hash,s.filename FROM external_source s WHERE s.workspace_id=$1 AND s.kind='document' AND NOT EXISTS(SELECT 1 FROM external_source n WHERE n.workspace_id=s.workspace_id AND n.document_id=s.document_id AND n.document_version>s.document_version)`,
+        `SELECT s.id,s.document_version AS version,s.content_hash,s.filename FROM available_external_source s WHERE s.workspace_id=$1 AND s.kind='document' AND NOT EXISTS(SELECT 1 FROM external_source n WHERE n.workspace_id=s.workspace_id AND n.document_id=s.document_id AND n.document_version>s.document_version)`,
         [w],
       )
     ).rows;
@@ -83,11 +83,15 @@ export async function emailView(
       revision: ws.revision,
       contextRevision: ws.context_revision,
       accessRevision: ws.access_revision,
-      providerConfigured: !!configuredEmailProvider(),
+      providerConfigured: !!(
+        integrationConfiguration("google", "email") ||
+        integrationConfiguration("microsoft")
+      ),
       connections: connections.map((c) => ({
         id: c.id,
         version: c.version,
         sender: c.sender,
+        provider: c.provider,
         label: c.label,
         active: c.active,
         canRead: c.can_read,

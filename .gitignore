@@ -15,14 +15,15 @@ test-results/
 
 dist/
 
-mobile/android/.gradle/
-mobile/android/**/build/
-mobile/android/local.properties
-mobile/ios/**/xcuserdata/
-mobile/ios/**/DerivedData/
 *.xcresult
-mobile/android/.kotlin/
 *.jks
 *.keystore
 *.p12
 *.mobileprovision
+
+# Local personal documents/exports must not enter a source release.
+/*.pdf
+/*.docx
+/*.xlsx
+*.dump
+*.sql.gz

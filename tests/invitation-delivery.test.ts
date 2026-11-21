@@ -73,6 +73,9 @@ describe("Explicit invitation delivery", () => {
         transport = sender(async () => Response.json({ id: randomUUID() }));
       const url = settings.origin + "/?invite=" + s.token,
         payload = transport.prepare(`${s.b}@example.test`, url);
+      expect(payload.subject).toBe("Invito a RIMIAM");
+      expect(payload.text).toContain("Emme");
+      payload.subject = "Invito a MIRIAM"; // A frozen envelope from before the rename.
       await pool.query(
         "INSERT INTO invitation_delivery(invitation_id,encrypted_link,status,attempts,committed_at,encrypted_payload,lease_until) VALUES($1,$2,'running',1,now()-$4::interval,$3,now()-interval '1 minute')",
         [

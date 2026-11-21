@@ -1,4 +1,6 @@
 "use client";
+import { useUiLanguage } from "./ui-language";
+
 import { useState } from "react";
 import type { CalendarView } from "@/contracts/calendar";
 import type { Command } from "@/contracts/commands";
@@ -11,11 +13,12 @@ export function CommitmentTime({
   perform: (c: Command) => Promise<void>;
   busy: boolean;
 }) {
+  const { t: uiText } = useUiLanguage();
   const [id, setId] = useState("");
   if (!view.ownCommitments?.length) return null;
   return (
     <details>
-      <summary>Data di un tuo impegno già adottato</summary>
+      <summary>{uiText("Data di un tuo impegno già adottato")}</summary>
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -38,9 +41,9 @@ export function CommitmentTime({
         }}
       >
         <label>
-          Impegno
+          {uiText("Impegno")}
           <select value={id} onChange={(e) => setId(e.target.value)} required>
-            <option value="">Scegli un tuo impegno</option>
+            <option value="">{uiText("Scegli un tuo impegno")}</option>
             {view.ownCommitments.map((c) => (
               <option value={c.id} key={c.id}>
                 {c.content}
@@ -49,23 +52,26 @@ export function CommitmentTime({
           </select>
         </label>
         <label>
-          Inizio
+          {uiText("Inizio")}
           <input name="start" type="datetime-local" required />
         </label>
         <label>
-          Fine
+          {uiText("Fine")}
           <input name="end" type="datetime-local" required />
         </label>
         <label>
-          Motivazione
+          {uiText("Motivazione")}
           <input name="reason" required maxLength={2000} />
         </label>
         <label className="check">
           <input type="checkbox" required />
-          Stabilisco questa data soltanto per me; non modifica il contenuto
-          dell’impegno né calendari esterni.
+          {uiText(
+            "Stabilisco questa data soltanto per me; non modifica il contenuto dell’impegno né calendari esterni.",
+          )}
         </label>
-        <button disabled={busy || !id}>Stabilisci la data dell’impegno</button>
+        <button disabled={busy || !id}>
+          {uiText("Stabilisci la data dell’impegno")}
+        </button>
       </form>
     </details>
   );

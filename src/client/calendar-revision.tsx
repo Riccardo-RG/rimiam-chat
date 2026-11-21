@@ -1,4 +1,6 @@
 "use client";
+import { useUiLanguage } from "./ui-language";
+
 import type { CalendarView, CalendarCommand } from "@/contracts/calendar";
 export function CalendarRevision({
   view,
@@ -13,6 +15,7 @@ export function CalendarRevision({
   perform: (c: CalendarCommand) => Promise<void>;
   busy: boolean;
 }) {
+  const { t: uiText } = useUiLanguage();
   const temporal = view.temporal.find(
     (t) => t.id === action.temporal?.id && t.kind === action.temporal?.kind,
   );
@@ -33,7 +36,7 @@ export function CalendarRevision({
     return null;
   return (
     <details>
-      <summary>Rivedi la proposta Calendar</summary>
+      <summary>{uiText("Rivedi la proposta Calendar")}</summary>
       <p>
         {temporal.payload.title} ·{" "}
         {new Date(temporal.payload.start).toLocaleString()} →{" "}
@@ -41,8 +44,9 @@ export function CalendarRevision({
         {temporal.payload.timeZone}
       </p>
       <p className="hint">
-        Crea una nuova versione dalla situazione interna corrente; ogni
-        autorizzazione precedente decade. Nessuna scrittura esterna.
+        {uiText(
+          "Crea una nuova versione dalla situazione interna corrente; ogni autorizzazione precedente decade. Nessuna scrittura esterna.",
+        )}
       </p>
       <button
         disabled={busy}
@@ -68,7 +72,7 @@ export function CalendarRevision({
           })
         }
       >
-        Riallinea questa proposta alla versione interna
+        {uiText("Riallinea questa proposta alla versione interna")}
       </button>
     </details>
   );

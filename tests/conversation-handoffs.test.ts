@@ -116,15 +116,24 @@ it("stores source-backed navigation without effects and applies only the explici
       resultReference: { kind: "goal", id: result.goalId, version: 1 },
     },
   });
-  expect(
-    await referenceDetail(t.actor, t.w, {
-      kind: "goal",
-      id: result.goalId,
-      version: 1,
-    }),
-  ).toMatchObject({
-    sourceIds: [s.request.messageId],
+  const detail = await referenceDetail(t.actor, t.w, {
+    kind: "goal",
+    id: result.goalId,
+    version: 1,
+  });
+  const notice = (
+    await pool.query(
+      "SELECT id FROM message WHERE workspace_id=$1 AND purpose='goal_event'",
+      [t.w],
+    )
+  ).rows;
+  expect(notice).toHaveLength(1);
+  expect(detail.sourceIds.toSorted()).toEqual(
+    [s.request.messageId, notice[0].id].sort(),
+  );
+  expect(detail).toMatchObject({
     provenance: {
+      sourceId: notice[0].id,
       conversationOrigins: [{ sourceId: s.request.messageId, actor: t.actor }],
     },
   });

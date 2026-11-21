@@ -5,6 +5,7 @@ import { activeWorkCommandSchema } from "../contracts/active-work.ts";
 import { member, authenticatedSession, changed } from "./workspace-state.ts";
 import { DomainError, requireThat } from "./errors.ts";
 import { topicKey, sharedWorkAvailable } from "./active-work-context.ts";
+import { withoutAssistantAddress } from "../shared/miriam-address.ts";
 import {
   workAt,
   workEvent,
@@ -15,9 +16,9 @@ import {
   openIssues,
 } from "./active-work-state.ts";
 
-export function startObjective(text: string) {
-  return /^(?:miriam[, ]+)?(?:analizza|prepara un brief|analyze)\s*[: ]\s*(.{3,})$/isu
-    .exec(text.trim())?.[1]
+export function startObjective(text: string, displayName = "Emme") {
+  return /^(?:analizza|prepara un brief|analyze)\s*[: ]\s*(.{3,})$/isu
+    .exec(withoutAssistantAddress(text.trim(), displayName))?.[1]
     ?.trim();
 }
 export async function recordWorkMessage(
@@ -37,7 +38,7 @@ export async function recordWorkMessage(
     "INSERT INTO message(id,workspace_id,sequence,author_id,content) VALUES($1,$2,$3,$4,$5)",
     [id, w, seq, actor, text],
   );
-  await changed(tx, w, "message.send");
+  await changed(tx, w, "message.send", false, false, { kind: "message", id });
   return id;
 }
 export async function createActiveWork(
@@ -94,7 +95,7 @@ export async function createActiveWork(
       source,
       actor
         ? "Incarico conversazionale esplicito"
-        : "Iniziativa Miriam su domanda aperta e materiale pertinente disponibile",
+        : "Iniziativa Emme su domanda aperta e materiale pertinente disponibile",
     ],
   );
   await workEvent(
@@ -102,7 +103,7 @@ export async function createActiveWork(
     w,
     id,
     "started",
-    `Miriam prepara un'analisi: ${objective}`,
+    `Emme prepara un'analisi: ${objective}`,
     actor,
     source,
   );

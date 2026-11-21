@@ -1,9 +1,15 @@
 import { randomUUID } from "node:crypto";
 import { bearer } from "better-auth/plugins";
 import { betterAuth } from "better-auth";
-import { APIError, createAuthMiddleware } from "better-auth/api";
+import {
+  APIError,
+  createAuthMiddleware,
+  getOAuthState,
+  getSessionFromCtx,
+} from "better-auth/api";
 import { pool } from "./db.ts";
 import { enqueueAccountMail } from "./account-delivery.ts";
+import { microsoftIdentityOptions } from "./microsoft-signin.ts";
 
 const baseURL = process.env.BETTER_AUTH_URL ?? "http://127.0.0.1:3000";
 const googleClientId = process.env.GOOGLE_AUTH_CLIENT_ID?.trim();
@@ -11,8 +17,13 @@ const googleClientSecret = process.env.GOOGLE_AUTH_CLIENT_SECRET?.trim();
 export const googleSignInAvailable = Boolean(
   googleClientId && googleClientSecret,
 );
-const googleScopes = ["openid", "email", "profile"];
-const discardedGoogleTokens = {
+const microsoftClientId = process.env.MICROSOFT_AUTH_CLIENT_ID?.trim();
+const microsoftClientSecret = process.env.MICROSOFT_AUTH_CLIENT_SECRET?.trim();
+export const microsoftSignInAvailable = Boolean(
+  microsoftClientId && microsoftClientSecret,
+);
+const identityScopes = ["openid", "email", "profile"];
+const discardedIdentityTokens = {
   accessToken: null,
   refreshToken: null,
   idToken: null,
@@ -32,42 +43,76 @@ function createAuth(native: boolean) {
     trustedOrigins: [baseURL],
     // Keep the same origin/CSRF protections in test and ordinary runtime.
     advanced: { disableOriginCheck: false, disableCSRFCheck: false },
-    socialProviders:
-      !native && googleSignInAvailable
-        ? {
-            google: {
-              clientId: googleClientId!,
-              clientSecret: googleClientSecret!,
-              disableDefaultScope: true,
-              scope: googleScopes,
-              accessType: "online",
-              includeGrantedScopes: false,
-              prompt: "select_account",
-              disableIdTokenSignIn: true,
-              requireEmailVerification: true,
-            },
-          }
-        : {},
+    socialProviders: native
+      ? {}
+      : {
+          ...(googleSignInAvailable
+            ? {
+                google: {
+                  clientId: googleClientId!,
+                  clientSecret: googleClientSecret!,
+                  disableDefaultScope: true,
+                  scope: identityScopes,
+                  accessType: "online",
+                  includeGrantedScopes: false,
+                  prompt: "select_account",
+                  disableIdTokenSignIn: true,
+                  requireEmailVerification: true,
+                },
+              }
+            : {}),
+          ...(microsoftSignInAvailable
+            ? {
+                microsoft: microsoftIdentityOptions(
+                  microsoftClientId!,
+                  microsoftClientSecret!,
+                ),
+              }
+            : {}),
+        },
     hooks: {
       before: createAuthMiddleware(async (context) => {
+        const provider = context.body?.provider;
         if (
           !["/sign-in/social", "/link-social"].includes(context.path) ||
-          context.body?.provider !== "google"
+          !["google", "microsoft"].includes(provider)
         )
           return;
-        // Authentication cannot become an alternate Google integration consent flow.
+        const linkActor = context.headers?.get("x-rimiam-link-account");
+        if (context.path === "/link-social" && linkActor) {
+          const session = await getSessionFromCtx(context);
+          if (
+            session?.user.id !== linkActor ||
+            !session.user.emailVerified ||
+            !(
+              await pool.query(
+                'SELECT 1 FROM "user" WHERE id=$1 AND eligible=true',
+                [linkActor],
+              )
+            ).rowCount
+          )
+            throw new APIError("FORBIDDEN", {
+              code: "LINK_ACCOUNT_MISMATCH",
+              message:
+                "The browser account must match the selected device account",
+            });
+        }
+        // Identity-only endpoints must never widen mailbox or calendar grants.
         const scopes = context.body.scopes;
         if (
           (scopes &&
             (!Array.isArray(scopes) ||
               scopes.some(
-                (scope: unknown) => !googleScopes.includes(String(scope)),
+                (scope: unknown) => !identityScopes.includes(String(scope)),
               ))) ||
           Object.keys(context.body.additionalParams ?? {}).length
         )
           throw new APIError("BAD_REQUEST", {
-            code: "GOOGLE_AUTH_SCOPE_REJECTED",
-            message: "Google sign-in only supports identity scopes",
+            code:
+              provider === "google"
+                ? "GOOGLE_AUTH_SCOPE_REJECTED"
+                : "MICROSOFT_AUTH_SCOPE_REJECTED",
+            message: "Sign-in only supports identity scopes",
           });
       }),
     },
@@ -86,14 +131,16 @@ function createAuth(native: boolean) {
       account: {
         create: {
           before: async (account) =>
-            account.providerId === "google"
-              ? { data: discardedGoogleTokens }
+            account.providerId === "google" ||
+            account.providerId === "microsoft"
+              ? { data: discardedIdentityTokens }
               : undefined,
         },
         update: {
           before: async (account) =>
-            account.providerId === "google"
-              ? { data: discardedGoogleTokens }
+            account.providerId === "google" ||
+            account.providerId === "microsoft"
+              ? { data: discardedIdentityTokens }
               : undefined,
         },
       },
@@ -134,10 +181,21 @@ function createAuth(native: boolean) {
     session: { cookieCache: { enabled: false } },
     user: {
       validateUserInfo: async ({ user, source }) => {
-        if (source.oauth?.providerId !== "google") return;
+        const provider = source.oauth?.providerId;
+        if (provider !== "google" && provider !== "microsoft") return;
+        if (provider === "microsoft") {
+          if (
+            source.action === "link-account" &&
+            (await getOAuthState())?.link?.userId !== user.id
+          )
+            return { error: "microsoft_link_required" };
+          if (user.emailVerified !== true)
+            return { error: "microsoft_link_required" };
+        }
         if (
-          user.emailVerified !== true ||
-          source.oauth.profile?.email_verified !== true
+          provider === "google" &&
+          (user.emailVerified !== true ||
+            source.oauth?.profile?.email_verified !== true)
         )
           return { error: "google_email_unverified" };
         if (source.action !== "create-user") {

@@ -233,7 +233,13 @@ it("preserves historical reference with attributed text/voice, composes focus, a
     page = await messages(t.actor, t.w, 0, after.messageSequence, 100);
   expect(
     page.messages.filter((m) => m.reference).map((m) => m.reference),
-  ).toEqual([original, original, original]);
+  ).toEqual([
+    { kind: "workstream", id: stream.id, version: 1 },
+    { kind: "workstream", id: stream.id, version: 2 },
+    original,
+    original,
+    original,
+  ]);
   expect(after.goals).toEqual(before.goals);
   expect(after.information).toEqual([]);
   expect(after.commitments).toEqual([]);
@@ -393,7 +399,7 @@ it("resolves the existing shared capability versions and supplies exact source p
   await done(t.w);
   const request = await t.cmd({
     type: "message.send",
-    content: "Analizza questa scaletta",
+    content: "@Emme Analizza questa scaletta",
     reference: { kind: "artifact", id: artifact.artifactId, version: 1 },
   });
   await processActiveWork(t.w, request.workId, {
@@ -536,7 +542,7 @@ it("fences Active Work reference metadata changes at the same Goal version and m
   });
   const request = await t.cmd({
     type: "message.send",
-    content: "Analizza questo Goal",
+    content: "@Emme Analizza questo Goal",
     reference: { kind: "goal", id: goal.goalId, version: 1 },
   });
   const row = async () =>

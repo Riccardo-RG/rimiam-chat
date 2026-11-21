@@ -6,7 +6,7 @@ Last editorial update: 2026-10-07 (current delivery references; approved scope r
 
 This document is the canonical place for product-discovery direction, GTM assumptions and commercialization-facing choices. It references approved product/architecture boundaries in ADRs and `MVP_SPEC_v0.1.md`; it does not independently approve new domain semantics or turn beta hypotheses into validated outcomes.
 
-Repository naming used here remains **MIRIAM** for paths and packages; user-facing product naming is **RIMIAM**.
+Repository naming used here remains **MIRIAM** for paths and packages; the product is **RIMIAM** and its conversational AI is **Emme**.
 
 Current delivery status: the local MVP foundation is closed, including voice/calling. This is not a claim of live-provider availability, release readiness or validated product-market fit. [STATUS](../development/STATUS.md) owns implementation/verification evidence; [DEPLOY_EXTERNAL_SERVICES](../development/DEPLOY_EXTERNAL_SERVICES.md) owns provisioning and live checks. Follow STATUS for the current sequence: the Web redesign is implemented, native presentation alignment is temporarily deferred during Web testing, and an additional Claude Design pass is not a prerequisite. GTM promises must distinguish implemented capability from activated and validated experience.
 
@@ -47,9 +47,9 @@ Expected loop: invite → converse → shared continuity → pause → return �
 
 ### 4) Recap behavior
 
-After meaningful interaction windows, Miriam can prepare a concise recap within the explicit participation preference and applicable source permissions. It may include summary, open questions, emerging sub-goals, and follow-up suggestions.
+After meaningful interaction windows, Emme can prepare a concise recap within the explicit participation preference and applicable source permissions. It may include summary, open questions, emerging sub-goals, and follow-up suggestions.
 
-- Separate “human said/decided” from “Miriam inferred/recommended”.
+- Separate “human said/decided” from “Emme inferred/recommended”.
 - Scale detail to the relevance and confidence of the conversation segment.
 - Human call recordings are an explicit exception to automatic recap: recording/transcription consent does not authorize analysis. A separate post-call request is required; neither recap cadence nor proactive mode can bypass it. See section 11 and ADR-0015.
 
@@ -65,9 +65,9 @@ Conversation is the home surface. Meaningful background/initiative visibility us
 
 ### 6) Participation and intervention preference
 
-RIMIAM should be visibly present but calm by default.
+Emme should be visibly present but calm by default.
 
-- default mode: intervene when explicitly called,
+- by default, answer useful questions addressed to Emme or the group, including without a mention. Leave personal, rhetorical and ambiguous exchanges to the participants. A space can explicitly select replies only when called,
 - optional more collaborative mode: explicit opt-in for proactive participation,
 - do not infer consent from silence.
 
@@ -78,14 +78,14 @@ RIMIAM should be visibly present but calm by default.
 New workspace activation should be lightweight and human-first.
 
 - brief, contextual welcome message,
-- explicit explanation of Miriam as shared continuity helper,
+- explicit explanation of Emme as shared continuity helper,
 - avoid governance-heavy onboarding before relevance.
 
 **Canonical mapping:** `ADR-0001`, `MVP §2.1/2.2`.
 
 ### 8) Home / first-run
 
-Home must teach the model: shared workspace, collaboration, Miriam as participant, and continuity mechanics.
+Home must teach the model: shared workspace, collaboration, Emme as participant, and continuity mechanics.
 
 - should be product-explanatory, not a dashboard listing.
 
@@ -104,18 +104,18 @@ Preferred for beta: private invitation link + email.
 
 Mobile is the primary client: native iOS and Android. Web also delivers core value without forcing native installation; it is not the product's primary architecture or a prerequisite for using the native clients.
 
-- Conversation voice, RIMIAM voice dialogue and human audio calls belong to the scope on all three clients, with common server semantics. They are not native-only upsells.
+- Conversation voice, voice dialogue with Emme and human audio calls belong to the scope on all three clients, with common server semantics. They are not native-only upsells.
 - Native integration supports device interaction and in-call lifecycle. Outbound push and incoming calls to a terminated app remain outside the current MVP; do not advertise them as implemented.
 
 **Canonical mapping:** [ADR-0010](../decisions/ADR-0010-client-nativi-backend-comune.md), [ADR-0015](../decisions/ADR-0015-voce-chiamate-consenso-registrazione.md).
 
 ### 11) Voice and human calls — approved scope
 
-The approved experience has three distinct modes: voice messages in Conversation; voice dialogue with RIMIAM using the same Workspace Context; and human-to-human Workspace audio calls. RIMIAM does not join or speak live in human calls.
+The approved experience has three distinct modes: voice messages in Conversation; voice dialogue with Emme using the same Workspace Context; and human-to-human Workspace audio calls. Emme does not join or speak live in human calls.
 
 Any authenticated call participant may request recording. Capture requires every captured participant's explicit personal consent covering recording, transcription, shared-source retention and ADR-0009 history visibility. New arrivals and withdrawal follow the approved capture safeguards; withdrawal does not automatically erase previously authorized material. The complete rule remains in [ADR-0015](../decisions/ADR-0015-voce-chiamate-consenso-registrazione.md).
 
-Product flow: human call → authorized recording/transcript → separately requested RIMIAM analysis → recap/candidates → existing governed adoption/action boundaries. Raw material remains distinct from operational Context, selected under Minimum Sufficient Context. A transcript or recap does not establish Accepted Information, responsibility, commitments or permission to act.
+Product flow: human call → authorized recording/transcript → separately requested analysis by Emme → recap/candidates → existing governed adoption/action boundaries. Raw material remains distinct from operational Context, selected under Minimum Sufficient Context. A transcript or recap does not establish Accepted Information, responsibility, commitments or permission to act.
 
 This adds no pricing, entitlement or retention/deletion policy. Live quality, consent UX and cross-device reliability remain validation work, not proven GTM claims. Implemented boundary and limits: [VOICE_CALLS](../development/VOICE_CALLS.md).
 
@@ -198,7 +198,7 @@ These remain strategic experiments.
 
 ## OPEN QUESTIONS (not yet foundational decisions)
 
-1. Future deletion/lifecycle policies beyond the approved retention and prospective withdrawal rule. Voice messages, RIMIAM voice dialogue and human audio calls themselves are already approved in ADR-0015; they are no longer open scope questions.
+1. Future deletion/lifecycle policies beyond the approved retention and prospective withdrawal rule. Voice messages, voice dialogue with Emme and human audio calls themselves are already approved in ADR-0015; they are no longer open scope questions.
 2. Whether a general session-level digest is auto-on or user controlled. This cannot alter the separately requested post-call analysis rule.
 3. How many configurable workspace/nested-context primitives are needed before beta risk of confusion rises.
 4. Concrete commercial pricing anchors and entitlements after first provider-behavior validation.
@@ -242,7 +242,7 @@ For each discovery line above, classify it for execution planning:
 
 ### Potentially conflicting/new foundational questions (for future explicit review only)
 
-- Different deletion/lifecycle semantics, video or RIMIAM live participation in human calls would require separate scope/review. The voice/calling scope approved in ADR-0015 needs no renewed foundational approval.
+- Different deletion/lifecycle semantics, video or Emme’s live participation in human calls would require separate scope/review. The voice/calling scope approved in ADR-0015 needs no renewed foundational approval.
 - Parent/sub-context semantics and selective inheritance rules remain unapproved. Minimal navigation links are supported only between currently accessible Workspaces; they do not copy Context, grant access or establish a parent/child domain relationship.
 - External production provider readiness in beta (AI, transcription, search, Calendar/Email, account/invitation delivery, calling/storage): activation and verification work in the deployment guide, not an unresolved domain decision.
 

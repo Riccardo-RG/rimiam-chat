@@ -2,12 +2,16 @@ import { z } from "zod";
 import { transaction, type Tx } from "./db.ts";
 import { member } from "./workspace-state.ts";
 import { activityEventSchema, activitySchema } from "../contracts/activity.ts";
+import {
+  workEventSummary,
+  workstreamDescription,
+} from "../shared/assistant-presentation.ts";
 import { DomainError } from "./errors.ts";
 
 // Read projection of real domain records. Change notifications/queues are never the ledger.
 const events = `
  SELECT 'goal:'||v.goal_id||':'||v.version AS event_id,v.created_at AS occurred_at,v.established_by AS actor,
- 'goal.version' AS kind,'Intento registrato' AS title,v.content AS summary,
+ 'goal.version' AS kind,CASE WHEN v.version=1 THEN 'Obiettivo impostato' ELSE 'Obiettivo aggiornato' END AS title,v.content AS summary,
  'Versione del Goal registrata; nessuna adesione o authority implicita.' AS qualification,
  'goal' AS ref_kind,v.goal_id AS ref_id,v.version AS ref_version FROM goal_version v WHERE v.workspace_id=$1
  UNION ALL SELECT 'information:'||v.information_id||':'||v.version,v.created_at,v.accepted_by,'information.accepted','Informazione accettata',v.content,
@@ -33,8 +37,13 @@ const events = `
  'Stato temporale interno condiviso; non prova un effetto sul calendario esterno.','scheduled_event',v.event_id,v.version FROM scheduled_event_version v WHERE v.workspace_id=$1
  UNION ALL SELECT 'source:'||s.id||':1',COALESCE(e.created_at,s.created_at),s.author_id,'source.shared',COALESCE(s.title,'Fonte condivisa'),left(s.content,240),
  s.qualification,'source',s.id,1 FROM workspace_source s LEFT JOIN document_extraction e ON e.source_id=s.id AND e.publication='published' WHERE s.workspace_id=$1 AND s.kind<>'message'
+ UNION ALL SELECT 'source:'||s.id||':1',coalesce(e.created_at,s.created_at),s.contributed_by,'source.shared',s.title,'File ritirato',
+ 'File ritirato da chi lo ha condiviso.','source',s.id,1 FROM external_source s
+ JOIN document_visibility v ON (v.workspace_id,v.source_id)=(s.workspace_id,s.id) AND v.withdrawn
+ LEFT JOIN document_processing p ON p.source_id=s.id LEFT JOIN document_extraction e ON e.source_id=s.id AND e.publication='published'
+ WHERE s.workspace_id=$1 AND (p.source_id IS NULL OR e.attempt_id IS NOT NULL)
 `;
-const projection = `SELECT e.*,COALESCE(u.name,CASE WHEN e.actor IS NULL AND e.kind ~ '^(work[.]|workstream[.])' THEN 'Miriam' ELSE 'Atto registrato' END) AS actor_name,
+const projection = `SELECT e.*,COALESCE(u.name,CASE WHEN e.actor IS NULL AND e.kind ~ '^(work[.]|workstream[.])' THEN 'Emme' ELSE 'Atto registrato' END) AS actor_name,
  to_char(e.occurred_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS cursor_time FROM (${events}) e LEFT JOIN "user" u ON u.id=e.actor`;
 interface EventRow {
   event_id: string;
@@ -58,7 +67,12 @@ function event(row: EventRow) {
     actorName: row.actor_name,
     kind: row.kind,
     title: row.title,
-    summary: row.summary.slice(0, 360),
+    summary: (row.kind.startsWith("work.")
+      ? workEventSummary(row.kind.slice(5), row.summary)
+      : row.kind === "workstream.version" && row.actor === null
+        ? workstreamDescription("miriam", row.summary)
+        : row.summary
+    ).slice(0, 360),
     qualification: row.qualification,
     reference: {
       kind: row.ref_kind,

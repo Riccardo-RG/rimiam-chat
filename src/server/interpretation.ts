@@ -1,10 +1,23 @@
+import {
+  bindAssistantTurn,
+  conversationGuidance,
+  conversationScope,
+  turnSettingsCurrent,
+} from "./assistant-settings.ts";
+import { resolveAssistantConnection } from "./assistant-connections.ts";
 import { randomUUID } from "node:crypto";
 import { handoffSuggestionSchema } from "../contracts/conversation-handoff.ts";
 import { publishHandoffs } from "./conversation-handoffs.ts";
-import { collaborationMode as currentCollaborationMode } from "./participation.ts";
-import { directlyAddressesMiriam } from "../shared/miriam-address.ts";
+import {
+  collaborationMode,
+  legacyAddressTargetsMember,
+} from "./participation.ts";
+import {
+  isSourceQuestion,
+  isAssistantAddress,
+} from "../shared/miriam-address.ts";
 import { z } from "zod";
-import { pool, transaction } from "./db.ts";
+import { pool, transaction, type Tx } from "./db.ts";
 import { changed, lockWorkspace, enqueue } from "./workspace-state.ts";
 import { DomainError, requireThat } from "./errors.ts";
 import { calendarContext } from "./calendar-state.ts";
@@ -12,6 +25,7 @@ import { workContext } from "./tasks-context.ts";
 import { miriamSystemPrompt } from "./miriam-prompt.ts";
 import { productAssistanceContext } from "./product-assistance.ts";
 import { productCapabilities } from "./product-capabilities.ts";
+import { requireAvailableDocuments } from "./sources.ts";
 import { sharedWorkAvailable } from "./active-work-context.ts";
 import { organizeSources } from "./attention.ts";
 import {
@@ -113,11 +127,13 @@ export interface InterpretationContext {
   workstreams?: unknown[];
   workstreamFocus?: WorkstreamFocusContext | null;
   objectReference?: ReferenceDetail | null;
+  replyOnlyToSource?: boolean;
   productCapabilities?: Awaited<ReturnType<typeof productCapabilities>>;
   productAssistance?: Awaited<ReturnType<typeof productAssistanceContext>>;
   activeWork?: unknown[];
   artifacts?: unknown[];
   collaborationMode?: string;
+  addressee?: "other_member";
   services?: {
     research: boolean;
     externalActions: "explicit_capability_approval_required";
@@ -129,8 +145,10 @@ export interface Interpreter {
     usageScope?: { workspace: string; operation: "conversation" },
   ): Promise<z.infer<typeof outputSchema>>;
 }
-export function configuredInterpreter(): Interpreter {
-  const structuredModel = configuredStructuredModel();
+export function configuredInterpreter(
+  structuredModel = configuredStructuredModel(),
+  system = miriamSystemPrompt,
+): Interpreter {
   if (!structuredModel) {
     return {
       async interpret() {
@@ -141,7 +159,7 @@ export function configuredInterpreter(): Interpreter {
   return {
     async interpret(context, usageScope) {
       return structuredModel.generateJSON({
-        system: miriamSystemPrompt,
+        system,
         prompt: JSON.stringify(context),
         schema: outputSchema,
         maxOutputTokens: 4500,
@@ -181,7 +199,9 @@ export async function claimInterpretation(interpretationId: string) {
       return null;
     }
     const r = await tx.query(
-      "UPDATE interpretation SET status='running',generation=generation+1,context_revision=$2,access_revision=$3,lease_until=now()+$4*interval '1 second',error_code=NULL WHERE id=$1 AND (status IN ('queued','failed') OR (status='running' AND lease_until<now())) RETURNING *",
+      `UPDATE interpretation SET status='running',generation=generation+1,context_revision=$2,access_revision=$3,
+        lease_until=now()+$4*interval '1 second',error_code=NULL,failed_explicit_request=NULL WHERE id=$1 AND
+        (status='queued' OR (status='failed' AND failed_explicit_request IS NOT TRUE) OR (status='running' AND lease_until<now())) RETURNING *`,
       [interpretationId, ws.context_revision, ws.access_revision, leaseSeconds],
     );
     if (!r.rowCount) return null;
@@ -192,6 +212,14 @@ export async function claimInterpretation(interpretationId: string) {
         [w, attempt.source_id],
       )
     ).rows[0];
+    if (!trigger) {
+      await tx.query(
+        "UPDATE interpretation SET status='stale',lease_until=NULL,error_code='SOURCE_UNAVAILABLE' WHERE id=$1",
+        [interpretationId],
+      );
+      await changed(tx, w, "interpretation.stale");
+      return null;
+    }
     const voice = (
       await tx.query(
         "SELECT mode FROM voice_message WHERE workspace_id=$1 AND source_id=$2",
@@ -201,8 +229,23 @@ export async function claimInterpretation(interpretationId: string) {
     if (voice?.mode === "miriam")
       trigger.qualification =
         (trigger.qualification ?? "") +
-        " L'autore ha esplicitamente indirizzato questo messaggio vocale a Miriam: rispondi come a una domanda diretta, senza inventare autorizzazioni.";
+        " The speaker explicitly addressed this voice message to Emme. Treat it as a direct request to respond; it grants no authority.";
     const objectReference = await messageReferenceContext(tx, w, trigger.id);
+    const hasQuote =
+      objectReference?.reference.kind === "source" &&
+      Boolean(
+        (
+          await tx.query(
+            "SELECT 1 FROM conversation_quote WHERE workspace_id=$1 AND message_id=$2",
+            [w, trigger.id],
+          )
+        ).rowCount,
+      );
+    const replyOnlyToSource = isSourceQuestion(
+      trigger.content,
+      objectReference?.reference.kind,
+      hasQuote,
+    );
     const goal = await goalContext(tx, w);
     const information = (
       await tx.query(
@@ -267,11 +310,11 @@ export async function claimInterpretation(interpretationId: string) {
     ];
     const conversation = (
       await tx.query(
-        `SELECT COALESCE(voice.source_id,m.id) AS id,COALESCE(extracted.content,m.content) AS content,m.actor_kind,COALESCE(u.name,'Miriam') AS author_name,m.sequence
+        `SELECT COALESCE(voice.source_id,m.id) AS id,COALESCE(extracted.content,m.content) AS content,m.actor_kind,COALESCE(u.name,m.assistant_display_name,'Emme') AS author_name,m.sequence
        FROM message m LEFT JOIN "user" u ON u.id=m.author_id
        LEFT JOIN voice_message voice ON voice.message_id=m.id
        LEFT JOIN document_extraction extracted ON extracted.source_id=voice.source_id AND extracted.publication='published' 
-       WHERE m.workspace_id=$1 AND (m.created_at<=(SELECT created_at FROM workspace_source WHERE workspace_id=$1 AND id=$2)
+       WHERE m.workspace_id=$1 AND m.purpose NOT IN ('workstream_event','goal_event') AND (m.created_at<=(SELECT created_at FROM workspace_source WHERE workspace_id=$1 AND id=$2)
          OR (m.actor_kind='miriam' AND EXISTS(SELECT 1 FROM workspace_source replied JOIN workspace_source trigger ON trigger.workspace_id=replied.workspace_id AND trigger.id=$2 WHERE replied.workspace_id=m.workspace_id AND replied.id=m.reply_to_source_id AND replied.created_at<=trigger.created_at)))
        ORDER BY m.sequence DESC LIMIT 16`,
         [w, trigger.id],
@@ -328,27 +371,70 @@ export async function claimInterpretation(interpretationId: string) {
         trigger.id,
         focused.map((s) => s.id),
       );
-    const collaborationMode = await currentCollaborationMode(tx, w);
+    const routing = await bindAssistantTurn(
+      tx,
+      conversationScope(w, ws.personal_owner_id),
+      interpretationId,
+      attempt.routing_epoch,
+    );
+    const mode = await collaborationMode(tx, w);
+    const humanTurn = trigger.kind === "message" || Boolean(voice);
+    const assistance = await productAssistanceContext(tx, w, trigger.id);
+    const forMember =
+      humanTurn &&
+      voice?.mode !== "miriam" &&
+      !assistance &&
+      (await legacyAddressTargetsMember(
+        tx,
+        w,
+        trigger.author_id,
+        trigger.content,
+        trigger.id,
+        routing.binding.display_name,
+      ));
+    const selectedSources = [
+      ...new Map(
+        [...allSources, ...neighbours, ...referenceSources, ...focused].map(
+          (s) => [s.id, s],
+        ),
+      ).values(),
+    ];
+    const visibilityVersions = new Map<string, number>();
+    await requireAvailableDocuments(
+      tx,
+      w,
+      [trigger, ...selectedSources]
+        .filter((s) => s.kind === "document")
+        .map((s) => s.id),
+      visibilityVersions,
+    );
     return {
       attempt,
+      routing,
+      visibilityVersions,
+      personal: Boolean(ws.personal_owner_id),
+      humanTurn,
+      directlyAddressed:
+        voice?.mode === "miriam" ||
+        (humanTurn &&
+          !forMember &&
+          isAssistantAddress(trigger.content, routing.binding.display_name)),
       focusDependencies: workstreamFocus,
       referenceDependency: referenceFingerprint(objectReference),
       context: {
         trigger,
         objectReference,
+        ...(replyOnlyToSource ? { replyOnlyToSource: true } : {}),
         productCapabilities: await productCapabilities(
           tx,
           w,
           trigger.kind === "message" ? trigger.author_id : null,
+          Boolean(ws.personal_owner_id),
+          routing.setting,
         ),
-        productAssistance: await productAssistanceContext(tx, w, trigger.id),
-        sources: [
-          ...new Map(
-            [...allSources, ...neighbours, ...referenceSources, ...focused].map(
-              (s) => [s.id, s],
-            ),
-          ).values(),
-        ],
+        productAssistance: assistance,
+        ...(forMember ? { addressee: "other_member" as const } : {}),
+        sources: selectedSources,
         goal,
         information,
         commitments,
@@ -371,9 +457,10 @@ export async function claimInterpretation(interpretationId: string) {
           : null,
         activeWork,
         artifacts,
-        collaborationMode,
+        collaborationMode: mode,
         services: {
           research: Boolean(
+            !ws.personal_owner_id &&
             process.env.RESEARCH_PROVIDER === "brave" &&
             process.env.BRAVE_SEARCH_API_KEY,
           ),
@@ -405,9 +492,12 @@ export async function publishInterpretation(
   output: unknown,
 ) {
   const validated = parseStructuredOutput(outputSchema, output);
-  // Explicit product help is response-only. Untrusted extraction/routing must not turn
-  // an explanation of a form into Workspace state, proposals or autonomous work.
-  const parsed = claim.context.productAssistance
+  // Asking about a form or another person's message authorizes a reply only.
+  const responseOnly =
+    claim.personal ||
+    Boolean(claim.context.productAssistance) ||
+    Boolean(claim.context.replyOnlyToSource);
+  const parsed = responseOnly
     ? {
         ...validated,
         proposals: [],
@@ -419,23 +509,8 @@ export async function publishInterpretation(
     : validated;
   requireThat(parsed.needsMore.length === 0, "MORE_CONTEXT_REQUIRED");
   const sources = new Set(claim.context.sources.map((s) => s.id));
-  if (parsed.workControl) {
-    const control = parsed.workControl;
-    requireThat(
-      claim.context.activeWork.some(
-        (a) =>
-          a.id === control.workId &&
-          a.revision === control.expectedRevision &&
-          a.current_contract,
-      ),
-      "WORK_CONTROL_NOT_PROVIDED",
-    );
-    if (control.operation === "format")
-      requireThat(
-        ["elenco", "sintesi", "dettagli"].includes(control.text.toLowerCase()),
-        "WORK_CONTROL_FORMAT_INVALID",
-      );
-  }
+  if (parsed.handoffs?.length)
+    requireThat(claim.humanTurn, "HANDOFF_HUMAN_REQUEST_REQUIRED");
   for (const group of parsed.organization ?? [])
     requireThat(
       group.sourceIds.every((id) => sources.has(id)),
@@ -474,6 +549,7 @@ export async function publishInterpretation(
     if (row.generation !== attempt.generation || row.status !== "running")
       return false;
     if (
+      !(await turnSettingsCurrent(tx, claim.routing)) ||
       ws.context_revision !== attempt.context_revision ||
       ws.access_revision !== attempt.access_revision ||
       referenceFingerprint(
@@ -502,8 +578,33 @@ export async function publishInterpretation(
       "WORK_CAPABILITY_UNAVAILABLE",
       403,
     );
-    if (parsed.workControl) {
+    // Re-read under the publication lock: a group can request silence during inference.
+    const preference = await collaborationMode(tx, ws.id);
+    const forMember = claim.context.addressee === "other_member";
+    const directOrOptedIn =
+      !forMember &&
+      (Boolean(claim.context.productAssistance) ||
+        claim.directlyAddressed ||
+        preference === "collaborative" ||
+        preference === "proactive");
+    if (parsed.workControl && directOrOptedIn) {
       const control = parsed.workControl;
+      requireThat(
+        claim.context.activeWork.some(
+          (a) =>
+            a.id === control.workId &&
+            a.revision === control.expectedRevision &&
+            a.current_contract,
+        ),
+        "WORK_CONTROL_NOT_PROVIDED",
+      );
+      if (control.operation === "format")
+        requireThat(
+          ["elenco", "sintesi", "dettagli"].includes(
+            control.text.toLowerCase(),
+          ),
+          "WORK_CONTROL_FORMAT_INVALID",
+        );
       const work = (
         await tx.query(
           "SELECT revision FROM active_work WHERE workspace_id=$1 AND id=$2",
@@ -562,19 +663,7 @@ export async function publishInterpretation(
           [ws.id, candidateId, sourceId],
         );
     }
-    const explicitVoice =
-      (
-        await tx.query(
-          "SELECT 1 FROM voice_message WHERE workspace_id=$1 AND source_id=$2 AND mode='miriam'",
-          [ws.id, claim.context.trigger.id],
-        )
-      ).rowCount === 1;
-    const mayIntervene =
-      Boolean(claim.context.productAssistance) ||
-      explicitVoice ||
-      directlyAddressesMiriam(claim.context.trigger.content) ||
-      (await currentCollaborationMode(tx, ws.id)) !== "discreet";
-    if (parsed.response?.mode === "respond" && mayIntervene) {
+    if (parsed.response?.mode === "respond" && directOrOptedIn) {
       await publishHandoffs(
         tx,
         ws.id,
@@ -592,13 +681,14 @@ export async function publishInterpretation(
         )
       ).rows[0].next_message;
       await tx.query(
-        "INSERT INTO message(id,workspace_id,sequence,author_id,actor_kind,content,reply_to_source_id) VALUES($1,$2,$3,NULL,'miriam',$4,$5)",
+        "INSERT INTO message(id,workspace_id,sequence,author_id,actor_kind,content,reply_to_source_id,assistant_display_name) VALUES($1,$2,$3,NULL,'miriam',$4,$5,$6)",
         [
           messageId,
           ws.id,
           sequence,
           parsed.response.text.trim(),
           attempt.source_id,
+          claim.routing.setting.displayName,
         ],
       );
       await tx.query(
@@ -611,7 +701,10 @@ export async function publishInterpretation(
           [...new Set(parsed.response.sourceIds)],
         ],
       );
-      await changed(tx, ws.id, "miriam.responded");
+      await changed(tx, ws.id, "miriam.responded", false, false, {
+        kind: "message",
+        id: messageId,
+      });
     }
     await organizeSources(
       tx,
@@ -619,8 +712,8 @@ export async function publishInterpretation(
       attempt.source_id,
       parsed.organization ?? [],
     );
-    if (parsed.workIntent && mayIntervene) {
-      // Reversible shared analysis initiative belongs to Miriam, not borrowed human permissions.
+    if (parsed.workIntent && directOrOptedIn) {
+      // Reversible shared analysis initiative belongs to Emme, not borrowed human permissions.
       // A bounded attention guard skips optional initiative without losing the actual response.
       const count = (
         await tx.query(
@@ -654,15 +747,37 @@ export async function publishInterpretation(
 }
 export async function processInterpretation(
   interpretationId: string,
-  interpreter: Interpreter = configuredInterpreter(),
+  interpreter?: Interpreter,
 ) {
   const claim = await claimInterpretation(interpretationId);
   if (!claim) return;
   try {
+    const connection = resolveAssistantConnection(
+      claim.routing.setting.connectionId,
+    );
+    if (!interpreter) requireThat(connection, "AI_CONFIGURATION_REQUIRED", 503);
+    const runner =
+      interpreter ??
+      configuredInterpreter(
+        connection,
+        conversationGuidance(claim.routing.setting),
+      );
     for (let round = 0; round < contextRounds; round++) {
       // Validate current shared capability immediately before each external disclosure.
       await transaction(async (tx) => {
         const ws = await lockWorkspace(tx, claim.attempt.workspace_id);
+        await requireAvailableDocuments(
+          tx,
+          ws.id,
+          [claim.context.trigger, ...claim.context.sources]
+            .filter((s) => s.kind === "document")
+            .map((s) => s.id),
+          claim.visibilityVersions,
+        );
+        requireThat(
+          await turnSettingsCurrent(tx, claim.routing),
+          "ASSISTANT_CONNECTION_CHANGED",
+        );
         const currentAttempt = (
           await tx.query(
             "SELECT generation,status,lease_until FROM interpretation WHERE id=$1",
@@ -712,21 +827,34 @@ export async function processInterpretation(
       });
       const output = parseStructuredOutput(
         outputSchema,
-        await interpreter.interpret(claim.context, {
+        await runner.interpret(claim.context, {
           workspace: claim.attempt.workspace_id,
           operation: "conversation",
         }),
       );
-      await pool.query(
-        "INSERT INTO interpretation_result(workspace_id,interpretation_id,generation,round,output) VALUES($1,$2,$3,$4,$5)",
-        [
-          claim.attempt.workspace_id,
-          claim.attempt.id,
-          claim.attempt.generation,
-          round + 1,
-          JSON.stringify(output),
-        ],
-      );
+      const retainResult = (db: Pick<Tx, "query">) =>
+        db.query(
+          "INSERT INTO interpretation_result(workspace_id,interpretation_id,generation,round,output) VALUES($1,$2,$3,$4,$5)",
+          [
+            claim.attempt.workspace_id,
+            claim.attempt.id,
+            claim.attempt.generation,
+            round + 1,
+            JSON.stringify(output),
+          ],
+        );
+      if (claim.visibilityVersions.size) {
+        await transaction(async (tx) => {
+          await lockWorkspace(tx, claim.attempt.workspace_id);
+          await requireAvailableDocuments(
+            tx,
+            claim.attempt.workspace_id,
+            [...claim.visibilityVersions.keys()],
+            claim.visibilityVersions,
+          );
+          await retainResult(tx);
+        });
+      } else await retainResult(pool);
       if (!output.needsMore.length) {
         await publishInterpretation(claim, output);
         return;
@@ -820,8 +948,13 @@ export async function processInterpretation(
     await transaction(async (tx) => {
       await lockWorkspace(tx, claim.attempt.workspace_id);
       const failed = await tx.query(
-        "UPDATE interpretation SET status='failed',error_code=$3,lease_until=NULL WHERE id=$1 AND generation=$2 AND status='running'",
-        [interpretationId, claim.attempt.generation, code],
+        "UPDATE interpretation SET status='failed',error_code=$3,failed_explicit_request=$4,lease_until=NULL WHERE id=$1 AND generation=$2 AND status='running'",
+        [
+          interpretationId,
+          claim.attempt.generation,
+          code,
+          claim.directlyAddressed || Boolean(claim.context.productAssistance),
+        ],
       );
       if (failed.rowCount)
         await changed(tx, claim.attempt.workspace_id, "interpretation.failed");

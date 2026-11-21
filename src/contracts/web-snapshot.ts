@@ -1,3 +1,4 @@
+import type { TaskOffer, ReminderLineData } from "./agenda.ts";
 import type { ConversationHandoff } from "./conversation-handoff.ts";
 import type { ConversationReference } from "./activity.ts";
 import type { ArtifactBlock } from "./artifact-document.ts";
@@ -49,6 +50,7 @@ export interface ArtifactSnapshot {
     review_id: string;
     person_id: string;
     access_revision: number;
+    photo_revision?: number;
     created_at: string;
   }[];
   artifactAdoptions: {
@@ -108,10 +110,20 @@ export interface QuestionVersion {
   created_at: string;
 }
 export interface Snapshot extends ArtifactSnapshot {
+  reading?: import("./conversation-reading.ts").PersonalReading;
+  joins?: { id: string; created_at: string; name: string }[];
   questions: (QuestionVersion & { id: string })[];
   questionHistory: QuestionVersion[];
+  libraryDestinations?: { id: string; name: string }[];
   sources: {
     id: string;
+    shared_message_id?: string | null;
+    origin_workspace_id?: string | null;
+    attachment_position?: number | null;
+    withdrawn?: boolean;
+    visibility_version?: number;
+    can_manage_visibility?: boolean;
+    favorite?: boolean;
     kind: "document" | "web";
     title: string;
     content: string;
@@ -163,9 +175,14 @@ export interface Snapshot extends ArtifactSnapshot {
   workspace: {
     id: string;
     name: string;
+    personal: boolean;
+    personal_archive_id?: string | null;
     revision: number;
     context_revision: number;
     access_revision: number;
+    photo_revision?: number;
+    assistant_settings_revision?: number;
+    has_linked_calendar?: boolean;
   };
   members: {
     user_id: string;
@@ -202,9 +219,20 @@ export interface Snapshot extends ArtifactSnapshot {
     content: string;
     author_id: string | null;
     actor_kind: "human" | "miriam";
-    purpose: "conversation" | "workspace_introduction" | "workspace_welcome";
+    purpose:
+      | "conversation"
+      | "workspace_introduction"
+      | "workspace_welcome"
+      | "workstream_event"
+      | "goal_event"
+      | "followup_reminder"
+      | "task_offer";
+    taskOffer?: TaskOffer | null;
+    reminder?: ReminderLineData | null;
     citation_source_ids: string[];
     reply_to_source_id: string | null;
+    quoteMessageId?: string | null;
+    consultationReferences?: import("./private-consultation.ts").ConsultationRef[];
     workstream_focus: { workstreamId: string; version: number } | null;
     reference: ConversationReference | null;
     assistanceContext?: ProductAssistance | null;
@@ -249,8 +277,15 @@ export interface Snapshot extends ArtifactSnapshot {
     person_id: string;
     context_revision: number;
     access_revision: number;
+    photo_revision?: number;
   }[];
   interpretations: {
+    explicitRequest?: boolean | null;
+    requestDisplayName?: string | null;
+    otherMemberTarget?: boolean | null;
+    hasPublishedReply?: boolean | null;
+    /** Human voice note explicitly addressed to the assistant; its transcript has a separate source ID. */
+    requestMessageId?: string | null;
     id: string;
     source_id: string;
     status: string;
@@ -260,6 +295,7 @@ export interface Snapshot extends ArtifactSnapshot {
   invitations: {
     id: string;
     recipient_email: string;
+    recipient_name?: string | null;
     revoked_at: string | null;
     accepted_at: string | null;
     expires_at: string;

@@ -69,6 +69,7 @@ export const artifactDocumentCommands = [
   z
     .object({
       type: z.literal("artifact.from_contribution"),
+      saveToLibrary: z.literal(true).optional(),
       conversationOrigin: conversationOriginSchema.optional(),
       contributionId: z.uuid(),
       title: z.string().trim().min(1).max(160),

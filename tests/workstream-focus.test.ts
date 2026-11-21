@@ -609,7 +609,7 @@ it("carries the initial focused request into durable Specialist inputs without a
     randomUUID(),
     {
       type: "message.send",
-      content: "Analizza questo filone",
+      content: "@Emme Analizza questo filone",
       workstreamFocus: t.focus,
     },
     session,

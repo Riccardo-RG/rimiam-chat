@@ -187,7 +187,7 @@ export const emailStatusSchema = z.enum([
   "OUTCOME_UNKNOWN",
   "REJECTED",
 ]);
-export const emailReceiptSchema = z
+const identifiedReceipt = z
   .object({
     operationKey: ref,
     envelopeHash: z.string().regex(/^[a-f0-9]{64}$/),
@@ -197,6 +197,16 @@ export const emailReceiptSchema = z
     evidence: z.literal("provider_accepted"),
   })
   .strict();
+// Some transports acknowledge the exact submission without assigning a message ID.
+export const emailReceiptSchema = z.union([
+  identifiedReceipt,
+  identifiedReceipt.extend({
+    providerMessageId: z.null(),
+    providerThreadId: z.null(),
+    submissionStatus: z.literal("accepted_for_processing"),
+    providerRequestId: ref.nullable(),
+  }),
+]);
 export const emailViewSchema = z.object({
   workspaceId: id,
   revision,
@@ -208,6 +218,7 @@ export const emailViewSchema = z.object({
       id,
       version,
       sender: address,
+      provider: z.string().optional(),
       label: z.string(),
       canRead: z.boolean(),
       canSend: z.boolean(),

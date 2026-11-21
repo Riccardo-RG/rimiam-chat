@@ -1,0 +1,25 @@
+.prompt {
+  position: absolute;
+  inset-block-start: calc(100% + 0.5rem);
+  inset-inline-end: 0;
+  z-index: 6;
+  width: min(21rem, calc(100vw - 2rem));
+  padding: 1rem;
+  border: 1px solid var(--control-line);
+  border-radius: 12px;
+  background: var(--white);
+  color: var(--ink);
+  box-shadow: var(--shadow-panel);
+  font-size: 0.94rem;
+  line-height: 1.4;
+  text-align: start;
+}
+.prompt p {
+  margin: 0.4rem 0 0.75rem;
+  color: var(--muted);
+}
+.prompt div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}

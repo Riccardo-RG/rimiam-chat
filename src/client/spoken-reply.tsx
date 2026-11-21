@@ -1,8 +1,12 @@
 "use client";
+import { preferredVoiceLanguage } from "../shared/i18n/locale";
+import { useUiLanguage } from "./ui-language";
+
 import { useEffect, useState } from "react";
 import { SpeechPlayback } from "./speech-playback";
 let playback: SpeechPlayback | undefined;
 export function SpokenReply({ id, text }: { id: string; text: string }) {
+  const { t: uiText, locale } = useUiLanguage();
   const [speaking, setSpeaking] = useState(false),
     [error, setError] = useState("");
   useEffect(() => {
@@ -27,10 +31,14 @@ export function SpokenReply({ id, text }: { id: string; text: string }) {
         type="button"
         className="quiet"
         aria-label={
-          speaking ? "Ferma lettura" : "Ascolta con la voce del dispositivo"
+          speaking
+            ? uiText("Ferma lettura")
+            : uiText("Ascolta con la voce del dispositivo")
         }
         title={
-          speaking ? "Ferma lettura" : "Ascolta con la voce del dispositivo"
+          speaking
+            ? uiText("Ferma lettura")
+            : uiText("Ascolta con la voce del dispositivo")
         }
         onClick={() => {
           if (speaking) {
@@ -40,18 +48,25 @@ export function SpokenReply({ id, text }: { id: string; text: string }) {
           }
           setError("");
           if (!("speechSynthesis" in window)) {
-            setError("Lettura vocale non disponibile in questo browser.");
+            setError(
+              uiText("Lettura vocale non disponibile in questo browser."),
+            );
             return;
           }
           playback ??= new SpeechPlayback(window.speechSynthesis);
           setSpeaking(true);
-          playback.speak(id, text, navigator.language || "it-IT", (message) => {
-            setSpeaking(false);
-            setError(message ?? "");
-          });
+          playback.speak(
+            id,
+            text,
+            preferredVoiceLanguage(locale, navigator.language),
+            (message) => {
+              setSpeaking(false);
+              setError(message ? uiText(message) : "");
+            },
+          );
         }}
       >
-        {speaking ? "Ferma lettura" : "Ascolta"}
+        {speaking ? uiText("Ferma lettura") : uiText("Ascolta")}
       </button>
       {error && <small role="status">{error}</small>}
     </>

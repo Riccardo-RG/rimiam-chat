@@ -1,0 +1,574 @@
+.access {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(360px, 0.95fr);
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+.cover {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 5rem;
+  overflow: hidden;
+  padding: clamp(32px, 5.5vw, 94px);
+  background: #20211e;
+  color: #fffaf3;
+}
+.cover::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  top: -5%;
+  inset-inline-end: -12%;
+  height: 70%;
+  aspect-ratio: 1;
+  background: #a7bbdd;
+  opacity: 0.08;
+  mask: url("/brand/rimiam-mark.svg") center / contain no-repeat;
+  pointer-events: none;
+}
+.signature {
+  width: fit-content;
+  min-height: 44px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+}
+.signature:focus-visible {
+  outline-color: #ffad93;
+}
+.signature > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  font: 650 2.1rem/1 var(--editorial);
+  letter-spacing: -0.075em;
+}
+.signature img {
+  width: 2.2rem;
+  height: 2.2rem;
+}
+.coverText {
+  padding-bottom: clamp(10px, 6vh, 65px);
+}
+.coverText::before {
+  content: "";
+  display: block;
+  width: 3.2rem;
+  height: 3px;
+  margin-bottom: 1.75rem;
+  background: #f49c80;
+}
+.coverText h1 {
+  color: inherit;
+  max-width: 10ch;
+  margin: 0;
+  font: 400 clamp(3.8rem, 6.6vw, 6.6rem)/0.99 var(--editorial);
+  letter-spacing: -0.055em;
+  text-wrap: balance;
+}
+.coverText p {
+  max-width: 38ch;
+  margin: 1.6rem 0 0;
+  color: #d3dbea;
+  font-size: clamp(1rem, 1.25vw, 1.2rem);
+  line-height: 1.65;
+  text-wrap: pretty;
+}
+.accessPane {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+  padding: 6rem clamp(24px, 6.5vw, 112px);
+  background: var(--paper);
+}
+.accessPane > div:not(.appearance),
+.accessPane > p {
+  width: min(100%, 28rem);
+  margin-inline: auto;
+}
+.appearance {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.45rem 1rem;
+  max-width: 100%;
+  position: absolute;
+  top: 1.25rem;
+  right: clamp(24px, 3vw, 60px);
+}
+.appearance > label {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin: 0;
+}
+.appearance select {
+  width: auto;
+  min-height: 40px;
+  margin: 0;
+}
+.homeShell:global(.workspace) > header {
+  align-items: center;
+  margin-bottom: 0;
+}
+.homeShell:global(.workspace) > header h1 {
+  font: 400 clamp(2.45rem, 4.6vw, 4.4rem)/1.06 var(--editorial);
+  letter-spacing: -0.045em;
+}
+.directory {
+  max-width: 64rem;
+  margin: 0.75rem 0 1.4rem;
+}
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-block-start: 1px solid var(--line);
+}
+.list > li {
+  margin: 0;
+  border-block-end: 1px solid var(--line);
+}
+.list > .withProfile {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  align-items: center;
+}
+.directoryPhoto {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+}
+.list .space {
+  display: flex;
+  align-items: center;
+  column-gap: clamp(14px, 2.5vw, 30px);
+  width: 100%;
+  min-height: 74px;
+  padding: 15px clamp(5px, 1.2vw, 16px);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
+  text-align: start;
+}
+.space span {
+  font: 400 clamp(1.35rem, 2.3vw, 2rem)/1.25 var(--editorial);
+  overflow-wrap: anywhere;
+}
+.space > span:has(> strong) {
+  flex: 1;
+  min-width: 0;
+}
+.space > :is(svg, small, :global(.directory-thumb), :global(.direct-avatar)) {
+  flex: none;
+}
+.space svg {
+  color: var(--secondary);
+}
+.space > svg:last-child {
+  color: var(--accent);
+}
+.list .space:focus-visible,
+.list .space:hover {
+  background: var(--white);
+  color: var(--accent);
+  filter: none;
+}
+.empty {
+  margin: 0 0 1.5rem;
+  max-width: 47ch;
+  color: var(--muted);
+}
+.create {
+  margin-top: 1.5rem;
+}
+.newSpace {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  min-height: 44px;
+}
+.newSpace svg {
+  width: 1rem;
+  height: 1rem;
+  flex: none;
+}
+.create > form {
+  margin-top: 12px;
+  max-width: 36rem;
+}
+.create fieldset {
+  padding: 0;
+  min-width: 0;
+  margin: 0;
+  border: 0;
+}
+.create input,
+.create textarea {
+  border-radius: 5px;
+}
+.create :global(.hint) {
+  color: var(--muted);
+}
+.invite {
+  margin: 1.2rem 0;
+  padding-block: 1rem;
+  border-block: 1px solid var(--line);
+  min-width: 0;
+}
+.invite > label:first-child {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+.invite > label:first-child svg {
+  color: var(--accent);
+}
+.invite > label:first-child span {
+  color: var(--muted);
+  font-weight: 400;
+}
+.invite input[type="text"] {
+  margin-bottom: 0.35rem;
+}
+.invite p {
+  margin: 0.35rem 0 0;
+}
+.suggestions {
+  margin-block: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+}
+.suggestions .matches,
+.recipients {
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+.matches {
+  max-height: 15rem;
+  overflow-y: auto;
+}
+.matches button {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 44px;
+  padding: 0.5rem 0.25rem;
+  background: transparent;
+  color: var(--ink);
+  text-align: start;
+  overflow-wrap: anywhere;
+}
+.matches button:hover,
+.matches button:focus-visible {
+  background: var(--secondary-surface);
+}
+.matches button:focus-visible {
+  outline-offset: -3px;
+}
+.matches svg,
+.recipients svg {
+  flex-shrink: 0;
+  width: 1rem;
+}
+.recipients {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-block: 0.75rem;
+}
+.recipients li {
+  max-width: 100%;
+}
+.recipients button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.7rem;
+  min-height: 44px;
+  max-width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--secondary);
+  background: var(--secondary-surface);
+  overflow-wrap: anywhere;
+}
+.invite label:global(.check) {
+  align-items: baseline;
+  margin: 0.75rem 0 0;
+}
+@media (max-width: 780px) {
+  .access {
+    display: block;
+  }
+  .cover {
+    padding: 1rem clamp(20px, 6vw, 42px) 1.25rem;
+    gap: 0.85rem;
+  }
+  .coverText {
+    padding-bottom: 0;
+  }
+  .coverText::before {
+    display: none;
+  }
+  .coverText h1 {
+    max-width: none;
+    font-size: clamp(2rem, 6vw, 3rem);
+    line-height: 1.08;
+  }
+  .coverText p {
+    margin-top: 0.45rem;
+    max-width: 47ch;
+    font-size: 0.875rem;
+    line-height: 1.5;
+  }
+  .accessPane {
+    align-items: center;
+    padding: 1.25rem clamp(20px, 6vw, 42px) 2.5rem;
+  }
+  .appearance {
+    position: static;
+    order: 1;
+    align-self: center;
+    margin-top: 1.75rem;
+  }
+  .cover::before {
+    inset-inline-end: -4%;
+    top: -3rem;
+    height: 135%;
+  }
+
+  .list .space {
+    min-height: 64px;
+  }
+}
+
+.personal {
+  max-width: 64rem;
+  margin-block: 0 1rem;
+}
+.personalHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.25rem 0.75rem;
+  flex-wrap: wrap;
+}
+.personalHeading button,
+.shortcuts button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-block-size: 44px;
+}
+.personal h2,
+.directory h2 {
+  margin: 0;
+  color: var(--ink);
+  font: 650 clamp(1.05rem, 1.5vw, 1.2rem)/1.3 var(--display);
+}
+.personal h2 small {
+  display: inline;
+  color: var(--muted);
+  font: 400 var(--type-caption, 0.82rem)/1.4 var(--display);
+  margin-inline-start: 0.35rem;
+}
+.shortcuts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 0.4rem;
+}
+.shortcuts button {
+  color: var(--ink);
+  background: transparent;
+  border: 0;
+  border-radius: 0.55rem;
+  padding: 0.25rem 0.6rem;
+  font: 550 var(--type-caption, 0.875rem)/1.25 var(--display);
+  text-align: start;
+}
+.shortcuts svg,
+.personalHeading button svg {
+  flex: none;
+  width: 1.1rem;
+  height: 1.1rem;
+  color: var(--secondary);
+}
+@media (hover: hover) {
+  .shortcuts button:hover {
+    background: var(--soft);
+    color: var(--ink);
+  }
+}
+@media (max-width: 38rem) {
+  .shortcuts button {
+    padding-inline: 0.3rem;
+  }
+  .shortcuts {
+    column-gap: 0.35rem;
+  }
+}
+.nextReminders {
+  margin-block-start: 1rem;
+}
+.nextReminders h3 {
+  font: 600 0.85rem/1.4 var(--display);
+}
+.nextReminders ul {
+  margin: 0.4rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+.nextReminders li {
+  display: flex;
+  gap: 0.7rem;
+  flex-wrap: wrap;
+  overflow-wrap: anywhere;
+}
+.nextReminders time {
+  color: var(--muted);
+}
+.directory > h2 {
+  margin-block-end: 0.125rem;
+  color: var(--graphite-ink, var(--ink));
+}
+
+.cover {
+  --entry-scene: url("/scenes/costa.webp");
+  background-color: #302735;
+  background-image:
+    linear-gradient(145deg, #251f2fd6 0%, #2924314d 47%, #15252be0 100%),
+    var(--entry-scene);
+  background-size: cover;
+  background-position: 60% center;
+}
+:global(:root[data-appearance="dark"]) .cover {
+  --entry-scene: url("/scenes/porto.webp");
+}
+@media (prefers-color-scheme: dark) {
+  :global(:root:not([data-appearance="light"])) .cover {
+    --entry-scene: url("/scenes/porto.webp");
+  }
+}
+.cover::before {
+  display: none;
+}
+.coverText h1 {
+  font-weight: 650;
+  font-size: clamp(3.25rem, 6vw, 6.1rem);
+  letter-spacing: -0.065em;
+}
+.coverText::before {
+  width: 2.45rem;
+  height: 3px;
+  background: var(--accent-night);
+  transform: skewX(-18deg);
+}
+.coverText p {
+  color: #f4eeef;
+  line-height: 1.55;
+}
+.homeShell:global(.workspace) > header h1 {
+  color: var(--ink);
+  font-weight: 650;
+  letter-spacing: -0.05em;
+}
+.list .space {
+  min-height: 62px;
+  column-gap: 14px;
+}
+.space span {
+  font: 600 clamp(1.02rem, 1.6vw, 1.3rem)/1.35 var(--editorial);
+  letter-spacing: -0.02em;
+}
+
+.roomMeta,
+.roomPreview {
+  display: block;
+}
+.roomPreview {
+  font-weight: 400;
+}
+@media (max-width: 600px) {
+  .list .space {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 0.2rem 0.65rem;
+    padding-block: 0.75rem;
+  }
+  .space > .roomCopy {
+    display: contents;
+  }
+  .roomCopy > strong {
+    grid-area: 1/2;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .roomCopy > .roomMeta {
+    grid-area: 2/2/3/-1;
+    font-weight: 500;
+  }
+  .roomCopy > .roomPreview {
+    grid-area: 3/2/4/-1;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .space > :is(:global(.directory-thumb), :global(.direct-avatar)) {
+    grid-area: 1/1/4/2;
+    align-self: start;
+  }
+  .space > .roomUnread {
+    grid-area: 1/3;
+    font-size: var(--type-caption);
+    font-weight: 650;
+    color: var(--ink);
+  }
+  .space > svg:last-child {
+    display: none;
+  }
+  .withProfile .space {
+    grid-template-columns: 0 minmax(0, 1fr) auto;
+    padding-inline-start: 0;
+    column-gap: 0.35rem;
+  }
+}
+
+/* Keep the entry form close to the brand on phones, including landscape. */
+@media (max-width: 780px) {
+  .coverText h1 {
+    font-size: clamp(2rem, 8vw, 2.6rem);
+  }
+}
+@media (max-height: 520px) and (max-width: 900px) {
+  .cover {
+    gap: 0.25rem;
+    padding-block: 0.55rem;
+  }
+  .coverText h1 {
+    font-size: 1.75rem;
+  }
+  .coverText p {
+    margin-top: 0.25rem;
+  }
+  .accessPane {
+    padding-block: 0.9rem;
+  }
+}

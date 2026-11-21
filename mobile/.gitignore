@@ -1,0 +1,13 @@
+.expo/
+dist/
+/ios/
+/android/
+modules/*/android/build/
+modules/*/android/.gradle/
+.env*.local
+.env
+google-services.json
+GoogleService-Info.plist
+*.keystore
+*.p8
+*.p12

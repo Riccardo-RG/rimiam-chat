@@ -14,6 +14,11 @@ export async function applyWorkspaceLink(
   // Both Workspace locks were acquired in stable order by execute. No implicit grant from a link.
   await member(tx, w, actor, true, true);
   await member(tx, c.otherWorkspaceId, actor, true, true);
+  const privateEndpoint = await tx.query(
+    "SELECT 1 FROM workspace WHERE id=ANY($1::uuid[]) AND personal_owner_id IS NOT NULL",
+    [[w, c.otherWorkspaceId]],
+  );
+  requireThat(!privateEndpoint.rowCount, "PERSONAL_SPACE_UNSUPPORTED", 403);
   const [a, b] = [w, c.otherWorkspaceId].sort();
   const current =
     (

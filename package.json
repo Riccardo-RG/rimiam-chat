@@ -2,6 +2,7 @@
   "name": "miriam",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "engines": {
     "node": ">=24.0.0 <25"
@@ -21,6 +22,7 @@
     "check": "npm run typecheck && npm run lint && npm run format:check && npm test",
     "test:setup": "tsx --env-file=.env scripts/test-db.ts",
     "setup:env": "tsx scripts/setup-env.ts",
+    "release:preflight": "node --env-file=.env --import tsx scripts/release-preflight.ts",
     "api": "node --env-file=.env --import tsx src/api.ts",
     "build:backend": "tsc -p tsconfig.backend.json",
     "start:api": "node --env-file=.env dist/backend/api.js",
@@ -30,16 +32,19 @@
     "@ai-sdk/anthropic": "4.0.50",
     "@ai-sdk/openai": "4.0.63",
     "@aws-sdk/client-s3": "3.1131.0",
+    "@better-auth/core": "1.7.25",
     "ai": "7.0.94",
-    "better-auth": "1.7.3",
+    "better-auth": "1.7.25",
     "graphile-worker": "0.18.0",
     "livekit-client": "2.22.3",
     "livekit-server-sdk": "2.19.0",
-    "next": "16.3.4",
+    "next": "16.4.6",
     "pg": "8.23.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
-    "zod": "4.5.4"
+    "sharp": "0.35.5",
+    "web-push": "4.0.0",
+    "zod": "4.6.7"
   },
   "devDependencies": {
     "@playwright/test": "1.63.0",
@@ -47,11 +52,13 @@
     "@types/pg": "8.23.1",
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.7",
+    "@types/web-push": "3.6.4",
     "eslint": "9.39.5",
-    "eslint-config-next": "16.3.4",
+    "eslint-config-next": "16.4.6",
+    "fake-indexeddb": "6.2.8",
     "prettier": "3.9.6",
     "tsx": "4.23.13",
     "typescript": "6.0.3",
-    "vitest": "4.1.11"
+    "vitest": "4.1.12"
   }
 }

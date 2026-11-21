@@ -1,10 +1,15 @@
+import { withoutAssistantAddress } from "./miriam-address.ts";
+
 // A deliberately bounded direct command, not an AI permission or a semantic classifier.
 // Unclear, compound or quoted instructions remain ordinary Conversation input.
-export function requestedWorkstreamTitle(content: string): string | null {
+export function requestedWorkstreamTitle(
+  content: string,
+  displayName = "Emme",
+): string | null {
   if (/[\r\n;]/u.test(content)) return null;
   const match =
-    /^(?:@?(?:miriam|rimiam)[,:]?\s+)?(?:per favore\s+|please\s+)?(?:(?:puoi|potresti)\s+(?:creare|aprire)|crea|apri|create|open)\s+(?:un(?: nuovo)?|a(?: new)?)\s+(?:filone|subthread|sub-thread|workstream|thread)\s+(?:(?:chiamato|intitolato|denominato|named|called)\s+|su\s+)?(.+?)\s*[.!?]?$/iu.exec(
-      content.trim(),
+    /^(?:per favore\s+|please\s+)?(?:(?:puoi|potresti)\s+(?:creare|aprire)|crea|apri|create|open)\s+(?:un(?: nuovo)?|a(?: new)?)\s+(?:argomento|topic|filone|subthread|sub-thread|workstream|thread)\s+(?:(?:chiamato|intitolato|denominato|named|called)\s+|su\s+)?(.+?)\s*[.!?]?$/iu.exec(
+      withoutAssistantAddress(content.trim(), displayName),
     );
   if (!match) return null;
   let title = match[1].trim();

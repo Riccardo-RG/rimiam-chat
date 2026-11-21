@@ -98,7 +98,7 @@ async function inputsFor(tx: Tx, w: string, id: string, extra: string[] = []) {
 export async function reassessActiveWork(tx: Tx, w: string) {
   const rows = (
     await tx.query(
-      "SELECT id,phase,validity FROM active_work WHERE workspace_id=$1",
+      "SELECT id,phase,validity FROM active_work WHERE workspace_id=$1 AND (phase='working' OR (phase='completed' AND validity='current'))",
       [w],
     )
   ).rows;
@@ -250,7 +250,7 @@ export async function processActiveWork(
       w,
       id,
       "working",
-      "Miriam sta analizzando il materiale condiviso pertinente.",
+      "Emme sta analizzando il materiale condiviso pertinente.",
     );
     const inputs = await inputsFor(tx, w, id);
     await tx.query(
@@ -431,7 +431,9 @@ export async function processActiveWork(
         "needs_input",
         code === "AI_OUTPUT_PARSE_ERROR"
           ? "Output Specialist non valido; nessuna Contribution pubblicata."
-          : "Analisi non completata; nessun risultato adottato. È possibile riprovare esplicitamente.",
+          : code === "AI_USAGE_LIMIT_REACHED"
+            ? "Limite operativo AI raggiunto. Il lavoro e i suoi vincoli restano conservati; riprova esplicitamente più tardi. Nessuna Contribution parziale pubblicata."
+            : "Analisi non completata; nessun risultato adottato. È possibile riprovare esplicitamente.",
       );
       return true;
     });
@@ -445,32 +447,39 @@ export async function recoverActiveWork(supplied?: AnalysisSpecialist) {
     )
   ).rows;
   for (const { workspace_id: w } of spaces)
-    await transaction(async (tx) => {
-      await lockWorkspace(tx, w);
-      await reassessActiveWork(tx, w);
-      const expired = (
-        await tx.query(
-          "SELECT id FROM active_work WHERE workspace_id=$1 AND phase='working' AND lease_until<now()",
-          [w],
-        )
-      ).rows;
-      for (const { id } of expired) {
-        await fenceWork(tx, w, id, "queued");
-        await workEvent(
-          tx,
-          w,
-          id,
-          "recovering",
-          "Analisi interrotta: ripresa protetta del lavoro, senza ripetere effetti esterni.",
-        );
-      }
-      for (const { id } of (
-        await tx.query(
-          "SELECT id FROM active_work WHERE workspace_id=$1 AND phase='queued'",
-          [w],
-        )
-      ).rows)
-        if (!(await openIssues(tx, w, id)).length) await queueWork(tx, w, id);
-      await considerAutonomousWork(tx, w, Boolean(specialist));
-    });
+    await recoverWorkspaceWork(w, Boolean(specialist));
+}
+
+export async function recoverWorkspaceWork(
+  w: string,
+  autonomousAvailable: boolean,
+) {
+  await transaction(async (tx) => {
+    await lockWorkspace(tx, w);
+    await reassessActiveWork(tx, w);
+    const expired = (
+      await tx.query(
+        "SELECT id FROM active_work WHERE workspace_id=$1 AND phase='working' AND lease_until<now()",
+        [w],
+      )
+    ).rows;
+    for (const { id } of expired) {
+      await fenceWork(tx, w, id, "queued");
+      await workEvent(
+        tx,
+        w,
+        id,
+        "recovering",
+        "Analisi interrotta: ripresa protetta del lavoro, senza ripetere effetti esterni.",
+      );
+    }
+    for (const { id } of (
+      await tx.query(
+        "SELECT id FROM active_work WHERE workspace_id=$1 AND phase='queued'",
+        [w],
+      )
+    ).rows)
+      if (!(await openIssues(tx, w, id)).length) await queueWork(tx, w, id);
+    await considerAutonomousWork(tx, w, autonomousAvailable);
+  });
 }

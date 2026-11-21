@@ -16,6 +16,40 @@ import {
   projectSource,
 } from "./project-authority.ts";
 
+import { recordWorkspaceNotice } from "./workspace-notice.ts";
+
+// Editing shared wording cannot remove the people whose authority a governed
+// lifecycle change requires. Their actual adherences stay on the versions signed.
+const affectedGoalPeople = `WITH basis AS (
+  SELECT coalesce(max(goal_version),1) AS version FROM goal_intent_participant
+  WHERE workspace_id=$1 AND goal_id=$2 AND goal_version<=$3
+)
+SELECT person_id FROM goal_intent_participant,basis
+WHERE workspace_id=$1 AND goal_id=$2 AND goal_version=basis.version
+UNION SELECT user_id AS person_id FROM goal_adherence,basis
+WHERE workspace_id=$1 AND goal_id=$2 AND goal_version BETWEEN basis.version AND $3`;
+
+// A recorded dependency on a still-effective act applies to the same change
+// even when someone edited unrelated wording in the meantime.
+async function requireCompatibleGoalText(
+  tx: Tx,
+  workspace: string,
+  goalId: string,
+  mode: string,
+  content: string,
+) {
+  const conflict = await tx.query(
+    `SELECT 1 FROM goal_transition t
+     JOIN goal_transition_obligation b ON (b.workspace_id,b.transition_id)=(t.workspace_id,t.id)
+     JOIN current_project_act a ON (a.workspace_id,a.id)=(b.workspace_id,b.act_id)
+     WHERE t.workspace_id=$1 AND t.goal_id=$2 AND t.mode=$3 AND b.blocking
+       AND regexp_replace(lower(trim(t.content)), '[[:space:]]+', ' ', 'g') =
+           regexp_replace(lower(trim($4::text)), '[[:space:]]+', ' ', 'g') LIMIT 1`,
+    [workspace, goalId, mode, content],
+  );
+  requireThat(!conflict.rowCount, "GOAL_REQUIRES_SEPARATE_OBLIGATION_CHANGE");
+}
+
 const capabilityForGoal = (mode: string) =>
   mode === "subgoal"
     ? "goal.subgoal"
@@ -167,6 +201,46 @@ export async function applyProject(
     await changed(tx, w, c.type, true);
     return { mandateId: m.mandate_id, version: next };
   }
+  if (c.type === "goal.editShared") {
+    const goal = await goalAt(tx, w, c.goalId);
+    requireThat(
+      goal.current_primary && goal.status === "active",
+      "GOAL_NOT_ACTIVE",
+    );
+    requireThat(
+      goal.current_version === c.expectedVersion,
+      "GOAL_VERSION_STALE",
+    );
+    if (goal.content === c.content)
+      return { goalId: c.goalId, version: c.expectedVersion };
+    await requireCompatibleGoalText(tx, w, c.goalId, "revise", c.content);
+    const version = c.expectedVersion + 1;
+    const source = await recordWorkspaceNotice(
+      tx,
+      w,
+      actor,
+      "ha aggiornato l’obiettivo dello spazio.",
+      { kind: "goal", id: c.goalId, version },
+    );
+    await tx.query(
+      "INSERT INTO goal_version(workspace_id,goal_id,version,content,established_by,source_id,reason) VALUES($1,$2,$3,$4,$5,$6,$7)",
+      [
+        w,
+        c.goalId,
+        version,
+        c.content,
+        actor,
+        source,
+        "Modifica dell’obiettivo condiviso",
+      ],
+    );
+    await tx.query(
+      "UPDATE goal SET current_version=$3 WHERE workspace_id=$1 AND id=$2",
+      [w, c.goalId, version],
+    );
+    await changed(tx, w, c.type, true);
+    return { goalId: c.goalId, version };
+  }
   if (c.type === "goal.propose") {
     const g = await goalAt(tx, w, c.goalId);
     requireThat(g.current_version === c.expectedVersion, "GOAL_VERSION_STALE");
@@ -196,10 +270,11 @@ export async function applyProject(
       );
     const people = new Set<string>(
       (
-        await tx.query<{ person_id: string }>(
-          "SELECT person_id FROM goal_intent_participant WHERE workspace_id=$1 AND goal_id=$2 AND goal_version=$3 UNION SELECT user_id AS person_id FROM goal_adherence WHERE workspace_id=$1 AND goal_id=$2 AND goal_version=$3",
-          [w, g.id, g.current_version],
-        )
+        await tx.query<{ person_id: string }>(affectedGoalPeople, [
+          w,
+          g.id,
+          g.current_version,
+        ])
       ).rows.map((r) => r.person_id),
     );
     if (!people.size) people.add(g.established_by);
@@ -375,15 +450,7 @@ async function approveGoal(
     !basis.some((r) => r.blocking),
     "GOAL_REQUIRES_SEPARATE_OBLIGATION_CHANGE",
   );
-  // Re-submitting the same proposed change cannot erase a previously reported necessary conflict.
-  const priorConflict = await tx.query(
-    "SELECT 1 FROM goal_transition t JOIN goal_transition_obligation b ON (b.workspace_id,b.transition_id)=(t.workspace_id,t.id) JOIN current_project_act a ON (a.workspace_id,a.id)=(b.workspace_id,b.act_id) WHERE t.workspace_id=$1 AND t.goal_id=$2 AND t.goal_version=$3 AND t.mode=$4 AND regexp_replace(lower(t.content),'\\s+',' ','g')=regexp_replace(lower($5::text),'\\s+',' ','g') AND b.blocking",
-    [w, p.goal_id, p.goal_version, p.mode, p.content],
-  );
-  requireThat(
-    !priorConflict.rowCount,
-    "GOAL_REQUIRES_SEPARATE_OBLIGATION_CHANGE",
-  );
+  await requireCompatibleGoalText(tx, w, p.goal_id, p.mode, p.content);
   requireThat(
     JSON.stringify(basis.map((r) => r.act_id)) ===
       JSON.stringify(await currentActIds(tx, w)),
@@ -436,10 +503,11 @@ async function approveGoal(
   if (approvals.length === people.length) {
     // New exact-version adherence changes the affected intent scope, never gets silently omitted.
     const currentPeople = (
-      await tx.query<{ person_id: string }>(
-        "SELECT person_id FROM goal_intent_participant WHERE workspace_id=$1 AND goal_id=$2 AND goal_version=$3 UNION SELECT user_id AS person_id FROM goal_adherence WHERE workspace_id=$1 AND goal_id=$2 AND goal_version=$3",
-        [w, g.id, g.current_version],
-      )
+      await tx.query<{ person_id: string }>(affectedGoalPeople, [
+        w,
+        g.id,
+        g.current_version,
+      ])
     ).rows;
     requireThat(
       currentPeople.every((r) =>

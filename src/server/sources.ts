@@ -8,6 +8,8 @@ import { inspectMedia } from "./media-provider.ts";
 import {
   uploadDocumentSchema,
   retryDocumentSchema,
+  withdrawDocumentSchema,
+  restoreDocumentSchema,
 } from "../contracts/commands.ts";
 export { uploadDocumentSchema } from "../contracts/commands.ts";
 export async function scheduleSource(tx: Tx, w: string, sourceId: string) {
@@ -60,7 +62,7 @@ export async function uploadDocument(
   actor: string,
   input: z.infer<typeof uploadDocumentSchema>,
   sourceQualification?: string,
-  interpret = true,
+  processContent = true,
 ) {
   await member(tx, w, actor, true, true);
   requireThat(
@@ -88,7 +90,7 @@ export async function uploadDocument(
   if (input.previousSourceId) {
     const prior = (
       await tx.query(
-        "SELECT s.document_id,s.document_version FROM external_source s WHERE s.workspace_id=$1 AND s.id=$2 AND s.kind='document' AND NOT EXISTS(SELECT 1 FROM external_source newer WHERE newer.workspace_id=s.workspace_id AND newer.document_id=s.document_id AND newer.document_version>s.document_version)",
+        "SELECT s.document_id,s.document_version FROM available_external_source s WHERE s.workspace_id=$1 AND s.id=$2 AND s.kind='document' AND NOT EXISTS(SELECT 1 FROM external_source newer WHERE newer.workspace_id=s.workspace_id AND newer.document_id=s.document_id AND newer.document_version>s.document_version)",
         [w, input.previousSourceId],
       )
     ).rows[0];
@@ -122,7 +124,7 @@ export async function uploadDocument(
       bytes,
     ],
   );
-  if (media) {
+  if (media && processContent) {
     const membership = (
       await tx.query(
         "SELECT version FROM membership WHERE workspace_id=$1 AND user_id=$2",
@@ -144,11 +146,110 @@ export async function uploadDocument(
     await changed(tx, w, "document.uploaded");
     return { sourceId, documentId, version, processingStatus: "queued" };
   }
-  const interpretationId = interpret
+  const interpretationId = processContent
     ? await scheduleSource(tx, w, sourceId)
     : undefined;
   await changed(tx, w, "document.uploaded");
   return { sourceId, documentId, version, interpretationId };
+}
+
+export async function markOrdinaryUpload(
+  tx: Tx,
+  w: string,
+  actor: string,
+  sourceId: string,
+) {
+  await tx.query(
+    "INSERT INTO document_visibility_event(workspace_id,source_id,version,withdrawn,actor_id) VALUES($1,$2,1,false,$3)",
+    [w, sourceId, actor],
+  );
+}
+
+export async function changeDocumentVisibility(
+  tx: Tx,
+  w: string,
+  actor: string,
+  input:
+    | z.infer<typeof withdrawDocumentSchema>
+    | z.infer<typeof restoreDocumentSchema>,
+) {
+  await member(tx, w, actor, true, true);
+  const row = (
+    await tx.query(
+      `SELECT s.document_version,s.contributed_by,v.version,v.withdrawn FROM document_visibility v
+     JOIN external_source s ON (s.workspace_id,s.id)=(v.workspace_id,v.source_id)
+     WHERE v.workspace_id=$1 AND v.source_id=$2`,
+      [w, input.sourceId],
+    )
+  ).rows[0];
+  requireThat(
+    row && row.contributed_by === actor,
+    "DOCUMENT_VISIBILITY_DENIED",
+    403,
+  );
+  const withdrawn = input.type === "document.withdraw";
+  requireThat(
+    row.document_version === input.documentVersion &&
+      row.version === input.expectedVisibilityVersion &&
+      row.withdrawn !== withdrawn,
+    "DOCUMENT_VISIBILITY_STALE",
+    409,
+  );
+  const version = row.version + 1;
+  await tx.query(
+    "INSERT INTO document_visibility_event(workspace_id,source_id,version,withdrawn,actor_id) VALUES($1,$2,$3,$4,$5)",
+    [w, input.sourceId, version, withdrawn, actor],
+  );
+  if (withdrawn) {
+    await tx.query(
+      "UPDATE document_processing SET status='failed',lease_until=NULL,attempt_id=NULL,error_code='DOCUMENT_WITHDRAWN' WHERE workspace_id=$1 AND source_id=$2 AND status IN ('queued','processing')",
+      [w, input.sourceId],
+    );
+    await tx.query(
+      "UPDATE interpretation SET status='stale',lease_until=NULL,error_code='DOCUMENT_WITHDRAWN' WHERE workspace_id=$1 AND source_id=$2 AND status IN ('queued','running','failed')",
+      [w, input.sourceId],
+    );
+  }
+  await changed(
+    tx,
+    w,
+    withdrawn ? "document.withdrawn" : "document.restored",
+    true,
+  );
+  return {
+    sourceId: input.sourceId,
+    documentVersion: row.document_version,
+    visibilityVersion: version,
+    withdrawn,
+  };
+}
+
+// Check previously retrieved material again immediately before model disclosure
+// and publication. The workspace lock orders this check against withdrawal.
+export async function requireAvailableDocuments(
+  tx: Tx,
+  w: string,
+  sourceIds: string[],
+  observedVersions?: Map<string, number>,
+) {
+  if (!sourceIds.length) return;
+  const { rows } = await tx.query<{
+    source_id: string;
+    version: number;
+    withdrawn: boolean;
+  }>(
+    "SELECT source_id,version,withdrawn FROM document_visibility WHERE workspace_id=$1 AND source_id=ANY($2::uuid[])",
+    [w, sourceIds],
+  );
+  for (const row of rows) {
+    const observed = observedVersions?.get(row.source_id);
+    requireThat(
+      !row.withdrawn && (observed === undefined || observed === row.version),
+      "DOCUMENT_WITHDRAWN",
+      409,
+    );
+    observedVersions?.set(row.source_id, row.version);
+  }
 }
 
 export async function queueDocument(tx: Tx, sourceId: string) {
@@ -164,6 +265,7 @@ export async function retryDocument(
   input: z.infer<typeof retryDocumentSchema>,
 ) {
   await member(tx, w, actor, true, true);
+  await requireAvailableDocuments(tx, w, [input.sourceId]);
   const p = (
     await tx.query(
       "SELECT * FROM document_processing WHERE workspace_id=$1 AND source_id=$2 FOR UPDATE",
@@ -222,14 +324,25 @@ export async function documentProcessingEvent(
     [randomUUID(), w, sourceId, attemptId, actor, kind, errorCode],
   );
 }
-export async function sourceRecords(tx: Tx, w: string) {
+export async function sourceRecords(tx: Tx, w: string, actor: string) {
   return (
     await tx.query(
-      `SELECT s.id,s.kind,s.title,coalesce(e.content,s.content) AS content,s.contributed_by,s.qualification||coalesce(' '||e.qualification,'') AS qualification,s.content_hash,s.created_at,s.document_id,s.document_version,s.previous_source_id,s.filename,s.media_type,s.url,s.provider,s.work_id,
+      `SELECT s.id,s.kind,s.title,CASE WHEN v.withdrawn THEN '' ELSE coalesce(e.content,s.content) END AS content,
+ coalesce(v.withdrawn,false) AS withdrawn,coalesce(v.version,1) AS visibility_version,
+ (v.source_id IS NOT NULL AND s.contributed_by=$2 AND EXISTS(SELECT 1 FROM membership m WHERE m.workspace_id=s.workspace_id AND m.user_id=$2 AND m.active AND m.contributes)) AS can_manage_visibility,s.contributed_by,s.qualification||coalesce(' '||e.qualification,'') AS qualification,s.content_hash,s.created_at,s.document_id,s.document_version,s.previous_source_id,s.filename,s.media_type,s.url,s.provider,s.work_id,
+ ma.message_id AS shared_message_id, ma.position AS attachment_position,
+ COALESCE((SELECT o.origin_workspace_id FROM library_copy_origin o
+  JOIN workspace personal ON personal.id=o.workspace_id AND personal.personal_owner_id=$2
+  JOIN membership m ON m.workspace_id=o.origin_workspace_id AND m.user_id=$2 AND m.active
+  WHERE (o.workspace_id,o.source_id)=(s.workspace_id,s.id)), (SELECT c.workspace_id FROM private_workspace_consultation c
+  JOIN membership m ON m.workspace_id=c.workspace_id AND m.user_id=$2 AND m.active
+  JOIN workspace origin ON origin.id=c.workspace_id AND origin.personal_owner_id IS NULL
+  WHERE c.actor_id=$2 AND (c.document_workspace_id,c.document_source_id)=(s.workspace_id,s.id))) AS origin_workspace_id,
+ EXISTS(SELECT 1 FROM library_favorite f WHERE f.workspace_id=s.workspace_id AND f.source_id=s.id AND f.user_id=$2) AS favorite,
  p.status AS processing_status,p.error_code AS processing_error,e.attempt_id AS extraction_id,e.provider AS extraction_provider,e.content_hash AS extraction_hash,e.created_at AS extracted_at,
  coalesce((SELECT jsonb_agg(jsonb_build_object('id',h.id,'attempt_id',h.attempt_id,'actor_id',h.actor_id,'kind',h.kind,'error_code',h.error_code,'created_at',h.created_at) ORDER BY h.created_at,h.id) FROM document_processing_event h WHERE h.workspace_id=s.workspace_id AND h.source_id=s.id),'[]'::jsonb) AS processing_history
- FROM external_source s LEFT JOIN document_processing p ON p.source_id=s.id LEFT JOIN document_extraction e ON e.source_id=s.id AND e.publication='published' WHERE s.workspace_id=$1 ORDER BY s.created_at`,
-      [w],
+ FROM external_source s LEFT JOIN document_visibility v ON (v.workspace_id,v.source_id)=(s.workspace_id,s.id) LEFT JOIN message_attachment ma ON ma.workspace_id=s.workspace_id AND ma.source_id=s.id LEFT JOIN document_processing p ON p.source_id=s.id LEFT JOIN document_extraction e ON e.source_id=s.id AND e.publication='published' AND v.withdrawn IS NOT TRUE WHERE s.workspace_id=$1 ORDER BY s.created_at`,
+      [w, actor],
     )
   ).rows;
 }
@@ -242,7 +355,7 @@ export async function readDocument(actor: string, w: string, sourceId: string) {
     await member(tx, w, actor);
     const row = (
       await tx.query(
-        "SELECT filename,media_type,original_bytes FROM external_source WHERE workspace_id=$1 AND id=$2 AND kind='document'",
+        "SELECT filename,media_type,original_bytes FROM available_external_source WHERE workspace_id=$1 AND id=$2 AND kind='document'",
         [w, sourceId],
       )
     ).rows[0];

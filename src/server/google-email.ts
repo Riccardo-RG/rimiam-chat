@@ -5,7 +5,7 @@ import {
   emailReceiptSchema,
   type EmailMessage,
 } from "../contracts/email.ts";
-import type { EmailEffect, EmailProvider } from "./email-provider.ts";
+import type { EmailProvider } from "./email-provider.ts";
 import { EmailNoEffect } from "./email-provider.ts";
 import { googleCredentialToken } from "./google-credentials.ts";
 import {
@@ -14,6 +14,9 @@ import {
   googleHash,
   type GoogleToken,
 } from "./google-http.ts";
+import { emailMIME, cleanBody } from "./email-mime.ts";
+export { emailMIME as googleEmailMIME } from "./email-mime.ts";
+import { reserveEmailDelivery } from "./email-delivery.ts";
 import { pool } from "./db.ts";
 import { requireThat } from "./errors.ts";
 
@@ -123,104 +126,6 @@ function addresses(value: string) {
     return z.email().parse((match ? match[1] : s).trim().toLowerCase());
   });
 }
-const wrappedBase64 = (bytes: Buffer) =>
-  bytes
-    .toString("base64")
-    .match(/.{1,76}/g)
-    ?.join("\r\n") ?? "";
-const encodedWord = (value: string) => {
-  const chunks: string[] = [];
-  let chunk = "";
-  for (const character of value) {
-    if (Buffer.byteLength(chunk + character) > 42) {
-      chunks.push(chunk);
-      chunk = "";
-    }
-    chunk += character;
-  }
-  chunks.push(chunk);
-  return chunks
-    .map((c) => `=?UTF-8?B?${Buffer.from(c).toString("base64")}?=`)
-    .join("\r\n ");
-};
-function cleanBody(body: string) {
-  return body.replace(/\r\n/g, "\n");
-}
-export function googleEmailMIME(effect: EmailEffect, messageId: string) {
-  const e = effect.envelope,
-    boundary = `miriam_${hash(effect.operationKey).slice(0, 40)}`;
-  const lines = [
-    `From: ${e.sender}`,
-    `To: ${e.to.join(", ")}`,
-    `Cc: ${e.cc.join(", ")}`,
-    `Bcc: ${e.bcc.join(", ")}`,
-    `Subject: ${encodedWord(e.subject)}`,
-    `Message-ID: ${messageId}`,
-    `X-Miriam-Envelope-Hash: ${effect.envelopeHash}`,
-    "MIME-Version: 1.0",
-  ];
-  if (e.kind === "reply") {
-    requireThat(
-      effect.target?.internetMessageId && effect.target.threadId,
-      "GOOGLE_EMAIL_REPLY_METADATA_REQUIRED",
-      422,
-    );
-    lines.push(
-      `In-Reply-To: ${effect.target.internetMessageId}`,
-      `References: ${[...effect.target.references, effect.target.internetMessageId].join(" ")}`,
-    );
-  }
-  const text = [
-    "Content-Type: text/plain; charset=UTF-8",
-    "Content-Transfer-Encoding: base64",
-    "",
-    wrappedBase64(Buffer.from(e.body)),
-  ].join("\r\n");
-  if (!effect.attachments.length) return `${lines.join("\r\n")}\r\n${text}`;
-  lines.push(
-    `Content-Type: multipart/mixed; boundary="${boundary}"`,
-    "",
-    `--${boundary}`,
-    text,
-  );
-  for (const a of effect.attachments) {
-    requireThat(
-      hash(a.bytes) === a.hash &&
-        /^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/i.test(a.mediaType),
-      "GOOGLE_EMAIL_ATTACHMENT_INVALID",
-      422,
-    );
-    lines.push(
-      `--${boundary}`,
-      `Content-Type: ${a.mediaType}`,
-      `Content-Disposition: attachment; filename*=UTF-8''${encodeURIComponent(a.filename).replace(/['()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`)}`,
-      "Content-Transfer-Encoding: base64",
-      "",
-      wrappedBase64(a.bytes),
-    );
-  }
-  lines.push(`--${boundary}--`, "");
-  return lines.join("\r\n");
-}
-function expected(effect: EmailEffect) {
-  const e = effect.envelope;
-  return {
-    sender: e.sender,
-    to: e.to,
-    cc: e.cc,
-    bcc: e.bcc,
-    subject: e.subject,
-    body: cleanBody(e.body),
-    attachments: effect.attachments.map((a) => ({
-      filename: a.filename,
-      hash: a.hash,
-      size: a.bytes.length,
-    })),
-    kind: e.kind,
-    targetMessageId: effect.target?.internetMessageId ?? null,
-  };
-}
-
 export function googleEmailProvider(
   token: GoogleToken = (id, signal) =>
     googleCredentialToken(id, "email", signal),
@@ -485,36 +390,17 @@ export function googleEmailProvider(
           403,
         );
         authorization = await token(access.accountRef, signal);
-        raw = googleEmailMIME(effect, messageId);
+        raw = emailMIME(effect, messageId);
       } catch {
         throw new EmailNoEffect("GOOGLE_EMAIL_PREFLIGHT_FAILED");
       }
-      const saved = await pool.query(
-        "INSERT INTO google_email_delivery(credential_id,operation_key,envelope_hash,internet_message_id,expected,status) VALUES($1,$2,$3,$4,$5,'sending') ON CONFLICT(credential_id,operation_key) DO UPDATE SET status='sending' WHERE google_email_delivery.status='rejected' AND google_email_delivery.envelope_hash=EXCLUDED.envelope_hash RETURNING operation_key",
-        [
-          access.accountRef,
-          effect.operationKey,
-          effect.envelopeHash,
-          messageId,
-          expected(effect),
-        ],
+      const prior = await reserveEmailDelivery(
+        access.accountRef,
+        effect,
+        messageId,
+        "GOOGLE",
       );
-      if (!saved.rowCount) {
-        const old = (
-          await pool.query(
-            "SELECT * FROM google_email_delivery WHERE credential_id=$1 AND operation_key=$2",
-            [access.accountRef, effect.operationKey],
-          )
-        ).rows[0];
-        requireThat(
-          old?.envelope_hash === effect.envelopeHash,
-          "GOOGLE_EMAIL_OPERATION_MISMATCH",
-          409,
-        );
-        if (old.status === "accepted")
-          return emailReceiptSchema.parse(old.receipt);
-        throw new Error("GOOGLE_EMAIL_OUTCOME_UNKNOWN");
-      }
+      if (prior) return prior;
       try {
         const sent = z
           .object({

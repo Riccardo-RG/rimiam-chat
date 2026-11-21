@@ -34,8 +34,10 @@ button {
   padding: 11px 16px;
   line-height: 1.3;
 }
-button:hover {
-  filter: brightness(0.93);
+@media (hover: hover) {
+  button:hover {
+    filter: brightness(0.93);
+  }
 }
 button:disabled {
   opacity: 0.5;
@@ -96,7 +98,7 @@ time,
 small,
 .hint,
 .muted {
-  font-size: 0.8rem;
+  font-size: var(--type-caption);
   line-height: 1.6;
   color: var(--muted);
 }
@@ -104,7 +106,7 @@ small {
   display: block;
 }
 .eyebrow {
-  font-size: 0.66rem;
+  font-size: var(--type-caption);
   letter-spacing: 0.15em;
   font-weight: 700;
   color: var(--muted);
@@ -168,7 +170,7 @@ small {
   margin-bottom: 0;
 }
 .live {
-  font-size: 0.75rem;
+  font-size: var(--type-caption);
   color: var(--accent);
 }
 .card {
@@ -198,7 +200,7 @@ small {
   gap: 10px;
 }
 .section-title > span {
-  font-size: 0.72rem;
+  font-size: var(--type-caption);
   color: var(--muted);
 }
 .messages {
@@ -235,7 +237,7 @@ small {
   font-size: 0.85rem;
 }
 .message time {
-  font-size: 0.7rem;
+  font-size: var(--type-caption);
 }
 .message:target {
   outline: 2px solid var(--focus, #713ab7);
@@ -255,7 +257,7 @@ small {
   border: 1px solid var(--line);
   border-radius: 20px;
   padding: 4px 9px;
-  font-size: 0.68rem;
+  font-size: var(--type-caption);
   background: var(--soft);
 }
 .actions {
@@ -336,7 +338,7 @@ details {
 }
 summary {
   cursor: pointer;
-  font-size: 0.8rem;
+  font-size: var(--type-caption);
   color: var(--accent);
   line-height: 1.6;
 }
@@ -349,7 +351,7 @@ blockquote {
 }
 .source-link {
   display: block;
-  font-size: 0.8rem;
+  font-size: var(--type-caption);
   margin-bottom: 6px;
 }
 .version {
@@ -357,7 +359,7 @@ blockquote {
   border-bottom: 1px solid var(--line);
 }
 .processing {
-  font-size: 0.8rem;
+  font-size: var(--type-caption);
   background: var(--soft);
   padding: 12px;
   margin: 8px 0;
@@ -490,7 +492,7 @@ fieldset {
 }
 .mental-model b {
   color: var(--accent);
-  font-size: 0.7rem;
+  font-size: var(--type-caption);
   border: 1px solid var(--line);
   border-radius: 50%;
   display: grid;
@@ -563,7 +565,7 @@ fieldset {
   letter-spacing: -0.02em;
 }
 .goal-compass .quiet {
-  font-size: 0.8rem;
+  font-size: var(--type-caption);
   flex-shrink: 0;
 }
 .workspace-tools {
@@ -636,13 +638,13 @@ fieldset {
   margin: 10px 0;
 }
 .message summary {
-  font-size: 0.7rem;
+  font-size: var(--type-caption);
 }
 .message details {
   margin-top: 10px;
 }
 .message .author-kind {
-  font-size: 0.62rem;
+  font-size: var(--type-caption);
   font-weight: 500;
   color: var(--muted);
   margin-left: 4px;
@@ -759,7 +761,7 @@ fieldset {
   line-height: 1.5;
 }
 .work-presence > .muted {
-  font-size: 0.8rem;
+  font-size: var(--type-caption);
   margin: 6px 0;
 }
 .history-entry {
@@ -862,7 +864,7 @@ fieldset {
   }
   .sidebar .account button {
     padding: 8px;
-    font-size: 0.78rem;
+    font-size: var(--type-caption);
   }
   .workspace {
     padding: 22px 16px;
@@ -874,7 +876,7 @@ fieldset {
     font-size: 1.65rem;
   }
   .workspace > header .eyebrow {
-    font-size: 0.59rem;
+    font-size: var(--type-caption);
   }
   .goal-compass {
     align-items: flex-start;
@@ -883,7 +885,7 @@ fieldset {
   .goal-compass .quiet {
     padding: 4px;
     max-width: 110px;
-    font-size: 0.75rem;
+    font-size: var(--type-caption);
   }
   .workspace-tools {
     padding: 12px 0 16px;
@@ -893,7 +895,7 @@ fieldset {
   }
   .workspace-tools .tool {
     padding: 9px 10px;
-    font-size: 0.8rem;
+    font-size: var(--type-caption);
   }
   .conversation {
     padding: 16px;
@@ -909,7 +911,7 @@ fieldset {
     flex-wrap: wrap;
   }
   .message time {
-    font-size: 0.66rem;
+    font-size: var(--type-caption);
   }
   .layer-dialog {
     inset: 52px 0 0;
@@ -973,11 +975,11 @@ fieldset {
   justify-content: space-between;
   gap: 12px;
   padding: 12px 0 0;
-  font-size: 0.79rem;
+  font-size: var(--type-caption);
   color: var(--muted);
 }
 .attention-strip .quiet {
-  font-size: 0.79rem;
+  font-size: var(--type-caption);
   white-space: nowrap;
 }
 .attention-item {
@@ -1001,11 +1003,11 @@ fieldset {
 @media (max-width: 760px) {
   .attention-strip {
     align-items: flex-start;
-    font-size: 0.72rem;
+    font-size: var(--type-caption);
   }
   .attention-strip .quiet {
     padding: 0;
-    font-size: 0.72rem;
+    font-size: var(--type-caption);
   }
 }
 
@@ -1029,7 +1031,7 @@ fieldset {
   margin: 20px 0;
 }
 .document-body figcaption {
-  font-size: 0.8rem;
+  font-size: var(--type-caption);
   color: var(--muted);
 }
 .document-checklist {
@@ -1063,7 +1065,7 @@ th {
   padding: 16px;
 }
 .document-editor legend {
-  font-size: 0.8rem;
+  font-size: var(--type-caption);
   color: var(--muted);
 }
 .document-editor table input {
@@ -1131,7 +1133,7 @@ th {
     margin-top: 3px;
   }
   .workspace[data-view="conversation"] .goal-compass .eyebrow {
-    font-size: 0.56rem;
+    font-size: var(--type-caption);
   }
   .conversation .messages {
     min-height: 120px;
@@ -1141,10 +1143,10 @@ th {
   }
   .work-presence > .muted {
     margin: 0;
-    font-size: 0.72rem;
+    font-size: var(--type-caption);
   }
   .work-presence > h3 {
-    font-size: 0.77rem;
+    font-size: var(--type-caption);
     margin-bottom: 4px;
   }
   .conversation > form {
@@ -1162,7 +1164,7 @@ th {
 }
 
 .miriam-live-state {
-  font-size: 0.78rem;
+  font-size: var(--type-caption);
   line-height: 1.5;
   color: var(--muted);
   border-left: 2px solid var(--line);
@@ -1179,4 +1181,41 @@ th {
   background: var(--white);
   border: 1px solid var(--line);
   border-radius: 6px;
+}
+
+.message-attachments-queue {
+  list-style: none;
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.3rem;
+  margin: 0;
+  max-height: 25dvh;
+  overflow: auto;
+}
+.message-attachments-queue li {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.65rem;
+  border-bottom: 1px solid var(--line);
+  padding: 0.3rem;
+}
+.message-attachments-queue li > span {
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+.message-attachments-queue li > span svg {
+  width: 1rem;
+  height: 1rem;
+  vertical-align: middle;
+}
+.message-attachments-queue label {
+  width: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: var(--type-caption);
+}
+.message-attachments-queue input {
+  width: auto;
 }

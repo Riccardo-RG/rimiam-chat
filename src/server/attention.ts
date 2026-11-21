@@ -8,11 +8,14 @@ import { transaction, type Tx } from "./db.ts";
 import { member, changed, lockWorkspace } from "./workspace-state.ts";
 import { requireThat } from "./errors.ts";
 
+import { recordWorkspaceNotice } from "./workspace-notice.ts";
+
 export async function attentionCommand(
   tx: Tx,
   w: string,
   actor: string,
   c: z.infer<typeof attentionCommandSchema>,
+  presentation: "timeline" | "conversation_receipt" = "timeline",
 ) {
   await member(tx, w, actor, c.type !== "attention.aligned", true);
   if (c.type === "attention.aligned") {
@@ -69,6 +72,15 @@ export async function attentionCommand(
       "INSERT INTO workstream_version(workspace_id,workstream_id,version,title,description,actor_id,origin,lifecycle_state) VALUES($1,$2,$3,$4,$5,$6,'human',$7)",
       [w, id, version, c.title, c.description, actor, state],
     );
+    if (presentation === "timeline") {
+      await recordWorkspaceNotice(
+        tx,
+        w,
+        actor,
+        `ha ${c.id ? "modificato" : "creato"} l’argomento «${c.title}».`,
+        { kind: "workstream", id, version },
+      );
+    }
     await changed(tx, w, c.type);
     return { id, version, state };
   }
@@ -82,20 +94,49 @@ export async function attentionCommand(
     requireThat(stream, "WORKSTREAM_NOT_FOUND", 404);
     requireThat(stream.current_version === c.expectedVersion, "STATE_STALE");
     const transitions = {
-      activate: { from: ["proposed"], to: "active" },
-      resolve: { from: ["active"], to: "resolved" },
-      archive: { from: ["resolved"], to: "archived" },
-      reopen: { from: ["resolved", "archived"], to: "active" },
+      activate: { from: ["proposed"], to: "active", verb: "attivato" },
+      resolve: { from: ["active"], to: "resolved", verb: "concluso" },
+      archive: {
+        from: ["proposed", "active", "resolved"],
+        to: "archived",
+        verb: "archiviato",
+      },
+      reopen: {
+        from: ["resolved", "archived"],
+        to: "active",
+        verb: "riaperto",
+      },
+      restore: { from: ["archived"], to: "", verb: "ripristinato" },
     };
     const transition = transitions[c.action];
     requireThat(
       transition.from.includes(stream.state),
       "WORKSTREAM_TRANSITION_INVALID",
     );
+    let state = transition.to;
+    if (stream.state === "archived") {
+      // Edits while archived preserve that state. Use the last archive act, not the last edit.
+      const { rows } = await tx.query(
+        `SELECT COALESCE(previous.lifecycle_state,CASE WHEN first.origin='human' THEN 'active' ELSE 'proposed' END) AS state
+         FROM workstream_version archived
+         JOIN workstream_version previous ON (previous.workspace_id,previous.workstream_id,previous.version)=(archived.workspace_id,archived.workstream_id,archived.version-1)
+         JOIN workstream_version first ON (first.workspace_id,first.workstream_id,first.version)=(archived.workspace_id,archived.workstream_id,1)
+         WHERE archived.workspace_id=$1 AND archived.workstream_id=$2 AND archived.lifecycle_action='archive'
+         ORDER BY archived.version DESC LIMIT 1`,
+        [w, c.workstreamId],
+      );
+      const beforeArchive = rows[0]?.state;
+      requireThat(
+        ["proposed", "active", "resolved"].includes(beforeArchive),
+        "WORKSTREAM_TRANSITION_INVALID",
+      );
+      if (c.action === "restore" || beforeArchive === "proposed")
+        state = beforeArchive;
+    }
     const version = stream.current_version + 1;
     await tx.query(
       "UPDATE workstream SET current_version=$3,state=$4 WHERE workspace_id=$1 AND id=$2",
-      [w, c.workstreamId, version, transition.to],
+      [w, c.workstreamId, version, state],
     );
     await tx.query(
       "INSERT INTO workstream_version(workspace_id,workstream_id,version,title,description,actor_id,origin,lifecycle_state,lifecycle_action) VALUES($1,$2,$3,$4,$5,$6,'human',$7,$8)",
@@ -106,12 +147,19 @@ export async function attentionCommand(
         stream.title,
         stream.description,
         actor,
-        transition.to,
+        state,
         c.action,
       ],
     );
+    await recordWorkspaceNotice(
+      tx,
+      w,
+      actor,
+      `ha ${transition.verb} l’argomento «${stream.title}».`,
+      { kind: "workstream", id: c.workstreamId, version },
+    );
     await changed(tx, w, `workstream.${c.action}`);
-    return { id: c.workstreamId, version, state: transition.to };
+    return { id: c.workstreamId, version, state };
   }
   const stream = (
     await tx.query(
@@ -166,7 +214,7 @@ export async function organizeSources(
         id,
       ]);
       await tx.query(
-        "INSERT INTO workstream_version(workspace_id,workstream_id,version,title,description,origin,source_id,lifecycle_state) VALUES($1,$2,1,$3,'Organizzazione semantica proposta da Miriam; non ancora un filone attivo.','miriam',$4,'proposed')",
+        "INSERT INTO workstream_version(workspace_id,workstream_id,version,title,description,origin,source_id,lifecycle_state) VALUES($1,$2,1,$3,'Organizzazione semantica proposta da Emme; non ancora un argomento attivo.','miriam',$4,'proposed')",
         [w, id, group.title, source],
       );
     }
@@ -236,9 +284,11 @@ export async function attentionView(actor: string, w: string, before?: number) {
         [w],
       )
     ).rows[0] ?? { version: 0, mode: "discreet", actor: null };
+    // Standby Tasks remain in the schedule but do not demand active attention.
+    // Shipped Android v1 uses this exact Needs Input reason as a discriminator.
     const attention = (
       await tx.query(
-        `SELECT 'work' AS kind,a.id,c.objective AS text,CASE WHEN a.validity='potentially_outdated' THEN 'Risultato da ricontrollare' WHEN a.phase='needs_input' THEN 'Miriam ha bisogno di un chiarimento' WHEN a.phase='paused' THEN 'Analisi in pausa' ELSE 'Miriam sta lavorando' END AS reason FROM active_work a JOIN active_work_contract c ON (c.workspace_id,c.work_id,c.version)=(a.workspace_id,a.id,a.contract_version) WHERE a.workspace_id=$1 AND (a.phase IN ('queued','working','needs_input','paused') OR a.validity='potentially_outdated')
+        `SELECT 'work' AS kind,a.id,c.objective AS text,CASE WHEN a.validity='potentially_outdated' THEN 'Risultato da ricontrollare' WHEN a.phase='needs_input' THEN 'Miriam ha bisogno di un chiarimento' WHEN a.phase='paused' THEN 'Analisi in pausa' ELSE 'Emme sta lavorando' END AS reason FROM active_work a JOIN active_work_contract c ON (c.workspace_id,c.work_id,c.version)=(a.workspace_id,a.id,a.contract_version) WHERE a.workspace_id=$1 AND (a.phase IN ('queued','working','needs_input','paused') OR a.validity='potentially_outdated')
  UNION ALL SELECT 'question',q.id,v.content,'Domanda aperta' FROM open_question q JOIN question_version v ON (v.workspace_id,v.question_id,v.version)=(q.workspace_id,q.id,q.current_version) WHERE q.workspace_id=$1 AND v.status='open'
  UNION ALL SELECT 'task',t.id,v.title,CASE WHEN v.due_at<now() THEN 'Scadenza trascorsa; stato ancora aperto' WHEN r.person_id=$2 THEN 'Responsabilità che hai accettato' ELSE 'Task senza responsabilità accettata' END FROM workspace_task t JOIN task_version v ON (v.workspace_id,v.task_id,v.version)=(t.workspace_id,t.id,t.current_version) LEFT JOIN task_responsibility r ON r.id=v.responsibility_id AND r.workspace_id=t.workspace_id WHERE t.workspace_id=$1 AND v.status IN ('open','in_progress') AND (v.due_at<now() OR r.person_id=$2 OR r.id IS NULL)
  UNION ALL SELECT 'proposal',p.id,p.content,'Decisione, vincolo o impegno ancora proposto' FROM normative_proposal p WHERE p.workspace_id=$1 AND NOT EXISTS(SELECT 1 FROM project_act a WHERE a.workspace_id=p.workspace_id AND a.proposal_id=p.id)`,

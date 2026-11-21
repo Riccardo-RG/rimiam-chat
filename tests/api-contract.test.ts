@@ -132,6 +132,23 @@ describe.sequential(
         ).toBe(401);
       }
     });
+    it("serves the workspace schedule range independently from message pagination", async () => {
+      expect(
+        (await call(`workspaces/${workspaceId}/schedule?limit=500`)).status,
+      ).toBe(200);
+      for (const count of [0, 501])
+        expect(
+          (await call(`workspaces/${workspaceId}/schedule?limit=${count}`))
+            .status,
+        ).toBe(400);
+      expect(
+        (await call(`workspaces/${workspaceId}/messages?through=1&limit=201`))
+          .status,
+      ).toBe(400);
+      expect(
+        (await call(`workspaces/${foreign}/schedule?limit=500`)).status,
+      ).toBe(403);
+    });
     it("publishes a language-neutral contract without loading client framework types", async () => {
       const response = await handleAPI(
         new Request(`${base}/api/v1/openapi.json`),
@@ -140,6 +157,175 @@ describe.sequential(
       expect(schema.openapi).toBe("3.1.0");
       expect(schema.components.schemas.CommandRequest).toBeDefined();
       expect(schema.paths["/workspaces/{workspaceId}/history"]).toBeDefined();
+    });
+    it("shows targeted pending invitations without a link, and admits only the verified recipient after explicit acknowledgement", async () => {
+      const recipientEmail = (
+        await pool.query('SELECT email FROM "user" WHERE id=$1', [userId])
+      ).rows[0].email;
+      const issuer = (
+        await pool.query("SELECT created_by FROM workspace WHERE id=$1", [
+          foreign,
+        ])
+      ).rows[0].created_by;
+      const invitedSpace = (
+        await createWorkspace(issuer, "Spazio invito in entrata", randomUUID())
+      ).id;
+      const issue = (email: string) =>
+        execute(issuer, invitedSpace, randomUUID(), {
+          type: "invitation.create",
+          email,
+          fullHistoryDisclosed: true,
+        });
+      const mine = await issue(recipientEmail.toUpperCase());
+      const others = await issue(`${randomUUID()}@example.test`);
+      const read = () =>
+        handleAPI(
+          new Request(`${base}/api/v1/invitations`, { headers: { cookie } }),
+        );
+      expect(
+        (await handleAPI(new Request(`${base}/api/v1/invitations`))).status,
+      ).toBe(401);
+      const response = await read();
+      expect(response.status).toBe(200);
+      expect(response.headers.get("cache-control")).toBe("private, no-store");
+      expect(await response.json()).toEqual({
+        invitations: [
+          {
+            id: mine.invitationId,
+            workspaceName: "Spazio invito in entrata",
+            inviterName: "Other person",
+            expiresAt: expect.any(String),
+          },
+        ],
+      });
+      expect((await call(`workspaces/${invitedSpace}/state`)).status).toBe(403);
+      const acceptance = (id: string) => `invitations/${id}/accept`;
+      const body = { fullHistoryAccepted: true };
+      for (const hidden of [others.invitationId, randomUUID()]) {
+        const denied = await call(acceptance(hidden), body);
+        expect(denied.status).toBe(404);
+        expect((await denied.json()).error.code).toBe("INVITATION_INVALID");
+      }
+      expect(
+        (
+          await call(acceptance(mine.invitationId), {
+            fullHistoryAccepted: false,
+          })
+        ).status,
+      ).toBe(400);
+      const browserAccept = (origin: string) =>
+        handleAPI(
+          new Request(`${base}/api/v1/${acceptance(mine.invitationId)}`, {
+            method: "POST",
+            headers: { ...json, cookie, origin },
+            body: JSON.stringify(body),
+          }),
+        );
+      expect((await browserAccept("https://example.test")).status).toBe(403);
+      const responses = await Promise.all([
+        browserAccept(base),
+        call(`invitations/${mine.token}`, body),
+      ]);
+      expect(responses.map((entry) => entry.status).sort()).toEqual([200, 409]);
+      expect(await responses.find((entry) => entry.ok)!.json()).toEqual({
+        workspaceId: invitedSpace,
+      });
+      expect(await (await read()).json()).toEqual({ invitations: [] });
+      expect((await call(`workspaces/${invitedSpace}/state`)).status).toBe(200);
+      const extraInvite = await call(`workspaces/${invitedSpace}/commands`, {
+        commandId: randomUUID(),
+        command: {
+          type: "invitation.create",
+          email: recipientEmail,
+          fullHistoryDisclosed: true,
+        },
+      });
+      expect(extraInvite.status).toBe(403);
+      const history = await pool.query(
+        "SELECT basis,full_history_accepted FROM membership_history WHERE workspace_id=$1 AND user_id=$2",
+        [invitedSpace, userId],
+      );
+      expect(history.rows).toEqual([
+        {
+          basis: `invitation:${mine.invitationId}`,
+          full_history_accepted: true,
+        },
+      ]);
+    });
+    it("hides expired, revoked and unauthorized inbox invitations and rechecks eligibility and authority after listing", async () => {
+      const recipientEmail = (
+        await pool.query('SELECT email FROM "user" WHERE id=$1', [userId])
+      ).rows[0].email;
+      const issuer = (
+        await pool.query("SELECT created_by FROM workspace WHERE id=$1", [
+          foreign,
+        ])
+      ).rows[0].created_by;
+      const invitedSpace = (
+        await createWorkspace(issuer, "Invito in aggiornamento", randomUUID())
+      ).id;
+      const issue = () =>
+        execute(issuer, invitedSpace, randomUUID(), {
+          type: "invitation.create",
+          email: recipientEmail,
+          fullHistoryDisclosed: true,
+        });
+      const stale = await issue(),
+        revoked = await issue(),
+        valid = await issue();
+      await pool.query(
+        "UPDATE invitation SET expires_at=now()-interval '1 second' WHERE id=$1",
+        [stale.invitationId],
+      );
+      await execute(issuer, invitedSpace, randomUUID(), {
+        type: "invitation.revoke",
+        invitationId: revoked.invitationId,
+      });
+      const read = async () =>
+        (await (await call("invitations")).json()).invitations;
+      expect(await read()).toEqual([
+        expect.objectContaining({ id: valid.invitationId }),
+      ]);
+      const accept = () =>
+        call(`invitations/${valid.invitationId}/accept`, {
+          fullHistoryAccepted: true,
+        });
+      const browserList = () =>
+        handleAPI(
+          new Request(`${base}/api/v1/invitations`, { headers: { cookie } }),
+        );
+      try {
+        await pool.query(
+          'UPDATE "user" SET "emailVerified"=false WHERE id=$1',
+          [userId],
+        );
+        expect((await browserList()).status).toBe(403);
+        expect((await accept()).status).toBe(403);
+      } finally {
+        await pool.query('UPDATE "user" SET "emailVerified"=true WHERE id=$1', [
+          userId,
+        ]);
+      }
+      try {
+        await pool.query('UPDATE "user" SET eligible=false WHERE id=$1', [
+          issuer,
+        ]);
+        expect(await read()).toEqual([]);
+        expect((await accept()).status).toBe(403);
+      } finally {
+        await pool.query('UPDATE "user" SET eligible=true WHERE id=$1', [
+          issuer,
+        ]);
+      }
+      expect(await read()).toEqual([
+        expect.objectContaining({ id: valid.invitationId }),
+      ]);
+      await execute(issuer, invitedSpace, randomUUID(), {
+        type: "access.relinquish",
+        confirmed: true,
+      });
+      expect(await read()).toEqual([]);
+      expect((await accept()).status).toBe(403);
     });
     it("records Workspace creation receipts and replays creation without granting new authority", async () => {
       const commandId = randomUUID();

@@ -1,5 +1,5 @@
 import { test, expect } from "./backend-fixture";
-import { register, openWorkspacePanel } from "./helpers";
+import { fillWorkspaceName, register, openWorkspacePanel } from "./helpers";
 import { pool } from "../../src/server/db";
 import { establishCalendarConnection } from "../../src/server/calendar-state";
 import { FixtureCalendar } from "../support/fixture-calendar";
@@ -9,9 +9,7 @@ test("Calendar web: internal state, explicit proposal/approval, unknown outcome,
   test.setTimeout(120000);
   const email = `calendar-web-${crypto.randomUUID()}@example.test`;
   await register(page, "Calendar Web", email);
-  await page
-    .getByLabel("Nuovo spazio", { exact: true })
-    .fill("Calendar web verification");
+  await fillWorkspaceName(page, "Calendar web verification");
   await page.getByRole("button", { name: "Crea spazio", exact: true }).click();
   await openWorkspacePanel(page, "calendar");
   const region = page.getByRole("region", { name: "Calendario dello spazio" });
@@ -96,7 +94,10 @@ test("Calendar web: internal state, explicit proposal/approval, unknown outcome,
     }),
   ).toHaveCount(0);
   await proposed
-    .getByRole("button", { name: "Verifica esito esterno", exact: true })
+    .getByRole("button", {
+      name: "Verifica sul calendario collegato",
+      exact: true,
+    })
     .click();
   await expect(proposed).toContainText("SUCCEEDED", { timeout: 20000 });
   expect(
@@ -154,4 +155,104 @@ test("Calendar web: internal state, explicit proposal/approval, unknown outcome,
       )
     ).rows[0].count,
   ).toBe("1");
+});
+
+test("Home offers separate Google and Outlook calendar grants and a private return", async ({
+  page,
+  context,
+}) => {
+  const email = `cal-home-${crypto.randomUUID()}@example.test`;
+  await register(page, "Calendar user", email);
+  const agenda = page.getByRole("region", { name: "Agenda personale" });
+  const today = agenda.getByRole("button", { name: "Oggi", exact: true });
+  await today.click();
+  await expect(today).toHaveAttribute("aria-expanded", "false");
+  await agenda
+    .getByRole("button", { name: "Collega calendario", exact: true })
+    .click();
+  const grants = page.getByRole("region", { name: "Collega un calendario" });
+  await expect(grants).toBeVisible();
+  await expect(today).toHaveAttribute("aria-expanded", "false");
+  const {
+    rows: [member],
+  } = await pool.query(
+    `SELECT u.id AS actor, w.id AS archive, s.id AS session FROM "user" u
+      JOIN workspace w ON w.personal_owner_id=u.id AND w.personal_archive_id IS NULL
+      JOIN session s ON s."userId"=u.id WHERE u.email=$1 ORDER BY s."createdAt" DESC LIMIT 1`,
+    [email],
+  );
+  await establishCalendarConnection(
+    member.actor,
+    member.archive,
+    member.session,
+    new FixtureCalendar(),
+    member.actor,
+    "Agenda di prova",
+  );
+  await page.reload();
+  await agenda
+    .getByRole("button", { name: "Calendari collegati", exact: true })
+    .click();
+  await expect(
+    grants.getByRole("heading", { name: "Calendari collegati" }),
+  ).toBeVisible();
+  await agenda
+    .getByRole("button", { name: "Scollega calendario", exact: true })
+    .click();
+  await expect(
+    agenda.getByRole("button", { name: "Collega calendario", exact: true }),
+  ).toBeVisible();
+  await expect(
+    grants.getByRole("heading", { name: "Collega calendario" }),
+  ).toBeVisible();
+  if (process.env.MIRIAM_E2E_MAILBOX_OAUTH !== "true") {
+    await expect(
+      grants.getByText("Da configurare", { exact: true }),
+    ).toHaveCount(2);
+    return;
+  }
+  const origin = new URL(page.url()).origin;
+  const targets = new Map<string, URL>();
+  await context.route(
+    origin + "/api/v1/integrations/*/launch?*",
+    async (route) => {
+      const response = await route.fetch({ maxRedirects: 0 });
+      expect(response.status()).toBe(303);
+      const target = new URL(response.headers().location);
+      targets.set(new URL(route.request().url()).pathname, target);
+      await route.fulfill({
+        status: 200,
+        contentType: "text/html",
+        body: "<p>Confine di consenso.</p>",
+      });
+    },
+  );
+  for (const [name, provider, host, scope] of [
+    [
+      "Google Calendar",
+      "google",
+      "accounts.google.com",
+      "calendar.events.owned.readonly",
+    ],
+    [
+      "Calendario Outlook",
+      "microsoft",
+      "login.microsoftonline.com",
+      "Calendars.ReadBasic",
+    ],
+  ]) {
+    const [consent] = await Promise.all([
+      context.waitForEvent("page"),
+      grants.getByRole("button", { name: "Collega " + name }).click(),
+    ]);
+    await expect(consent.getByText("Confine di consenso.")).toBeVisible();
+    expect(new URL(consent.url()).origin).toBe(origin);
+    const target = targets.get("/api/v1/integrations/" + provider + "/launch");
+    expect(target?.hostname).toBe(host);
+    expect(target?.searchParams.get("scope")).toContain(scope);
+    expect(target?.searchParams.get("scope")).not.toMatch(/Mail\.Read|gmail\./);
+    await consent.close();
+  }
+  await page.goto("/?calendars=1");
+  await expect(grants).toBeVisible();
 });

@@ -59,9 +59,9 @@ export const productScreens = {
   conversation: {
     label: "Conversazione",
     purpose:
-      "Converse with the workspace and ask Miriam for explanation or preparation.",
+      "Converse with the workspace and ask Emme for explanation or preparation.",
     instructions:
-      "A shared message is retained history, not automatic agreement, accepted information or authority. A selected workstream focuses the conversation without moving history.",
+      "By default, group messages stay between people unless someone calls Emme. On the Web, use Chiedi a Emme while composing or on a particular human message to request a shared reply. Open the Emme avatar for ongoing work and recent results. A shared message is retained history, not agreement or authority. A selected workstream focuses the conversation without moving history.",
     fields: [
       field(
         "content",
@@ -74,9 +74,9 @@ export const productScreens = {
   goal: {
     label: "Goal",
     purpose:
-      "Inspect and establish personal initial intent, or prepare a versioned Goal transition.",
+      "Inspect the shared objective, edit its current text, or prepare a governed Goal transition.",
     instructions:
-      "Initial intent is personal. Other people adhere explicitly to the identified Goal/version. Membership is not adherence or authority. Use the existing form for establishment, changes and approvals; preserve existing obligations.",
+      "Initial intent is personal. Current contributors may explicitly save a text edit to the primary Goal at its expected version. The chat records who changed it. Personal adherence stays version-bound; replacement, conclusion, sub-goals and obligations retain their own controls.",
     fields: [
       field(
         "content",
@@ -135,9 +135,9 @@ export const productScreens = {
     ],
   },
   tasks: {
-    label: "Task e follow-up",
+    label: "Da fare e promemoria",
     purpose:
-      "Record work to do, explicit version-bound responsibility and personal follow-up.",
+      "Record work to do, explicit version-bound responsibility and reminders for the shared chat.",
     instructions:
       "A new Task is unassigned. A suggested person accepts responsibility explicitly. Material changes to accepted work require fresh acceptance or pertinent authority. Completion and reminders do not satisfy or alter commitments.",
     fields: [
@@ -173,20 +173,20 @@ export const productScreens = {
       ),
       field(
         "followupContent",
-        "Cosa ricordare / verificare",
+        "Cosa vuoi ricordare?",
         "conditional",
-        "Required for a personal follow-up, up to 2,000 characters. State what to remember or check.",
+        "Required for a follow-up, up to 2,000 characters. Its text will appear in the shared conversation when due. Eligible members with notifications enabled may also receive a push. Only the creator can revise or close the reminder. The Web form preselects the reminder type; the user may change it.",
       ),
       field(
         "remindAt",
         "Quando",
         "conditional",
-        "Required for a follow-up. Choose its date and time; this does not create a Task deadline or an external calendar event.",
+        "Choose the reminder's starting date and time. On Web it can run once, every day, or on selected weekdays, with an optional inclusive end date. Repetitions keep the wall-clock time in the series time zone. This schedules a reminder for the shared conversation; it creates no Task deadline or calendar event.",
       ),
     ],
   },
   active_work: {
-    label: "Lavoro di Miriam",
+    label: "Lavoro di Emme",
     purpose:
       "Inspect persistent exploratory work, provide input and steer its current contract.",
     instructions:
@@ -207,15 +207,15 @@ export const productScreens = {
     ],
   },
   workstreams: {
-    label: "Filoni",
+    label: "Argomenti",
     purpose:
       "Organize related shared work and sources without changing historical conversation.",
     instructions:
-      "Create a shared workstream using Crea filone or an explicit authenticated text request naming it. Ask for a name if missing. A workstream is not a sub-goal; source linking and lifecycle controls use their existing UI and version checks.",
+      "Create a shared workstream using Nuovo argomento or an explicit authenticated text request naming it. Ask for a name if missing. A workstream is not a sub-goal; source linking and lifecycle controls use their existing UI and version checks.",
     fields: [
       field(
         "title",
-        "Nome del filone",
+        "Nome dell’argomento",
         "required",
         "Choose a meaningful shared title, up to 160 characters. The creation form requires only this title.",
       ),
@@ -436,7 +436,7 @@ export const productScreens = {
         "sendEmail",
         "Invia anche un’email al destinatario",
         "optional",
-        "Select to request delivery of the personal invitation through the configured email service. The invitation link remains a separate admission flow.",
+        "Optionally send the personal link by email. On Web the recipient can also find the pending invitation after signing in with the invited, verified email. They must explicitly accept before joining.",
       ),
       field(
         "reason",

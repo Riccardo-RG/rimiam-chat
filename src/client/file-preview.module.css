@@ -1,0 +1,77 @@
+.trigger {
+  display: inline-flex;
+  max-width: 100%;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.35rem;
+  background: transparent;
+  color: inherit;
+  text-align: start;
+  padding: 0.3rem 0.15rem;
+  overflow-wrap: anywhere;
+}
+.trigger:hover {
+  text-decoration: underline;
+}
+.dialog {
+  width: min(44rem, calc(100% - 1.5rem));
+  max-height: 88dvh;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 0.9rem;
+  color: var(--ink);
+  background: var(--white);
+}
+.wrap {
+  padding: 1rem;
+  overflow: auto;
+}
+.wrap header,
+.wrap footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.wrap header strong {
+  overflow-wrap: anywhere;
+}
+.body {
+  display: grid;
+  gap: 0.6rem;
+  margin-block: 0.75rem;
+}
+.body figure {
+  margin: 0;
+}
+.body audio {
+  width: 100%;
+  min-width: 0;
+}
+.body small,
+.body figcaption {
+  color: var(--muted);
+}
+.body img {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  height: auto;
+  max-height: 62dvh;
+  object-fit: contain;
+  margin-inline: auto;
+}
+.body pre {
+  margin: 0;
+  max-height: 58dvh;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: inherit;
+  font: inherit;
+}
+
+.dialog::backdrop {
+  background: rgb(20 22 20 / 45%);
+}

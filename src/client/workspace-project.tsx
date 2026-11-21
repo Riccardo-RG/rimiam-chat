@@ -1,5 +1,10 @@
 "use client";
+import { useUiLanguage } from "./ui-language";
+
 import { ProductHelp } from "./product-help";
+import { ProjectGoalSummary } from "./project-goal-summary";
+import { WorkspaceIcon } from "./workspace-icon";
+import styles from "./workspace-project.module.css";
 import { useEffect, useRef, useState } from "react";
 import { api } from "./api";
 import type { Command } from "@/contracts/commands";
@@ -12,8 +17,8 @@ type Capability = Extract<
   { type: "mandate.offer" }
 >["capability"];
 const modes: Record<GoalMode, string> = {
-  revise: "Nuova versione dello stesso Goal",
-  replace: "Nuovo Goal che sostituisce il precedente",
+  revise: "Aggiorna lo stesso obiettivo",
+  replace: "Sostituisci l’obiettivo",
   subgoal: "Sub-goal",
   complete: "Dichiarare concluso il Goal",
   abandon: "Abbandonare il Goal",
@@ -34,6 +39,7 @@ const kinds = {
 export function WorkspaceProject({
   workspace,
   actor,
+  canContribute,
   revision = 0,
   command,
   action,
@@ -42,17 +48,20 @@ export function WorkspaceProject({
 }: {
   workspace: string;
   actor: string;
+  canContribute: boolean;
   revision?: number;
   command: (c: Command) => Promise<unknown>;
   action: (fn: () => Promise<void>) => Promise<void>;
   busy: boolean;
   handoff?: ConversationHandoff;
 }) {
+  const { t: uiText } = useUiLanguage();
   const [loaded, setLoaded] = useState<{
       workspace: string;
       view: ProjectView;
     } | null>(null),
     [error, setError] = useState("");
+  const [sharedEdit, setSharedEdit] = useState<boolean | null>(false);
   const [mode, setMode] = useState<GoalMode>("revise"),
     [goalEdit, setGoalEdit] = useState<{
       id: string;
@@ -118,6 +127,11 @@ export function WorkspaceProject({
             );
             if (target && base) {
               initializedGoalHandoff.current = handoff.id;
+              setSharedEdit(
+                target.currentPrimary && target.status === "active"
+                  ? null
+                  : false,
+              );
               setGoalEdit({
                 id: target.id,
                 version: base.version,
@@ -153,6 +167,19 @@ export function WorkspaceProject({
   }, [url, workspace, actor, revision, handoff]);
   const view = loaded?.workspace === workspace ? loaded.view : null;
   const root = useRef<HTMLElement>(null);
+  function revealAct(id: string) {
+    const target = root.current?.querySelector<HTMLElement>(
+      `[data-prepared-id="${CSS.escape(id)}"]`,
+    );
+    if (!target) return;
+    let parent = target.parentElement;
+    while (parent && parent !== root.current) {
+      if (parent instanceof HTMLDetailsElement) parent.open = true;
+      parent = parent.parentElement;
+    }
+    target.scrollIntoView({ block: "nearest" });
+    target.focus({ preventScroll: true });
+  }
   const revealedPrepared = useRef("");
   const prepared = handoff?.application?.prepared;
   useEffect(() => {
@@ -179,7 +206,7 @@ export function WorkspaceProject({
     if (!handoff || handoff.status !== "ready") return {};
     const matches =
       (c.type === "goal.establish" && handoff.kind === "goal.establish") ||
-      (c.type === "goal.propose" &&
+      ((c.type === "goal.editShared" || c.type === "goal.propose") &&
         handoff.kind === "goal.change" &&
         c.goalId === handoff.target?.id) ||
       (c.type === "project.propose" &&
@@ -197,20 +224,26 @@ export function WorkspaceProject({
       const origin = originFor(c);
       if (
         handoff &&
-        ["goal.establish", "goal.propose", "project.propose"].includes(
-          c.type,
-        ) &&
+        [
+          "goal.establish",
+          "goal.editShared",
+          "goal.propose",
+          "project.propose",
+        ].includes(c.type) &&
         !origin.conversationOrigin
       )
         throw new Error(
           "Questo percorso non corrisponde più alla proposta selezionata. Rivalutala o esci dal percorso prima di preparare un altro atto.",
         );
       await command({ ...c, ...origin });
+      if (c.type === "goal.editShared") setGoalEdit(null);
       try {
         setLoaded({ workspace, view: await api<ProjectView>(url) });
       } catch {
         setError(
-          "Operazione registrata. Non è stato possibile aggiornare la vista: sarà ricaricata automaticamente.",
+          uiText(
+            "Operazione registrata. Non è stato possibile aggiornare la vista: sarà ricaricata automaticamente.",
+          ),
         );
       }
     });
@@ -220,8 +253,8 @@ export function WorkspaceProject({
     <fieldset>
       <legend>
         {required
-          ? "Persone rappresentate da questo atto"
-          : "Altre persone coinvolte, se pertinenti"}
+          ? uiText("Persone rappresentate da questo atto")
+          : uiText("Altre persone coinvolte, se pertinenti")}
       </legend>
       {view?.members
         .filter((m) => m.active && m.eligible)
@@ -254,17 +287,18 @@ export function WorkspaceProject({
           <p>
             {name(person)}:{" "}
             {records.some((r) => r.personId === person)
-              ? "atto di approvazione registrato"
-              : "approvazione richiesta"}
+              ? uiText("atto di approvazione registrato")
+              : uiText("approvazione richiesta")}
           </p>
           {records
             .filter((r) => r.personId === person)
             .map((r) => (
               <small key={`${r.personId}:${r.actorId}`}>
-                Da {name(r.actorId)}
+                {uiText("Da ")}
+                {name(r.actorId)}
                 {r.mandateId
-                  ? ` con mandato v${r.mandateVersion}`
-                  : " per sé"}{" "}
+                  ? uiText(" con mandato v{0}", String(r.mandateVersion))
+                  : uiText(" per sé")}{" "}
                 · {new Date(r.createdAt).toLocaleString()}
               </small>
             ))}
@@ -280,7 +314,7 @@ export function WorkspaceProject({
                 })
               }
             >
-              Approvo questo contenuto per me
+              {uiText("Approvo questo contenuto per me")}
             </button>
           )}
           {enabled &&
@@ -309,7 +343,9 @@ export function WorkspaceProject({
                     })
                   }
                 >
-                  Approvo per {name(person)} con il mandato indicato v
+                  {uiText("Approvo per ")}
+                  {name(person)}
+                  {uiText(" con il mandato indicato v")}
                   {m.version}
                 </button>
               ))}
@@ -327,6 +363,56 @@ export function WorkspaceProject({
         g.status === "active",
     );
   const actGoalStale = actGoal !== null && !currentGoal(actGoal);
+  const adoptedDecisions = effective.filter(
+    (a) => a.kind === "decision" && a.operation !== "revoke",
+  );
+  const addressedProposals =
+    view?.acts.filter(
+      (a) =>
+        a.status === "proposed" &&
+        a.people.includes(actor) &&
+        !a.approvals.some((ap) => ap.personId === actor),
+    ) ?? [];
+  const register = (
+    <section
+      aria-label={uiText("Decisioni già prese")}
+      className={styles.decisionRegister}
+    >
+      <h4>{uiText("Decisioni già prese")}</h4>
+      {adoptedDecisions.length ? (
+        <ul>
+          {adoptedDecisions.map((a) => (
+            <li key={a.proposalId}>
+              <button type="button" onClick={() => revealAct(a.proposalId)}>
+                {a.content}
+                <WorkspaceIcon name="chevron" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p>{uiText("Ancora nessuna decisione adottata.")}</p>
+      )}
+      {!!addressedProposals.length && (
+        <details>
+          <summary>
+            {uiText("In attesa di te · ")}
+            {addressedProposals.length}
+          </summary>
+          <ul>
+            {addressedProposals.map((a) => (
+              <li key={a.proposalId}>
+                <button type="button" onClick={() => revealAct(a.proposalId)}>
+                  {a.content}
+                  <WorkspaceIcon name="chevron" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </section>
+  );
   const mandateScopeStale =
     mandateScope !== null &&
     (scopeKind === "goal"
@@ -341,153 +427,117 @@ export function WorkspaceProject({
   return (
     <section
       ref={root}
-      className="card source-work"
-      aria-label="Goal, decisioni e mandati"
+      className={`card source-work ${styles.project}`}
+      aria-label={uiText("Obiettivo, decisioni e deleghe")}
     >
-      <h2>Goal, decisioni e mandati</h2>
-      <ProductHelp screen="goal" />
-      <p className="hint">
-        Intenzione, adesione, rappresentanza e adozione di un atto sono
-        distinte. Una proposta conserva il contenuto e le persone coinvolte
-        prima di qualsiasi effetto.
-      </p>
+      {!view && !error && (
+        <p role="status">{uiText("Caricamento della direzione…")}</p>
+      )}
       {error && <p role="alert">{error}</p>}
       {view && (
         <>
-          {!view.goals.some((g) => g.currentPrimary) && !view.goals.length && (
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                void perform({
-                  type: "goal.establish",
-                  content: String(new FormData(e.currentTarget).get("content")),
-                });
-              }}
-            >
-              <label>
-                Il mio intento iniziale
-                <textarea
-                  name="content"
-                  required
-                  maxLength={12000}
-                  defaultValue={
-                    handoff?.kind === "goal.establish" &&
-                    handoff.status === "ready"
-                      ? handoff.suggestedText
-                      : ""
-                  }
-                />
-              </label>
-              <button disabled={busy}>
-                Stabilisci il Goal come mio intento
-              </button>
-            </form>
-          )}
-          {view.goals.map((g) => (
-            <article className="item" key={g.id}>
-              <h3>{g.content}</h3>
-              <p>
-                {g.currentPrimary
-                  ? "Goal principale"
-                  : g.parentGoalId
-                    ? "Sub-goal"
-                    : "Goal storico"}{" "}
-                · versione {g.version} · {g.status}
-              </p>
-              {g.parentGoalId && (
-                <p>
-                  Parte di:{" "}
-                  {view.goals.find((x) => x.id === g.parentGoalId)?.content} · v
-                  {g.parentGoalVersion}
+          {canContribute &&
+            !view.goals.some((g) => g.currentPrimary) &&
+            !view.goals.length && (
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void perform({
+                    type: "goal.establish",
+                    content: String(
+                      new FormData(e.currentTarget).get("content"),
+                    ),
+                  });
+                }}
+              >
+                <h3>{uiText("Qual è l’obiettivo dello spazio?")}</h3>
+                <p className="hint">
+                  {uiText(
+                    "Chi contribuisce potrà aggiornarlo. Le modifiche compariranno in chat.",
+                  )}
                 </p>
-              )}
-              <p>
-                Intenti rappresentati:{" "}
-                {g.participants.map(name).join(", ") ||
-                  "Nessuno nella versione corrente"}
-                . Adesioni a questa versione:{" "}
-                {g.adherences
-                  .filter((a) => a.version === g.version)
-                  .map((a) => name(a.personId))
-                  .join(", ") || "Nessuna"}
-                .
-              </p>
-              {g.status === "active" &&
-                !g.adherences.some(
-                  (a) => a.personId === actor && a.version === g.version,
-                ) && (
-                  <button
-                    disabled={busy}
-                    onClick={() =>
-                      void perform({
-                        type: "goal.adhere",
-                        goalId: g.id,
-                        version: g.version,
-                      })
+                <label>
+                  {uiText("Obiettivo dello spazio")}
+                  <textarea
+                    name="content"
+                    required
+                    maxLength={12000}
+                    defaultValue={
+                      handoff?.kind === "goal.establish" &&
+                      handoff.status === "ready"
+                        ? handoff.suggestedText
+                        : ""
                     }
-                  >
-                    Aderisco personalmente a questo Goal v{g.version}
-                  </button>
-                )}
-              {g.status === "active" && (
-                <button
-                  disabled={busy}
-                  onClick={() =>
-                    setGoalEdit({
-                      id: g.id,
-                      version: g.version,
-                      content: g.content,
-                      proposed: g.content,
-                    })
-                  }
-                >
-                  Proponi evoluzione
-                </button>
-              )}
-              <details>
-                <summary>Identità, versioni e adesioni</summary>
-                <p>Identità: {g.id}</p>
-                {g.versions.map((v) => (
-                  <article key={v.version}>
-                    <strong>
-                      v{v.version}: {v.content}
-                    </strong>
-                    <p>
-                      {name(v.actor)} · {new Date(v.createdAt).toLocaleString()}{" "}
-                      · {v.reason}
-                    </p>
-                    {v.sourceId && (
-                      <small>Fonte conservata: {v.sourceId}</small>
-                    )}
-                  </article>
-                ))}
-                <p>
-                  Adesioni storiche:{" "}
-                  {g.adherences
-                    .map((a) => `${name(a.personId)} → v${a.version}`)
-                    .join(", ") || "Nessuna"}
-                </p>
-                {view.relations
-                  .filter((r) => r.fromGoalId === g.id || r.toGoalId === g.id)
-                  .map((r) => (
-                    <p key={r.id}>
-                      {r.kind === "replaces"
-                        ? "Sostituzione"
-                        : "Relazione Sub-goal"}
-                      : {view.goals.find((x) => x.id === r.fromGoalId)?.content}{" "}
-                      v{r.fromVersion} →{" "}
-                      {view.goals.find((x) => x.id === r.toGoalId)?.content} v
-                      {r.toVersion}
-                    </p>
-                  ))}
-              </details>
-            </article>
-          ))}
-          {goal && goalEdit && (
+                  />
+                </label>
+                <button disabled={busy}>{uiText("Imposta obiettivo")}</button>
+              </form>
+            )}
+          {!view.goals.some((g) => g.currentPrimary) && register}
+          {[...view.goals]
+            .sort((a, b) => Number(b.currentPrimary) - Number(a.currentPrimary))
+            .map((g) => (
+              <ProjectGoalSummary
+                key={g.id}
+                goal={g}
+                canContribute={canContribute}
+                view={view}
+                actor={actor}
+                busy={busy}
+                name={name}
+                adhere={() =>
+                  void perform({
+                    type: "goal.adhere",
+                    goalId: g.id,
+                    version: g.version,
+                  })
+                }
+                propose={(shared) => {
+                  setSharedEdit(shared);
+                  setGoalEdit({
+                    id: g.id,
+                    version: g.version,
+                    content: g.content,
+                    proposed: g.content,
+                  });
+                  requestAnimationFrame(() =>
+                    root.current
+                      ?.querySelector<HTMLElement>("[data-goal-edit-heading]")
+                      ?.focus(),
+                  );
+                }}
+              >
+                {g.currentPrimary ? register : null}
+              </ProjectGoalSummary>
+            ))}
+          {canContribute && goal && goalEdit && sharedEdit === null && (
+            <section aria-label={uiText("Scegli come modificare l’obiettivo")}>
+              <h3>{uiText("Che cosa vuoi cambiare?")}</h3>
+              <button onClick={() => setSharedEdit(true)}>
+                {uiText("Modifica il testo dell’obiettivo")}
+              </button>
+              <button className="quiet" onClick={() => setSharedEdit(false)}>
+                {uiText("Sostituisci, concludi o proponi un’altra modifica")}
+              </button>
+              <button className="quiet" onClick={() => setGoalEdit(null)}>
+                {uiText("Chiudi")}
+              </button>
+            </section>
+          )}
+          {canContribute && goal && goalEdit && sharedEdit !== null && (
             <form
               key={goalEdit.id}
               onSubmit={(e) => {
                 e.preventDefault();
+                if (sharedEdit) {
+                  void perform({
+                    type: "goal.editShared",
+                    goalId: goal.id,
+                    expectedVersion: goalEdit.version,
+                    content: goalEdit.proposed,
+                  });
+                  return;
+                }
                 const f = new FormData(e.currentTarget);
                 void perform({
                   type: "goal.propose",
@@ -505,21 +555,28 @@ export function WorkspaceProject({
                 });
               }}
             >
-              <h3>Evoluzione di: {goalEdit.content}</h3>
-              <p>Versione di partenza: v{goalEdit.version}</p>
+              <h3 data-goal-edit-heading tabIndex={-1}>
+                {sharedEdit
+                  ? uiText("Modifica obiettivo")
+                  : uiText("Altre modifiche all’obiettivo")}
+              </h3>
+
               {goal.version !== goalEdit.version && (
                 <div role="alert">
                   <p>
-                    Il Goal è cambiato mentre preparavi la proposta. La tua
-                    bozza è conservata.
+                    {uiText(
+                      "L’obiettivo è cambiato. Rileggi la versione attuale prima di inviare la bozza.",
+                    )}
                   </p>
                   <p>
-                    Versione attuale v{goal.version}: {goal.content}
+                    {uiText("Versione attuale v")}
+                    {goal.version}: {goal.content}
                   </p>
                   {handoff ? (
                     <p>
-                      Esci dal percorso conversazionale per rivalutare una
-                      proposta sulla versione attuale.
+                      {uiText(
+                        "Esci dal percorso conversazionale per rivalutare una proposta sulla versione attuale.",
+                      )}
                     </p>
                   ) : (
                     <button
@@ -533,28 +590,36 @@ export function WorkspaceProject({
                         })
                       }
                     >
-                      Ho confrontato i contenuti: preparo sulla v{goal.version}
+                      {uiText("Ho confrontato i contenuti: preparo sulla v")}
+                      {goal.version}
                     </button>
                   )}
                 </div>
               )}
-              <label>
-                Tipo di cambiamento
-                <select
-                  value={mode}
-                  onChange={(e) => setMode(e.target.value as GoalMode)}
-                >
-                  {Object.entries(modes).map(([id, label]) => (
-                    <option key={id} value={id}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              {!["complete", "abandon"].includes(mode) && (
+              {!sharedEdit && (
                 <label>
-                  Contenuto proposto
+                  {uiText("Tipo di cambiamento")}
+                  <select
+                    value={mode}
+                    onChange={(e) => setMode(e.target.value as GoalMode)}
+                  >
+                    {Object.entries(modes).map(([id, label]) => (
+                      <option key={id} value={id}>
+                        {uiText(label)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              {(sharedEdit || !["complete", "abandon"].includes(mode)) && (
+                <div>
+                  <label htmlFor="goal-revision-content">
+                    {sharedEdit
+                      ? uiText("Obiettivo dello spazio")
+                      : uiText("Contenuto proposto")}
+                  </label>
                   <textarea
+                    id="goal-revision-content"
                     name="content"
                     value={goalEdit.proposed}
                     onChange={(e) =>
@@ -563,73 +628,90 @@ export function WorkspaceProject({
                     required
                     maxLength={12000}
                   />
-                </label>
+                </div>
               )}
-              {mode === "replace" && (
-                <label>
-                  <input type="checkbox" name="subgoal" />
-                  Il Goal precedente resta come Sub-goal del nuovo Goal
-                </label>
-              )}
-              {people("people")}
-              <p>
-                Le persone il cui intento è già rappresentato e le adesioni
-                esatte pertinenti saranno incluse nel percorso di approvazione.
-                Nessuna adesione viene trasferita automaticamente.
-              </p>
-              {effective.length > 0 && (
-                <fieldset>
-                  <legend>
-                    Questa evoluzione richiede necessariamente modificare uno di
-                    questi atti?
-                  </legend>
-                  {effective.map((a) => (
-                    <label key={a.actId}>
-                      <input type="checkbox" name="blocking" value={a.actId!} />
-                      {kinds[a.kind]}: {a.content}
+              {!sharedEdit && (
+                <>
+                  {mode === "replace" && (
+                    <label>
+                      <input type="checkbox" name="subgoal" />
+                      {uiText(
+                        "Il Goal precedente resta come Sub-goal del nuovo Goal",
+                      )}
                     </label>
-                  ))}
-                </fieldset>
+                  )}
+                  {people("people")}
+                  <p>
+                    {uiText(
+                      "L’approvazione tiene conto delle persone rappresentate e delle adesioni alla versione interessata. Le adesioni non passano automaticamente alla versione successiva.",
+                    )}
+                  </p>
+                  {effective.length > 0 && (
+                    <fieldset>
+                      <legend>
+                        {uiText(
+                          "Questa evoluzione richiede necessariamente modificare uno di questi atti?",
+                        )}
+                      </legend>
+                      {effective.map((a) => (
+                        <label key={a.actId}>
+                          <input
+                            type="checkbox"
+                            name="blocking"
+                            value={a.actId!}
+                          />
+                          {uiText(kinds[a.kind])}: {a.content}
+                        </label>
+                      ))}
+                    </fieldset>
+                  )}
+                  <p>
+                    {uiText(
+                      "Le decisioni e gli impegni già presi restano validi. Prima di cambiare l’obiettivo, ogni modifica agli atti selezionati va approvata separatamente da chi ne ha il permesso.",
+                    )}
+                  </p>
+                  <label>
+                    {uiText("Motivazione")}
+                    <textarea name="reason" required maxLength={4000} />
+                  </label>
+                </>
               )}
-              <p>
-                Gli atti esistenti restano validi nel loro perimetro. Le
-                modifiche necessarie agli atti selezionati devono essere
-                autorizzate separatamente prima dell’evoluzione del Goal.
-              </p>
-              <label>
-                Motivazione
-                <textarea name="reason" required maxLength={4000} />
-              </label>
-              <button disabled={busy || goal.version !== goalEdit.version}>
-                Prepara proposta
+              <button
+                disabled={
+                  busy ||
+                  goal.version !== goalEdit.version ||
+                  (sharedEdit && goalEdit.proposed.trim() === goalEdit.content)
+                }
+              >
+                {sharedEdit
+                  ? uiText("Salva obiettivo")
+                  : uiText("Prepara proposta")}
               </button>
               <button
                 type="button"
                 disabled={busy}
                 onClick={() => setGoalEdit(null)}
               >
-                Chiudi
+                {uiText("Chiudi")}
               </button>
             </form>
           )}
           {view.goalProposals.map((p) => (
-            <details
-              key={p.id}
-              data-prepared-id={p.id}
-              tabIndex={-1}
-              open={p.status === "pending" || p.status === "blocked"}
-            >
+            <details key={p.id} data-prepared-id={p.id} tabIndex={-1}>
               <summary>
-                {modes[p.mode]} · {p.status}
+                {uiText(modes[p.mode])} · {p.status}
               </summary>
               <p>{p.content}</p>
               <p>
-                {p.reason} · proposta da {name(p.actor)}
+                {p.reason}
+                {uiText(" · proposta da ")}
+                {name(p.actor)}
               </p>
               {p.obligations.some((o) => o.blocking) && (
                 <p>
-                  La proposta segnala modifiche necessarie ad atti governati: il
-                  Goal non le autorizza.
+                  {uiText(
+                    "La proposta segnala modifiche necessarie ad atti governati: il Goal non le autorizza.",
+                  )}
                 </p>
               )}
               {approvals(
@@ -646,8 +728,15 @@ export function WorkspaceProject({
               )}
             </details>
           ))}
-          <details open={handoff?.kind.startsWith("project.") || undefined}>
-            <summary>Decisioni, vincoli e impegni</summary>
+          <details
+            className={styles.disclosure}
+            open={handoff?.kind.startsWith("project.") || undefined}
+          >
+            <summary>
+              <WorkspaceIcon name="context" />
+              <span>{uiText("Decisioni, vincoli e impegni")}</span>
+              <WorkspaceIcon name="chevron" />
+            </summary>
             {view.acts.map((a) => (
               <article
                 className="item"
@@ -656,17 +745,20 @@ export function WorkspaceProject({
                 tabIndex={-1}
               >
                 <strong>
-                  {kinds[a.kind]} ·{" "}
+                  {uiText(kinds[a.kind])} ·{" "}
                   {a.status === "effective"
-                    ? "efficace"
+                    ? uiText("efficace")
                     : a.status === "superseded"
-                      ? "sostituito"
-                      : "proposto"}
+                      ? uiText("sostituito")
+                      : uiText("proposto")}
                 </strong>
                 <p>{a.content}</p>
                 {a.replacesActId && (
                   <p>
-                    {a.operation === "revoke" ? "Revoca" : "Sostituisce"}:{" "}
+                    {a.operation === "revoke"
+                      ? uiText("Revoca")
+                      : uiText("Sostituisce")}
+                    :{" "}
                     {
                       view.acts.find((x) => x.actId === a.replacesActId)
                         ?.content
@@ -696,14 +788,14 @@ export function WorkspaceProject({
                       setOperation("replace");
                     }}
                   >
-                    Proponi modifica di questo atto
+                    {uiText("Proponi modifica di questo atto")}
                   </button>
                 )}
                 <small>
-                  Provenance:{" "}
+                  {uiText("Origine:")}{" "}
                   {a.sourceId
-                    ? `fonte ${a.sourceId}`
-                    : `candidato ${a.candidateId}`}
+                    ? uiText("fonte {0}", String(a.sourceId))
+                    : uiText("candidato {0}", String(a.candidateId))}
                 </small>
               </article>
             ))}
@@ -732,24 +824,30 @@ export function WorkspaceProject({
                 });
               }}
             >
-              <h3>{actId ? "Modifica proposta" : "Nuovo atto proposto"}</h3>
+              <h3>
+                {actId
+                  ? uiText("Modifica proposta")
+                  : uiText("Nuovo atto proposto")}
+              </h3>
               {actId && (
                 <label>
-                  Operazione
+                  {uiText("Operazione")}
                   <select
                     value={operation}
                     onChange={(e) =>
                       setOperation(e.target.value as typeof operation)
                     }
                   >
-                    <option value="replace">Sostituzione versionata</option>
-                    <option value="revoke">Revoca esplicita</option>
+                    <option value="replace">
+                      {uiText("Sostituzione versionata")}
+                    </option>
+                    <option value="revoke">{uiText("Revoca esplicita")}</option>
                   </select>
                 </label>
               )}
               {operation !== "revoke" && (
                 <label>
-                  Tipo
+                  {uiText("Tipo")}
                   <select
                     name="kind"
                     defaultValue={
@@ -759,14 +857,14 @@ export function WorkspaceProject({
                   >
                     {Object.entries(kinds).map(([id, label]) => (
                       <option key={id} value={id}>
-                        {label}
+                        {uiText(label)}
                       </option>
                     ))}
                   </select>
                 </label>
               )}
               <label>
-                Contenuto esatto
+                {uiText("Contenuto esatto")}
                 <textarea
                   name="content"
                   required
@@ -783,7 +881,7 @@ export function WorkspaceProject({
                 />
               </label>
               <label>
-                Goal pertinente
+                {uiText("Goal pertinente")}
                 <select
                   name="goal"
                   value={actGoal ? `${actGoal.id}:${actGoal.version}` : ""}
@@ -802,10 +900,13 @@ export function WorkspaceProject({
                     );
                   }}
                 >
-                  <option value="">Nessun Goal specifico</option>
+                  <option value="">{uiText("Nessun Goal specifico")}</option>
                   {actGoalStale && actGoal && (
                     <option value={`${actGoal.id}:${actGoal.version}`} disabled>
-                      {actGoal.content} · v{actGoal.version} — da riesaminare
+                      {actGoal.content}
+                      {uiText(" · v")}
+                      {actGoal.version}
+                      {uiText(" — da riesaminare")}
                     </option>
                   )}
                   {view.goals
@@ -815,31 +916,34 @@ export function WorkspaceProject({
                         value={`${g.id}:${g.version}`}
                         key={`${g.id}:${g.version}`}
                       >
-                        {g.content} · v{g.version}
+                        {g.content}
+                        {uiText(" · v")}
+                        {g.version}
                       </option>
                     ))}
                 </select>
                 {actGoalStale && (
                   <span role="alert">
-                    Il Goal selezionato è cambiato. Rileggi e seleziona
-                    esplicitamente il riferimento attuale, oppure rimuovi il
-                    collegamento.
+                    {uiText(
+                      "Il Goal selezionato è cambiato. Rileggi e seleziona esplicitamente il riferimento attuale, oppure rimuovi il collegamento.",
+                    )}
                   </span>
                 )}
               </label>
               {people("people", true)}
               {actId && (
                 <p>
-                  Le persone rappresentate dall’atto precedente restano
-                  necessarie, anche se non selezionate qui.
+                  {uiText(
+                    "Le persone rappresentate dall’atto precedente restano necessarie, anche se non selezionate qui.",
+                  )}
                 </p>
               )}
               <label>
-                Motivazione
+                {uiText("Motivazione")}
                 <input name="reason" required maxLength={4000} />
               </label>
               <button disabled={busy || actGoalStale}>
-                Registra proposta da approvare
+                {uiText("Registra proposta da approvare")}
               </button>
               {actId && (
                 <button
@@ -849,17 +953,21 @@ export function WorkspaceProject({
                     setOperation("establish");
                   }}
                 >
-                  Torna a nuovo atto
+                  {uiText("Torna a nuovo atto")}
                 </button>
               )}
             </form>
           </details>
-          <details>
-            <summary>Mandati di rappresentanza</summary>
+          <details className={styles.disclosure}>
+            <summary>
+              <WorkspaceIcon name="people" />
+              <span>{uiText("Mandati di rappresentanza")}</span>
+              <WorkspaceIcon name="chevron" />
+            </summary>
             <p>
-              Un mandato riguarda esclusivamente la rappresentanza del
-              concedente per una capability e una identità/versione precise. Non
-              delega l’accesso né consente di rappresentare altre persone.
+              {uiText(
+                "Un mandato riguarda esclusivamente la rappresentanza del concedente per una capability e una identità/versione precise. Non delega l’accesso né consente di rappresentare altre persone.",
+              )}
             </p>
             {view.mandates.map((m) => (
               <article key={m.id} className="item">
@@ -867,22 +975,30 @@ export function WorkspaceProject({
                   {name(m.grantorId)} → {name(m.holderId)}
                 </strong>
                 <p>
-                  {capabilities[m.capability]} ·{" "}
+                  {uiText(capabilities[m.capability])} ·{" "}
                   {m.scope.kind === "goal"
                     ? view.goals.find((g) => g.id === m.scope.id)?.content
                     : view.acts.find((a) => a.actId === m.scope.id)
                         ?.content}{" "}
-                  · v{m.scope.version}
+                  {uiText("· v")}
+                  {m.scope.version}
                 </p>
                 <p>
-                  {m.status} · versione del mandato {m.version} ·{" "}
-                  {m.available ? "esercitabile" : "non esercitabile"}
+                  {m.status}
+                  {uiText(" · versione del mandato ")}
+                  {m.version} ·{" "}
+                  {m.available
+                    ? uiText("esercitabile")
+                    : uiText("non esercitabile")}
                 </p>
                 <p>{m.terms}</p>
                 <p>
                   {m.reason}
                   {m.expiresAt
-                    ? ` · fino a ${new Date(m.expiresAt).toLocaleString()}`
+                    ? uiText(
+                        " · fino a {0}",
+                        String(new Date(m.expiresAt).toLocaleString()),
+                      )
                     : ""}
                 </p>
                 {(actor === m.grantorId || actor === m.holderId) &&
@@ -904,51 +1020,56 @@ export function WorkspaceProject({
                       }}
                     >
                       <label>
-                        Atto personale
+                        {uiText("Atto personale")}
                         <select name="response">
                           {m.holderId === actor && m.status === "offered" && (
                             <>
                               <option value="accept">
-                                Accetto questi termini
+                                {uiText("Accetto questi termini")}
                               </option>
-                              <option value="decline">Rifiuto</option>
+                              <option value="decline">
+                                {uiText("Rifiuto")}
+                              </option>
                             </>
                           )}
                           {m.grantorId === actor && (
                             <option value="revoke">
-                              Revoco il mio mandato
+                              {uiText("Revoco il mio mandato")}
                             </option>
                           )}
                           {m.status === "accepted" && m.grantorId === actor && (
                             <option value="contest">
-                              Contesto: sospendi la rappresentanza
+                              {uiText("Contesto: sospendi la rappresentanza")}
                             </option>
                           )}
                           {m.holderId === actor && m.status !== "offered" && (
                             <option value="relinquish">
-                              Rinuncio alla rappresentanza
+                              {uiText("Rinuncio alla rappresentanza")}
                             </option>
                           )}
                           {m.grantorId === actor &&
                             m.status === "contested" && (
                               <option value="confirm">
-                                Riconfermo esplicitamente il mio mandato
+                                {uiText(
+                                  "Riconfermo esplicitamente il mio mandato",
+                                )}
                               </option>
                             )}
                         </select>
                       </label>
                       <label>
-                        Motivazione
+                        {uiText("Motivazione")}
                         <input name="reason" required maxLength={4000} />
                       </label>
-                      <button disabled={busy}>Registra atto</button>
+                      <button disabled={busy}>{uiText("Registra atto")}</button>
                     </form>
                   )}
                 <details>
-                  <summary>Storia del mandato</summary>
+                  <summary>{uiText("Storia del mandato")}</summary>
                   {m.versions.map((v) => (
                     <p key={v.version}>
-                      v{v.version} · {v.status} · {name(v.actor)} · {v.reason} ·{" "}
+                      {uiText("v")}
+                      {v.version} · {v.status} · {name(v.actor)} · {v.reason} ·{" "}
                       {new Date(v.createdAt).toLocaleString()}
                     </p>
                   ))}
@@ -977,9 +1098,9 @@ export function WorkspaceProject({
                 });
               }}
             >
-              <h3>Offrire la mia rappresentanza</h3>
+              <h3>{uiText("Offrire la mia rappresentanza")}</h3>
               <label>
-                Destinatario
+                {uiText("Destinatario")}
                 <select
                   name="holder"
                   required
@@ -993,10 +1114,13 @@ export function WorkspaceProject({
                     );
                   }}
                 >
-                  <option value="">Seleziona a chi offrire il mandato</option>
+                  <option value="">
+                    {uiText("Seleziona a chi offrire il mandato")}
+                  </option>
                   {mandateHolder && !holderEligible && (
                     <option value={mandateHolder.id} disabled>
-                      {mandateHolder.name} — non disponibile
+                      {mandateHolder.name}
+                      {uiText(" — non disponibile")}
                     </option>
                   )}
                   {view.members
@@ -1009,13 +1133,14 @@ export function WorkspaceProject({
                 </select>
                 {mandateHolder && !holderEligible && (
                   <span role="alert">
-                    Il destinatario scelto non è più disponibile. Il mandato non
-                    viene offerto a un’altra persona: rivaluta la selezione.
+                    {uiText(
+                      "Il destinatario scelto non è più disponibile. Il mandato non viene offerto a un’altra persona: rivaluta la selezione.",
+                    )}
                   </span>
                 )}
               </label>
               <label>
-                Perimetro
+                {uiText("Perimetro")}
                 <select
                   value={scopeKind}
                   onChange={(e) => {
@@ -1023,12 +1148,16 @@ export function WorkspaceProject({
                     setMandateScope(null);
                   }}
                 >
-                  <option value="goal">Goal e versione precisa</option>
-                  <option value="act">Atto esistente preciso</option>
+                  <option value="goal">
+                    {uiText("Goal e versione precisa")}
+                  </option>
+                  <option value="act">
+                    {uiText("Atto esistente preciso")}
+                  </option>
                 </select>
               </label>
               <label>
-                Oggetto
+                {uiText("Oggetto")}
                 <select
                   name="scope"
                   required
@@ -1054,14 +1183,18 @@ export function WorkspaceProject({
                     );
                   }}
                 >
-                  <option value="">Seleziona il perimetro esatto</option>
+                  <option value="">
+                    {uiText("Seleziona il perimetro esatto")}
+                  </option>
                   {mandateScopeStale && mandateScope && (
                     <option
                       value={`${mandateScope.id}:${mandateScope.version}`}
                       disabled
                     >
-                      {mandateScope.label} · v{mandateScope.version} — da
-                      riesaminare
+                      {mandateScope.label}
+                      {uiText(" · v")}
+                      {mandateScope.version}
+                      {uiText(" — da riesaminare")}
                     </option>
                   )}
                   {scopeKind === "goal"
@@ -1072,25 +1205,27 @@ export function WorkspaceProject({
                             key={`${g.id}:${g.version}`}
                             value={`${g.id}:${g.version}`}
                           >
-                            {g.content} · v{g.version}
+                            {g.content}
+                            {uiText(" · v")}
+                            {g.version}
                           </option>
                         ))
                     : effective.map((a) => (
                         <option value={`${a.actId}:1`} key={a.actId}>
-                          {kinds[a.kind]}: {a.content}
+                          {uiText(kinds[a.kind])}: {a.content}
                         </option>
                       ))}
                 </select>
                 {mandateScopeStale && (
                   <span role="alert">
-                    Il perimetro è cambiato. Nessuna rappresentanza viene
-                    trasferita: riseleziona un perimetro attuale dopo averlo
-                    riletto.
+                    {uiText(
+                      "Il perimetro è cambiato. Nessuna rappresentanza viene trasferita: riseleziona un perimetro attuale dopo averlo riletto.",
+                    )}
                   </span>
                 )}
               </label>
               <label>
-                Unico potere delegato
+                {uiText("Unico potere delegato")}
                 <select name="capability" key={scopeKind}>
                   {Object.entries(capabilities)
                     .filter(([id]) =>
@@ -1100,36 +1235,36 @@ export function WorkspaceProject({
                     )
                     .map(([id, label]) => (
                       <option value={id} key={id}>
-                        {label}
+                        {uiText(label)}
                       </option>
                     ))}
                 </select>
               </label>
               <label>
-                Scadenza facoltativa
+                {uiText("Scadenza facoltativa")}
                 <input name="expires" type="datetime-local" />
               </label>
               <label>
-                Motivazione
+                {uiText("Motivazione")}
                 <input name="reason" required maxLength={4000} />
               </label>
               <p>
-                Questa offerta resta limitata alle membership correnti ed
-                eleggibili di entrambi, all’oggetto/versione e al potere
-                indicati. Non consente successive deleghe. Il destinatario deve
-                accettare.
+                {uiText(
+                  "Questa offerta resta limitata alle membership correnti ed eleggibili di entrambi, all’oggetto/versione e al potere indicati. Non consente successive deleghe. Il destinatario deve accettare.",
+                )}
               </p>
               <button
                 disabled={
                   busy || !mandateScope || mandateScopeStale || !holderEligible
                 }
               >
-                Offri il mandato per la sola mia rappresentanza
+                {uiText("Offri il mandato per la sola mia rappresentanza")}
               </button>
             </form>
           </details>
         </>
       )}
+      <ProductHelp screen="goal" />
     </section>
   );
 }

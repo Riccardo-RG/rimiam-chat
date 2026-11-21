@@ -4,7 +4,7 @@ import { z } from "zod";
 import { transaction, type Tx } from "./db.ts";
 import { changed, member } from "./workspace-state.ts";
 import { requireThat } from "./errors.ts";
-import { inspectMedia } from "./media-provider.ts";
+import { inspectMedia, transcriptionConfiguration } from "./media-provider.ts";
 import { uploadDocument } from "./sources.ts";
 import { voiceSendSchema, voiceMessagesSchema } from "../contracts/voice.ts";
 import { recordMessageFocus } from "./workstream-focus.ts";
@@ -43,9 +43,7 @@ export async function sendVoice(
       w,
       sequence,
       actor,
-      input.mode === "miriam"
-        ? "Messaggio vocale a RIMIAM"
-        : "Messaggio vocale",
+      input.mode === "miriam" ? "Messaggio vocale a Emme" : "Messaggio vocale",
     ],
   );
   await tx.query(
@@ -63,7 +61,10 @@ export async function sendVoice(
     );
   if (input.reference)
     await recordMessageReference(tx, w, messageId, input.reference);
-  await changed(tx, w, "voice.sent");
+  await changed(tx, w, "voice.sent", false, false, {
+    kind: "message",
+    id: messageId,
+  });
   return { ...source, messageId };
 }
 
@@ -82,6 +83,7 @@ export async function voiceMessages(actor: string, w: string) {
       )
     ).rows;
     return voiceMessagesSchema.parse({
+      transcriptionConfigured: Boolean(transcriptionConfiguration()),
       messages: rows.map((r) => ({
         ...r,
         researchQuery: voiceResearchQuery(r.transcript),

@@ -1,3 +1,4 @@
+import { queuePrivateBrief } from "./personal-research.ts";
 import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { pool, transaction, type Tx } from "./db.ts";
@@ -60,14 +61,22 @@ export async function requestResearch(
 ) {
   const w = ws.id;
   await member(tx, w, actor, true, true);
+  if (ws.personal_owner_id)
+    await tx.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))", [
+      "personal-research:" + actor,
+    ]);
+  const scope = ws.personal_owner_id
+    ? "workspace_id IN (SELECT id FROM workspace WHERE personal_owner_id=$1)"
+    : "workspace_id=$1";
+  const budget = ws.personal_owner_id ?? w;
   const queued = await tx.query(
-    "SELECT 1 FROM research_work WHERE workspace_id=$1 AND status IN ('queued','running')",
-    [w],
+    `SELECT 1 FROM research_work WHERE ${scope} AND status IN ('queued','running')`,
+    [budget],
   );
   requireThat((queued.rowCount ?? 0) < 4, "RESEARCH_BUSY");
   const recent = await tx.query(
-    "SELECT 1 FROM research_event WHERE workspace_id=$1 AND status='queued' AND created_at>now()-interval '1 hour'",
-    [w],
+    `SELECT 1 FROM research_event WHERE ${scope} AND status='queued' AND created_at>now()-interval '1 hour'`,
+    [budget],
   );
   requireThat((recent.rowCount ?? 0) < 20, "RESEARCH_USAGE_LIMIT");
   requireThat(
@@ -165,7 +174,7 @@ export async function controlResearch(
       "WORK_NOT_RETRYABLE",
     );
     requireThat(
-      row.context_revision === ws.context_revision &&
+      (ws.personal_owner_id || row.context_revision === ws.context_revision) &&
         row.access_revision === ws.access_revision &&
         row.requester_membership_version ===
           (await membershipVersion(tx, ws.id, actor)),
@@ -209,7 +218,7 @@ export async function processResearch(
     if (
       invalid ||
       row.access_revision !== ws.access_revision ||
-      row.context_revision !== ws.context_revision ||
+      (!ws.personal_owner_id && row.context_revision !== ws.context_revision) ||
       row.requester_membership_version !==
         (await membershipVersion(tx, ws.id, row.requested_by))
     ) {
@@ -281,7 +290,8 @@ export async function processResearch(
       }
       const stale =
         !authorized ||
-        ws.context_revision !== row.context_revision ||
+        (!ws.personal_owner_id &&
+          ws.context_revision !== row.context_revision) ||
         ws.access_revision !== row.access_revision ||
         current.lease_until <= new Date();
       // Public search evidence may be kept as historical results when assumptions changed;
@@ -309,13 +319,16 @@ export async function processResearch(
               row.generation,
             ],
           );
-          if (!stale) await scheduleSource(tx, ws.id, sourceId);
+          if (!stale && !ws.personal_owner_id)
+            await scheduleSource(tx, ws.id, sourceId);
         }
       const status = stale ? "stale" : "completed";
       await tx.query(
         "UPDATE research_work SET status=$2,lease_until=NULL,error_code=$3 WHERE id=$1",
         [workId, status, stale ? "RESEARCH_STALE" : null],
       );
+      if (!stale && ws.personal_owner_id)
+        await queuePrivateBrief(tx, ws.id, workId, row.generation);
       await event(
         tx,
         ws.id,

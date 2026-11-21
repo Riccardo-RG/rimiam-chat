@@ -1,14 +1,17 @@
 "use client";
+import { useUiLanguage } from "./ui-language";
 
 import { useEffect, useState } from "react";
 import {
   betaRulesViewSchema,
   type BetaRulesView,
 } from "@/contracts/beta-rules";
+import { betaRules, currentBetaRule } from "@/shared/beta-rules";
 import { api } from "./api";
 import styles from "./beta-notice.module.css";
 
 export function BetaNotice({ actorId }: { actorId: string }) {
+  const { t: uiText, locale } = useUiLanguage();
   const [view, setView] = useState<BetaRulesView | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -28,12 +31,12 @@ export function BetaNotice({ actorId }: { actorId: string }) {
       })
       .catch(() => {
         if (active)
-          setError("Non riesco a verificare l’accettazione. Riprova.");
+          setError(uiText("Non riesco a verificare l’accettazione. Riprova."));
       });
     return () => {
       active = false;
     };
-  }, [actorId, attempt]);
+  }, [actorId, attempt, uiText]);
 
   async function accept() {
     if (!view || busy) return;
@@ -61,9 +64,11 @@ export function BetaNotice({ actorId }: { actorId: string }) {
         failure.message === "BETA_RULES_VERSION_STALE"
       ) {
         setView(null);
-        setError("Le regole sono cambiate: rileggile prima di accettare.");
+        setError(
+          uiText("Le regole sono cambiate: rileggile prima di accettare."),
+        );
       } else {
-        setError("Accettazione non confermata. Puoi riprovare.");
+        setError(uiText("Accettazione non confermata. Puoi riprovare."));
       }
     } finally {
       setBusy(false);
@@ -73,15 +78,25 @@ export function BetaNotice({ actorId }: { actorId: string }) {
   if (view?.acceptedAt || (!view && !error)) return null;
 
   return (
-    <aside className={styles.notice} aria-label="Regole della beta">
+    <aside className={styles.notice} aria-label={uiText("Regole della beta")}>
       <div className={styles.copy}>
         {view && (
           <details>
-            <summary>Prima di partecipare: regole sui dati condivisi</summary>
-            <p>{view.text}</p>
+            <summary>
+              {uiText("Prima di partecipare: regole sui dati condivisi")}
+            </summary>
+            <p>{currentBetaRule(view) ? uiText(betaRules.text) : view.text}</p>
+            {locale === "en" && currentBetaRule(view) && (
+              <details>
+                <summary>{uiText("Testo originale in italiano")}</summary>
+                <p lang="it">{view.text}</p>
+              </details>
+            )}
             <p className="hint">
-              Accetti questa regola d’uso, non un consenso privacy generale.
-              Versione {view.version}.
+              {uiText(
+                "Accetti questa regola d’uso, non un consenso privacy generale. Versione ",
+              )}
+              {view.version}.
             </p>
           </details>
         )}
@@ -96,16 +111,16 @@ export function BetaNotice({ actorId }: { actorId: string }) {
             setAttempt((value) => value + 1);
           }}
         >
-          Riprova
+          {uiText("Riprova")}
         </button>
       ) : (
         <button
           type="button"
           disabled={busy}
           onClick={() => void accept()}
-          aria-label="Accetto la regola d’uso della beta"
+          aria-label={uiText("Accetto la regola d’uso della beta")}
         >
-          {busy ? "Salvataggio…" : "Accetto"}
+          {busy ? uiText("Salvataggio…") : uiText("Accetto")}
         </button>
       )}
     </aside>

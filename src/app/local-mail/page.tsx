@@ -1,7 +1,10 @@
 "use client";
+import { useUiLanguage } from "../../client/ui-language";
+
 import Link from "next/link";
 import { useEffect, useState } from "react";
 export default function LocalMail() {
+  const { t: uiText } = useUiLanguage();
   const [items, setItems] = useState<
     { recipient: string; subject: string; link: string }[]
   >([]);
@@ -17,10 +20,11 @@ export default function LocalMail() {
   }, []);
   return (
     <main className="welcome">
-      <h1>Casella locale</h1>
+      <h1>{uiText("Casella locale")}</h1>
       <p>
-        Solo sviluppo su questo computer. Le email non vengono inviate a
-        destinatari esterni.
+        {uiText(
+          "Solo sviluppo su questo computer. Le email non vengono inviate a destinatari esterni.",
+        )}
       </p>
       {error && <p role="alert">{error}</p>}
       {items.map((m, i) => (
@@ -29,7 +33,7 @@ export default function LocalMail() {
           <a href={m.link}>{m.subject}</a>
         </article>
       ))}
-      <Link href="/">Torna a Miriam</Link>
+      <Link href="/">{uiText("Torna a RIMIAM")}</Link>
     </main>
   );
 }

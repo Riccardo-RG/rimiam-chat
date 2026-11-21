@@ -8,6 +8,7 @@ import {
 } from "../src/server/commands";
 import { readDocument } from "../src/server/sources";
 import { snapshot } from "../src/server/queries";
+import { messages, state } from "../src/server/sync";
 import {
   processInterpretation,
   retrieveSources,
@@ -75,6 +76,142 @@ const provider: ResearchProvider = {
 afterAll(() => pool.end());
 
 describe("Document sources and retained provenance", () => {
+  it("publishes an explicitly shared file and its exact source as one replayable human message", async () => {
+    const { a, b, w } = await setup();
+    await join(a, b, w);
+    const stream = await execute(a, w, randomUUID(), {
+      type: "workstream.save",
+      title: "Appunti",
+      description: "",
+    });
+    const workstreamFocus = {
+      workstreamId: stream.id,
+      version: stream.version,
+    };
+    const command = {
+      type: "document.upload",
+      filename: "Emme apri un filone.txt",
+      bytesBase64: Buffer.from("Appunti privi di effetti.\n€50").toString(
+        "base64",
+      ),
+      conversationShare: { workstreamFocus },
+    };
+    const id = randomUUID();
+    const [first, replay] = await Promise.all([
+      execute(a, w, id, command),
+      execute(a, w, id, command),
+    ]);
+    expect(replay).toEqual(first);
+    const view = await state(b, w);
+    const timeline = await messages(
+      b,
+      w,
+      0,
+      view.messageSequence,
+      20,
+      stream.id as string,
+    );
+    expect(timeline.messages).toEqual([
+      expect.objectContaining({
+        id: first.messageId,
+        authorId: a,
+        content: command.filename,
+        workstreamFocus,
+        reference: { kind: "source", id: first.sourceId, version: 1 },
+      }),
+    ]);
+    expect(
+      (
+        await readDocument(b, w, first.sourceId as string)
+      ).original_bytes.toString("base64"),
+    ).toBe(command.bytesBase64);
+    expect(
+      (
+        await pool.query(
+          "SELECT source_id FROM interpretation WHERE workspace_id=$1 AND source_id=ANY($2::uuid[])",
+          [w, [first.messageId, first.sourceId]],
+        )
+      ).rows,
+    ).toEqual([{ source_id: first.sourceId }]);
+    expect(
+      (
+        await pool.query(
+          "SELECT 1 FROM workstream_source WHERE workspace_id=$1 AND workstream_id=$2 AND source_id=$3 AND included",
+          [w, stream.id, first.sourceId],
+        )
+      ).rowCount,
+    ).toBe(1);
+    expect(view).toMatchObject({ information: [], commitments: [] });
+    await expect(
+      execute(a, w, id, { ...command, conversationShare: {} }),
+    ).rejects.toThrow("COMMAND_ID_REUSED");
+    const next = await execute(a, w, randomUUID(), {
+      ...command,
+      previousSourceId: first.sourceId,
+      conversationShare: {},
+    });
+    expect(next.sourceId).not.toBe(first.sourceId);
+    expect(next.version).toBe(2);
+    const updated = await messages(
+      b,
+      w,
+      0,
+      (await state(b, w)).messageSequence,
+      20,
+    );
+    expect(
+      updated.messages.find((m) => m.id === first.messageId)?.reference?.id,
+    ).toBe(first.sourceId);
+    expect(
+      updated.messages.find((m) => m.id === next.messageId)?.reference?.id,
+    ).toBe(next.sourceId);
+  });
+
+  it("rolls back the entire chat attachment for stale/foreign focus and rejects ineligible contributors", async () => {
+    const { a, b, w } = await setup();
+    const stream = await execute(a, w, randomUUID(), {
+      type: "workstream.save",
+      title: "Foto",
+      description: "",
+    });
+    const bytes = Buffer.from("Nota di prova").toString("base64");
+    const command = {
+      type: "document.upload",
+      filename: "allegato.txt",
+      bytesBase64: bytes,
+      conversationShare: {
+        workstreamFocus: { workstreamId: stream.id, version: 2 },
+      },
+    };
+    const before = await state(a, w);
+    await expect(execute(a, w, randomUUID(), command)).rejects.toThrow(
+      "STATE_STALE",
+    );
+    const second = await setup();
+    await expect(
+      execute(second.a, second.w, randomUUID(), {
+        ...command,
+        conversationShare: {
+          workstreamFocus: { workstreamId: stream.id, version: 1 },
+        },
+      }),
+    ).rejects.toThrow("WORKSTREAM_NOT_FOUND");
+    await expect(
+      execute(b, w, randomUUID(), { ...command, conversationShare: {} }),
+    ).rejects.toThrow("WORKSPACE_ACCESS_DENIED");
+    expect((await state(a, w)).messageSequence).toBe(before.messageSequence);
+    expect((await snapshot(a, w)).sources).toEqual([]);
+    expect((await snapshot(second.a, second.w)).sources).toEqual([]);
+    await join(a, b, w);
+    await pool.query(
+      "UPDATE membership SET contributes=false WHERE workspace_id=$1 AND user_id=$2",
+      [w, b],
+    );
+    await expect(
+      execute(b, w, randomUUID(), { ...command, conversationShare: {} }),
+    ).rejects.toThrow("WORKSPACE_ACCESS_DENIED");
+  });
+
   it("keeps exact original bytes and version history; upload never accepts claims, changes obligations or fabricates a message", async () => {
     const { a, b, w } = await setup();
     const bytes = "Il locale costa €3.200 al mese.\r\n";

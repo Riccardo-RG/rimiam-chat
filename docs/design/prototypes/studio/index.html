@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="it" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Lancio RIMIAM · Studio di conversazione</title>
+  <link rel="icon" href="rimiam-mark.svg">
+  <link rel="stylesheet" href="studio.css">
+  <script src="studio.js" defer></script>
+</head>
+<body>
+  <div class="shell">
+    <aside class="rail" id="rail" aria-label="Navigazione">
+      <div class="rail-top"><div class="brand"><img src="rimiam-mark.svg" alt=""><span>rimiam</span></div><button class="icon small" data-nav title="Chiudi navigazione" aria-label="Chiudi navigazione"><svg aria-hidden="true" focusable="false"><use href="rimiam-icons.svg?v=incisa#side"/></svg></button></div>
+      <div class="rail-body">
+        <nav class="rail-nav" aria-label="Personale">
+          <button data-panel="home"><svg aria-hidden="true" focusable="false"><use href="rimiam-icons.svg?v=incisa#home"/></svg>I tuoi spazi</button>
+          <button data-panel="personal"><svg aria-hidden="true" focusable="false"><use href="rimiam-icons.svg?v=incisa#mark"/></svg>Tu ed Emme</button>
+          <button data-panel="today"><svg aria-hidden="true" focusable="false"><use href="rimiam-icons.svg?v=incisa#clock"/></svg>Oggi</button>
+        </nav>
+        <div class="rail-group">
+          <p>Spazi</p>
+          <button class="selected" data-chat aria-current="location"><svg aria-hidden="true" focusable="false"><use href="rimiam-icons.svg?v=incisa#chat"/></svg>Lancio RIMIAM</button>
+        </div>
+        <div class="rail-group in-space"><p>In questo spazio</p><button data-panel="tools"><svg aria-hidden="true" focusable="false"><use href="rimiam-icons.svg?v=incisa#sliders"/></svg>Strumenti</button></div>
+      </div>
+      <div class="account"><span class="round ct">CT</span><span>Caterina Test</span><button class="icon theme" title="Cambia tema" aria-label="Cambia tema"><svg aria-hidden="true" focusable="false"><use href="rimiam-icons.svg?v=incisa#contrast"/></svg></button></div>
+    </aside>
+    <button class="scrim" aria-label="Chiudi navigazione" data-dismiss-nav></button>
+    <main>
+      <header class="topbar">
+        <button class="icon show-nav" data-nav aria-label="Apri navigazione" title="Apri navigazione"><svg aria-hidden="true" focusable="false"><use href="rimiam-icons.svg?v=incisa#side"/></svg></button>
+        <h1>Lancio RIMIAM</h1>
+        <nav class="tabs" aria-label="Viste dello spazio"><button data-chat aria-current="page">Chat</button><button data-files>Condivisi</button></nav>
+        <div class="top-right">
+          <button class="members" data-panel="members" aria-label="2 persone"><span class="stack" aria-hidden="true"><i class="ct">CT</i><i class="mt">MT</i></span><span>2 persone</span></button>
+          <button class="invite" type="button" data-panel="invite" aria-label="Invita una persona"><svg aria-hidden="true" focusable="false"><use href="rimiam-icons.svg?v=incisa#share"/></svg></button>
+          <button class="icon mobile-theme theme" aria-label="Cambia tema" title="Cambia tema"><svg aria-hidden="true" focusable="false"><use href="rimiam-icons.svg?v=incisa#contrast"/></svg></button>
+        </div>
+      </header>
+      <div class="desk">
+        <section class="workarea" aria-label="Conversazione">
+          <div class="context-wrap"><button class="context" data-panel="goal"><svg aria-hidden="true" focusable="false"><use href="rimiam-icons.svg?v=incisa#goal"/></svg><span class="goal-label">Goal</span><span>Invitare i primi gruppi a provare la beta di RIMIAM.</span><svg class="chev" aria-hidden="true" focusable="false"><use href="rimiam-icons.svg?v=incisa#right"/></svg></button></div>
+          <div id="feed" class="feed" tabindex="0" aria-label="Messaggi dello spazio"><div class="thread">
+            <div class="day"><time id="day-label">20 novembre 2026<span class="day-hour"> · 09:48</span></time></div>
+            <article class="message emme"><div class="sig"><svg class="who" aria-hidden="true" focusable="false"><use href="rimiam-icons.svg?v=incisa#mark"/></svg><b>Emme</b><time data-time>09:48</time></div><p>Benvenuti. Questo è il vostro spazio per confrontarvi e raccogliere idee, domande e materiali. Potete iniziare dalla conversazione, anche senza un Goal già stabilito.</p></article>
+            <div class="join"><span></span>Ingresso nello spazio · Matteo Test</div>
+            <article class="message"><div class="sig"><i class="round mt">MT</i><b>Matteo Test</b><time data-time>09:48</time></div><p>Ho raccolto i nomi dei team. Quanti ne invitiamo nel primo giro?</p></article>
+            <article class="message" id="original"><div class="sig"><i class="round ct">CT</i><b>Caterina Test</b><time data-time>09:48</time></div><p>Propongo di partire con tre gruppi e raccogliere i loro commenti.</p><p>Apriamo la prima beta di RIMIAM a tre gruppi.</p></article>
+            <button class="decision" data-panel="decision"><span class="seal"><svg aria-hidden="true" focusable="false"><use href="rimiam-icons.svg?v=incisa#check"/></svg></span><strong>Decisione adottata</strong><span>Apriamo la prima beta di RIMIAM a tre gruppi.</span><svg class="chev" aria-hidden="true" focusable="false"><use href="rimiam-icons.svg?v=incisa#right"/></svg></button>
+            <p class="continuation">Preparo gli inviti per domani.</p>
+          </div></div>
+          <div class="compose-place"><form class="composer"><textarea aria-label="Scrivi al gruppo" rows="1" placeholder="Scrivi al gruppo…"></textarea><div class="draft-file" hidden></div><div class="compose-tools"><button type="button" class="icon" id="attach" aria-label="Allega un file" title="Allega un file"><svg aria-hidden="true" focusable="false"><use href="rimiam-icons.svg?v=incisa#clip"/></svg></button><span class="divide"></span><button type="button" class="commands" data-panel="commands"><span>/</span> Comandi</button><div class="spacer"></div><button type="button" class="availability" data-panel="availability"><span></span>Emme non disponibile</button><button type="submit" class="send" aria-label="Invia messaggio"><svg aria-hidden="true" focusable="false"><use href="rimiam-icons.svg?v=incisa#up"/></svg></button></div><input type="file" hidden id="file-input"></form></div>
+        </section>
+        <section class="library" hidden><h2>Condivisi</h2><div class="library-tabs" aria-label="Filtri"><button aria-pressed="true">Recenti</button><button>Media</button><button>File</button><button>Link</button></div><div class="empty"><svg aria-hidden="true" focusable="false"><use href="rimiam-icons.svg?v=incisa#folder"/></svg><p>Nessun elemento condiviso</p></div></section>
+        <aside class="inspector" hidden aria-label="Dettaglio"><header><h2 id="panel-title"></h2><button class="dismiss"><svg aria-hidden="true" focusable="false"><use href="rimiam-icons.svg?v=incisa#close"/></svg> Chiudi</button></header><div id="panel-body"></div></aside>
+      </div>
+    </main>
+  </div>
+</body>
+</html>

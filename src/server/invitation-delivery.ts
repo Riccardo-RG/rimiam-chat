@@ -57,7 +57,7 @@ export async function processInvitationMail(
     await lockWorkspace(tx, w);
     const r = (
       await tx.query(
-        "SELECT d.*,i.recipient_email,i.issuer_id,i.relationship_id,i.expires_at,i.revoked_at,i.accepted_at FROM invitation_delivery d JOIN invitation i ON i.id=d.invitation_id WHERE d.invitation_id=$1 FOR UPDATE OF d",
+        "SELECT d.*,i.recipient_email,i.recipient_contact_id,i.issuer_id,i.relationship_id,i.expires_at,i.revoked_at,i.accepted_at FROM invitation_delivery d JOIN invitation i ON i.id=d.invitation_id WHERE d.invitation_id=$1 FOR UPDATE OF d",
         [id],
       )
     ).rows[0];
@@ -88,7 +88,21 @@ export async function processInvitationMail(
         [w, r.relationship_id, r.issuer_id],
       )
     ).rowCount;
-    if (r.revoked_at || r.accepted_at || !valid || r.expires_at <= new Date()) {
+    const validContact =
+      r.recipient_contact_id === null ||
+      (
+        await tx.query(
+          'SELECT 1 FROM "user" WHERE id=$1 AND lower(email)=$2 AND eligible AND "emailVerified" FOR SHARE',
+          [r.recipient_contact_id, r.recipient_email],
+        )
+      ).rowCount;
+    if (
+      r.revoked_at ||
+      r.accepted_at ||
+      !valid ||
+      !validContact ||
+      r.expires_at <= new Date()
+    ) {
       await tx.query(
         "UPDATE invitation_delivery SET status=$2,lease_until=NULL,error_code=$3 WHERE invitation_id=$1",
         [

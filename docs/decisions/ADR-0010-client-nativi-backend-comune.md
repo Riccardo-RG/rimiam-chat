@@ -8,6 +8,10 @@
 - **Fonte primaria:** brief `0216c55a-6338-4e83-879d-75eaab6bac04/pasted-text.txt`, conversazione `01a082d6-6a10-7d30-8e76-71c7928fcb96`, sezione «Direzione approvata».
 - **Relazioni:** integra [la specifica canonica](../product/MVP_SPEC_v0.1.md) e [ADR-0005](ADR-0005-postgresql-stato-canonico-storia-provenance.md). ADR-0001–0009 rimangono invariati.
 
+## Aggiornamento del 20 novembre 2026
+
+Riccardo ha richiesto un unico frontend React Native per iOS e Android in sostituzione delle due implementazioni SwiftUI e Compose. Il frontend Web rimane Next.js. Contratto comune, autorità server, provenance e Commit Point continuano a seguire la decisione originale riportata sotto. [Implementazione e collaudo](../development/MULTICLIENT.md).
+
 ## Direzione approvata
 
 Testo del brief, conservato senza estendere il perimetro dell’approvazione:

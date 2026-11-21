@@ -1,12 +1,12 @@
 # RIMIAM — Specifica MVP canonica e Decision Log
 
-**Specifica consolidata vigente · origine: v0.1, 8 settembre 2026 · revisione editoriale: 7 ottobre 2026.**
+**Specifica consolidata vigente · origine: v0.1, 8 settembre 2026 · aggiornamento di nome e partecipazione: 18 novembre 2026.**
 
 Il nome del file `MVP_SPEC_v0.1.md` è mantenuto stabile per i riferimenti: il contenuto incorpora le decisioni approvate successive, fino ad ADR-0015. Non è una fotografia immutata della prima versione né il numero di release dell’app. Il [draft v0.2](MVP_SPEC_v0.2_DRAFT.md) è materiale di evoluzione conservato come fonte, non una specifica sostitutiva adottata; la [riconciliazione](MVP_V0.2_RECONCILIATION.md) ne delimita l’uso. Le decisioni integrali e la loro provenance restano negli [ADR](../decisions/); la policy operativa B2 approvata è conservata integralmente nel [§14.1](#141-policy-operativa-b2-approvata).
 
 Fonte originaria: `Allinagent_MVP_Product_Decision_Log_v0.1.docx`. Il DOCX rimane la fonte storica della versione iniziale; questa specifica canonica incorpora gli aggiornamenti approvati indicati di seguito.
 
-Documento consolidato delle decisioni di prodotto prese durante la fase di discovery. Definisce la tesi dell'MVP, il modello del workspace, il comportamento di Miriam, la governance del Context, l'authority, l'Active Work e il modello multi-actor.
+Documento consolidato delle decisioni di prodotto prese durante la fase di discovery. Definisce la tesi dell'MVP, il modello del workspace, il comportamento di Emme, la governance del Context, l'authority, l'Active Work e il modello multi-actor.
 
 > “Trasformiamo informazioni sparse in una comprensione condivisa che aiuta persone e AI a raggiungere un obiettivo comune.”
 
@@ -15,7 +15,7 @@ Documento consolidato delle decisioni di prodotto prese durante la fase di disco
 **Allineamento documentale · 7 ottobre 2026:** scope approvato fino ad ADR-0015. Questa specifica definisce il prodotto richiesto, non certifica disponibilità live o qualità già validata. [STATUS](../development/STATUS.md) conserva lo stato implementativo, le prove e i limiti correnti; la [guida servizi](../development/DEPLOY_EXTERNAL_SERVICES.md) distingue attivazione e verifiche esterne. Il redesign web è già implementato; Claude Design non è una fase obbligatoria ancora da eseguire. L’allineamento delle app native è temporaneamente differito durante i test web. Le registrazioni datate nel Decision Log conservano il perimetro dei rispettivi atti, non il backlog corrente. Posizionamento e ipotesi commerciali: [GTM / Product Discovery](MVP_GTM_PRODUCT_DISCOVERY.md).
 
 - MVP concept: definito.
-- MVP scope: definito, inclusi messaggi vocali, dialogo vocale con RIMIAM e chiamate audio umane entro [ADR-0015](../decisions/ADR-0015-voce-chiamate-consenso-registrazione.md).
+- MVP scope: definito, inclusi messaggi vocali, dialogo vocale con Emme e chiamate audio umane entro [ADR-0015](../decisions/ADR-0015-voce-chiamate-consenso-registrazione.md).
 - Decisioni di prodotto fondamentali: consolidate nella specifica e negli ADR approvati; il testo completo delle decisioni resta negli ADR.
 - Decisione 1: approvata il 2026-09-08; integrata nei §§2.1, 9 e 17, con testo normativo integrale in ADR-0001.
 - Decisione 2: approvata il 2026-09-09; semantica del Context e governance informativa allineate, con testo normativo integrale in ADR-0002 e riferimento nel §17.
@@ -23,11 +23,11 @@ Documento consolidato delle decisioni di prodotto prese durante la fase di disco
 - Modello di persistenza autorevole (B1): approvato il 2026-09-09 in [ADR-0005](../decisions/ADR-0005-postgresql-stato-canonico-storia-provenance.md); riferimento nel §17.
 - B2 — accesso al Workspace: sufficientemente risolta per la pianificazione implementativa dell’MVP il 2026-09-09. Fondazioni ADR-0006–ADR-0009 e policy operativa approvata nel §14.1; sintesi nel §14 e record nel §17. Nessuna implementazione autorizzata da questa registrazione.
 - Direzione client approvata: mobile primario iOS/Android nativo e client web Next.js sul backend comune, secondo [ADR-0010](../decisions/ADR-0010-client-nativi-backend-comune.md). Configurazione e verifiche esterne: [guida al deploy](../development/DEPLOY_EXTERNAL_SERVICES.md).
-- Naming corrente di prodotto: RIMIAM; MIRIAM resta nei percorsi e package del repository. Allinagent è il nome storico di questa specifica; “Contex” è stato abbandonato. L’intelligenza nativa è Miriam.
+- Naming corrente di prodotto: RIMIAM; MIRIAM resta nei percorsi e package del repository. Allinagent è il nome storico di questa specifica; “Contex” è stato abbandonato. L’intelligenza nativa si chiama **Emme** dal 18 novembre 2026. Nelle fonti storiche, negli ADR e negli identificatori tecnici compare anche il nome precedente, Miriam.
 
 ## 1. Executive Summary
 
-RIMIAM è un workspace collaborativo AI-native, goal-oriented, nel quale più persone lavorano insieme con Miriam, un'intelligenza AI nativa dello spazio. La conversazione rimane la superficie primaria, ma il sistema trasforma continuamente l'attività del gruppo in uno Shared State persistente, verificabile, correggibile e azionabile.
+RIMIAM è un workspace collaborativo AI-native, goal-oriented, nel quale più persone lavorano insieme con Emme, un'intelligenza AI nativa dello spazio. La conversazione rimane la superficie primaria, ma il sistema trasforma continuamente l'attività del gruppo in uno Shared State persistente, verificabile, correggibile e azionabile.
 
 > Goal → Conversation → Understanding → Shared Context → Decisions → Artifacts / Tasks → Actions → nuovo State → progresso verso il Goal
 
@@ -49,13 +49,13 @@ Oggi userebbero chat, motori di ricerca, Drive, note, calendario e ChatGPT. Nell
 
 > Scope ampio e fedele alla visione. Ordine di costruzione stretto, verticale e continuamente testabile.
 
-Primo vertical slice raccomandato nella discovery iniziale (non backlog corrente): due utenti creano uno spazio, definiscono un Goal, conversano, Miriam comprende incrementalmente, propone candidati per Decision/Constraint/Open Question e aggiorna lo Shared Context attraverso gli atti pertinenti, con provenance. Entrambi vedono l'aggiornamento in tempo reale e uno corregge Miriam in linguaggio naturale producendo uno stato corretto e versionato, entro ADR-0001–0002.
+Primo vertical slice raccomandato nella discovery iniziale (non backlog corrente): due utenti creano uno spazio, definiscono un Goal, conversano, Emme comprende incrementalmente, propone candidati per Decision/Constraint/Open Question e aggiorna lo Shared Context attraverso gli atti pertinenti, con provenance. Entrambi vedono l'aggiornamento in tempo reale e uno corregge Emme in linguaggio naturale producendo uno stato corretto e versionato, entro ADR-0001–0002.
 
 ## 2. Modello fondamentale del prodotto
 
 > Il Goal dice dove stiamo andando. La Conversation racconta come ci stiamo arrivando. Il Context rappresenta ciò che il gruppo sa. Gli Artifacts rappresentano ciò che il gruppo sta costruendo.
 
-Miriam ragiona attraverso tutti questi livelli e aiuta il gruppo a ridurre la distanza tra Current State e Goal.
+Emme ragiona attraverso tutti questi livelli e aiuta il gruppo a ridurre la distanza tra Current State e Goal.
 
 **Criterio trasversale di adattabilità — richiesto dall’utente il 2026-09-09.** Il modello fondamentale deve adattarsi a gruppi umani legittimi, Goal, relazioni e modi di collaborare differenti e non prevedibili, senza ricavare le semantiche del dominio da tipi sociali o organizzativi predefiniti. Gli scenari sono stress test, non categorie di prodotto. Il criterio vale per tutti i primitivi e le future review architetturali, oltre al solo accesso.
 
@@ -65,25 +65,29 @@ Le review distinguono rigidità fondamentali, bias di terminologia/UX, dettagli 
 
 ### 2.1 Goal-based Workspace
 
-Nell’MVP uno spazio collaborativo ha al massimo un Goal principale corrente, esplicito e persistente, senza escludere Goal precedenti, proposte e Sub-goal. Il Goal guida rilevanza, Context Engine e comportamento di Miriam, ma non è un blocco rigido che impedisce di iniziare a conversare.
+Nell’MVP uno spazio collaborativo ha al massimo un Goal principale corrente, esplicito e persistente, senza escludere Goal precedenti, proposte e Sub-goal. Il Goal guida rilevanza, Context Engine e comportamento di Emme, ma non è un blocco rigido che impedisce di iniziare a conversare.
 
-> Il Goal non è una descrizione del progetto. È la North Star rispetto alla quale Miriam interpreta il Context, misura il progresso e decide dove può essere utile.
+> Il Goal non è una descrizione del progetto. È la North Star rispetto alla quale Emme interpreta il Context, misura il progresso e decide dove può essere utile.
 
-Il Goal è vivo e versionato. Miriam può comprendere che sta cambiando, ma non può modificarlo silenziosamente. Il completamento importante del Goal richiede conferma del gruppo.
+Il Goal è vivo e versionato. Emme può comprendere che sta cambiando, ma non può modificarlo silenziosamente. Il completamento importante del Goal richiede conferma del gruppo.
 
 **REFINED — Lifecycle, Decisione 3 approvata.** La scelta sostanziale fra nuova versione e nuova identità appartiene all’atto esplicito autorizzato sul Goal. Non trasferisce adesioni né modifica impegni collegati senza la loro authority specifica; una semplice parafrasi non richiede tale procedura. Identità, versioni, adesioni e conclusione seguono [ADR-0003, punti 1–3, 7–8 e 12](../decisions/ADR-0003-lifecycle-goal-continuita-relazioni.md#testo-esatto-approvato).
 
 **Goal iniziale e adesioni — Decisione 1 approvata.** Una persona può stabilire il Goal iniziale del Workspace come espressione esplicita del proprio intento, senza una precedente delega. Il Goal diventa condiviso fra le persone che aderiscono esplicitamente allo stesso Goal identificato e alla sua versione corrente rilevante. L’adesione non richiede identità letterale della formulazione, ma deve riferirsi inequivocabilmente a quel Goal e al contenuto accettato. Le adesioni sono attribuite, versionate e consultabili; non viene attribuito consenso a chi non lo ha espresso.
 
-Miriam può interpretare espressioni naturali come “sì, facciamolo” come possibile adesione quando il riferimento è inequivocabile; l’efficacia rimane riconducibile a un atto esplicito della persona e a una specifica identità/versione del Goal. Partecipazione al Workspace, adesione al Goal e authority decisionale sono indipendenti: aderire non costituisce una delega né un’approvazione generale delle decisioni future. Testo esatto vincolante: [ADR-0001, punti 2 e 3](../decisions/ADR-0001-prima-authority-goal-iniziale-setup-progressivo.md#testo-esatto-approvato).
+Emme può interpretare espressioni naturali come “sì, facciamolo” come possibile adesione quando il riferimento è inequivocabile; l’efficacia rimane riconducibile a un atto esplicito della persona e a una specifica identità/versione del Goal. Partecipazione al Workspace, adesione al Goal e authority decisionale sono indipendenti: aderire non costituisce una delega né un’approvazione generale delle decisioni future. Testo esatto vincolante: [ADR-0001, punti 2 e 3](../decisions/ADR-0001-prima-authority-goal-iniziale-setup-progressivo.md#testo-esatto-approvato).
+
+**Revisione approvata il 20 novembre 2026.** Tutti i membri abilitati a contribuire possono modificare il testo dell’obiettivo condiviso corrente. Ogni modifica conserva la versione e appare nella conversazione con il nome dell’autore. La revisione distingue il testo condiviso dall’adesione personale e dagli atti che cambiano l’identità o concludono il Goal. [ADR-0016](../decisions/ADR-0016-obiettivo-condiviso-e-argomenti.md).
+
+La chat di ogni spazio può usare una connessione diversa scelta dal suo creatore. La Home ne raccoglie le configurazioni e mantiene distinta la scelta personale. [ADR-0017](../decisions/ADR-0017-connessione-assistente-per-spazio.md).
 
 ### 2.2 Conversation
 
-La Conversation è la home e la timeline viva del progetto. Contiene messaggi umani, interventi di Miriam, decisioni, ricerche, creazione o aggiornamento di Artifacts, eventi, Tasks e cambiamenti significativi dello stato. Context e Artifacts sono layer/view dello stesso workspace, non tre tab equivalenti da project manager.
+La Conversation è la home e la timeline viva del progetto. Contiene messaggi umani, interventi di Emme, decisioni, ricerche, creazione o aggiornamento di Artifacts, eventi, Tasks e cambiamenti significativi dello stato. Context e Artifacts sono layer/view dello stesso workspace, non tre tab equivalenti da project manager.
 
 ### 2.3 Shared Context
 
-One Space, One Shared Context. Nell'MVP non esiste una memoria personale nascosta per ciascun membro dentro lo spazio condiviso. Un 1:1 con Miriam è un altro spazio con un proprio Context.
+One Space, One Shared Context. Nell'MVP non esiste una memoria personale nascosta per ciascun membro dentro lo spazio condiviso. Un 1:1 con Emme è un altro spazio con un proprio Context. Nella Home Web, **Personale** raccoglie chat individuale, documenti e promemoria. Questo spazio è riservato all’account e separato dagli spazi condivisi. La Home mostra i prossimi promemoria personali. Task e gestione del Contesto condiviso restano negli spazi di gruppo.
 
 Categorie di default:
 
@@ -104,7 +108,7 @@ Ogni elemento conserva, dove applicabile: provenance/source, autore, timestamp, 
 
 Il sistema non rilegge continuamente l'intera cronologia. Processa nuovi eventi incrementalmente, aggiorna lo stato strutturato e fornisce agli agenti solo il Context rilevante. L'architettura deve preferire logica deterministica e modelli economici per estrazione/classificazione, riservando modelli più potenti ai casi che lo richiedono.
 
-**Context Efficiency / Minimum Sufficient Context — APPROVED, 2026-09-09.** Per ogni inferenza, operazione AI o Specialist Actor, l’efficienza è subordinata a qualità, continuità del Workspace e invarianti approvati. Se il contesto è insufficiente, ambiguo o materialmente rischioso, MIRIAM deve poter recuperare altro contesto pertinente entro accesso e authority applicabili. I budget operativi sono euristiche subordinate alla sufficienza. Testo completo e provenance: [ADR-0004](../decisions/ADR-0004-context-efficiency-minimum-sufficient-context.md).
+**Context Efficiency / Minimum Sufficient Context — APPROVED, 2026-09-09.** Per ogni inferenza, operazione AI o Specialist Actor, l’efficienza è subordinata a qualità, continuità del Workspace e invarianti approvati. Se il contesto è insufficiente, ambiguo o materialmente rischioso, Emme deve poter recuperare altro contesto pertinente entro accesso e authority applicabili. I budget operativi sono euristiche subordinate alla sufficienza. Testo completo e provenance: [ADR-0004](../decisions/ADR-0004-context-efficiency-minimum-sufficient-context.md).
 
 > Conversation / interactions → Context Engine → structured Shared State → humans + AI/tools/agents → actions → state updates
 
@@ -115,13 +119,13 @@ Il sistema non rilegge continuamente l'intera cronologia. Processa nuovi eventi 
 - Immagini
 - Messaggi vocali
 
-**SUPERSEDED per l’audio — 2026-09-13:** [ADR-0015](../decisions/ADR-0015-voce-chiamate-consenso-registrazione.md) include messaggi vocali, conversazione vocale con RIMIAM e chiamate audio umane con registrazione/trascrizione consensuale e analisi soltanto su richiesta separata. Le videochiamate restano fuori MVP. Fonti grezze, Context e atti governati rimangono distinti.
+**SUPERSEDED per l’audio — 2026-09-13:** [ADR-0015](../decisions/ADR-0015-voce-chiamate-consenso-registrazione.md) include messaggi vocali, conversazione vocale con Emme e chiamate audio umane con registrazione/trascrizione consensuale e analisi soltanto su richiesta separata. Le videochiamate restano fuori MVP. Fonti grezze, Context e atti governati rimangono distinti.
 
 ## 3. Context Governance, Evidence e fiducia
 
 ### 3.1 Hybrid Context Ingestion
 
-Non tutto ciò che viene detto entra nel Context. **La precedente promozione automatica basata su alta confidence e basso rischio è superseded nei limiti di ADR-0002, punto 3:** Miriam può registrare attribuzioni verificabili e produrre Evidence e candidati, senza adottarne automaticamente il contenuto. Restano micro-feedback e possibilità di modifica/undo.
+Non tutto ciò che viene detto entra nel Context. **La precedente promozione automatica basata su alta confidence e basso rischio è superseded nei limiti di ADR-0002, punto 3:** Emme può registrare attribuzioni verificabili e produrre Evidence e candidati, senza adottarne automaticamente il contenuto. Restano micro-feedback e possibilità di modifica/undo.
 
 L’accettazione di un’informazione descrittiva richiede un atto esplicito attribuito. È una capability di base del prodotto per i membri abilitati a contribuire, non decision authority e non un mandato ADR-0001; non rappresenta altri membri né consenso collettivo. Un comando inequivocabile può già costituire l’atto, senza conferma rituale. Regole complete e gestione dell’incertezza: [ADR-0002, punti 3–4 e 11](../decisions/ADR-0002-affermazioni-attribuite-informazioni-accettate-impegni.md#testo-esatto-approvato).
 
@@ -133,7 +137,7 @@ Quando la conversazione è chiaramente off-goal, il sistema riduce drasticamente
 
 ### 3.3 Consistency Monitoring
 
-Miriam rileva contraddizioni, informazioni obsolete, ambiguità e conflitti tra messaggi, file, decisioni, date, numeri e vincoli. Non sceglie silenziosamente tra valori incompatibili: conserva provenance, segnala il conflitto quando rilevante e permette di supersedere senza cancellare la storia.
+Emme rileva contraddizioni, informazioni obsolete, ambiguità e conflitti tra messaggi, file, decisioni, date, numeri e vincoli. Non sceglie silenziosamente tra valori incompatibili: conserva provenance, segnala il conflitto quando rilevante e permette di supersedere senza cancellare la storia.
 
 La versione corrente adottata resta distinta dal dissenso aperto: sostituire un’informazione non risolve le contestazioni altrui né revoca un impegno. Si applicano i punti 8–10 di ADR-0002.
 
@@ -153,13 +157,13 @@ Il consenso epistemico sulle informazioni descrittive è l’accettazione editor
 
 > Aver letto un file ≠ accettare ciò che il file dice come verità del progetto.
 
-File → Understanding → Context Candidates / Evidence → Shared State. Miriam legge e comprende automaticamente i file, ma distingue ciò che il documento afferma dalle informazioni accettate come riferimento di lavoro. La quantità di output è proporzionale alla rilevanza, non alla dimensione del file.
+File → Understanding → Context Candidates / Evidence → Shared State. Emme legge e comprende automaticamente i file, ma distingue ciò che il documento afferma dalle informazioni accettate come riferimento di lavoro. La quantità di output è proporzionale alla rilevanza, non alla dimensione del file.
 
 L’ingestion rispetta disclosure e consensi applicabili. **Eccezione esplicita per le chiamate umane:** registrazione e trascrizione autorizzate non attivano analisi o normale retrieval del Context; l’analisi post-call richiede una richiesta separata secondo ADR-0015. In seguito si recuperano fonti pertinenti, senza inserire l’intera trascrizione in ogni inferenza (ADR-0004).
 
 ### 3.6 Trust & Correction
 
-> Correggere Miriam significa correggere la comprensione dello spazio, non soltanto il suo ultimo messaggio.
+> Correggere Emme significa correggere la comprensione dello spazio, non soltanto il suo ultimo messaggio.
 
 Una correzione aggiorna in modo versionato la comprensione dello spazio, preservando eventi sorgente e dissenso; può evidenziare conseguenze senza applicare automaticamente modifiche a impegni, Artifacts o autorizzazioni operative. Gli stati importanti sono understandable, inspectable, correctable e reversible. L’utente può chiedere perché un’informazione è accettata o un impegno è efficace. Regole complete: ADR-0002, punti 6 e 8–10.
 
@@ -169,21 +173,21 @@ Una correzione aggiorna in modo versionato la comprensione dello spazio, preserv
 
 > Una decisione non è una nota nel Context: è una transizione dello Shared State che chiude alcune possibilità, ne invalida altre e ne apre di nuove.
 
-Una decisione conserva outcome, evidence/rationale, provenance, conseguenze, version history e ciò che ha reso possibile. Miriam distingue cosa cambia certamente, cosa probabilmente viene invalidato e cosa diventa ora possibile.
+Una decisione conserva outcome, evidence/rationale, provenance, conseguenze, version history e ciò che ha reso possibile. Emme distingue cosa cambia certamente, cosa probabilmente viene invalidato e cosa diventa ora possibile.
 
 ### 4.2 Disagreement Awareness & Decision Debt
 
-Miriam può rappresentare posizioni divergenti e stato unresolved/contested senza intervenire immediatamente. Distingue conflitto fattuale, trade-off, preferenza e priorità/processo. Cerca di rimuovere ciò che impedisce al gruppo di decidere, non di eliminare il disaccordo.
+Emme può rappresentare posizioni divergenti e stato unresolved/contested senza intervenire immediatamente. Distingue conflitto fattuale, trade-off, preferenza e priorità/processo. Cerca di rimuovere ciò che impedisce al gruppo di decidere, non di eliminare il disaccordo.
 
 > Capire subito. Intervenire solo quando utile. Decidere mai al posto del gruppo.
 
-Una decisione aperta che non blocca nulla può rimanere in sospeso. Diventa Decision Debt quando inizia a condizionare lo stato futuro. Miriam non confonde silenzio, stanchezza o assenza di opposizione con consenso.
+Una decisione aperta che non blocca nulla può rimanere in sospeso. Diventa Decision Debt quando inizia a condizionare lo stato futuro. Emme non confonde silenzio, stanchezza o assenza di opposizione con consenso.
 
 ### 4.3 Opportunity Awareness & Transition Moments
 
-Miriam mantiene consapevolezza di Opportunity, Next useful step, Blocker e Risk rispetto al Goal. Il silenzio è una decisione valida. Nei passaggi salienti può mostrare un Transition Moment con una conseguenza o next step concretamente azionabile, senza richiedere un nuovo prompt.
+Emme mantiene consapevolezza di Opportunity, Next useful step, Blocker e Risk rispetto al Goal. Il silenzio è una decisione valida. Nei passaggi salienti può mostrare un Transition Moment con una conseguenza o next step concretamente azionabile, senza richiedere un nuovo prompt.
 
-> La CTA non suggerisce cosa chiedere a Miriam: continua un ragionamento che Miriam e il gruppo hanno già costruito insieme.
+> La CTA non suggerisce cosa chiedere a Emme: continua un ragionamento che Emme e il gruppo hanno già costruito insieme.
 
 ## 5. Artifacts e Tasks
 
@@ -199,6 +203,8 @@ Conversation ↔ Context ↔ Artifacts è bidirezionale. Un cambiamento nel Cont
 
 Context e Artifacts sono versionati. Operazioni distruttive o ad alto impatto richiedono conferma e recovery/history.
 
+**Percorso Web · 2026-11-19.** Da «Condivisi» si può scaricare una copia modificabile all’esterno. Ricaricarla crea un nuovo documento con un proprio originale, anche a parità di nome. Le versioni storiche degli Artifact e le loro adozioni restano consultabili. Un documento generato su richiesta viene prima consegnato nei Documenti personali. La condivisione richiede una scelta esplicita dello spazio di destinazione. [Intervista Web](../design/reviews/2026-11-19-web/INTERVISTA.md#media-dello-spazio).
+
 ### 5.2 Tasks
 
 **REFINED — [ADR-0013](../decisions/ADR-0013-task-responsabilita-follow-up.md), approvato e registrato il 2026-09-10.** Task, responsabilità accettata e Commitment sono distinti; la precedente formulazione sul riconoscimento/formalizzazione degli impegni non implica che un Task debba derivare da un Commitment. Accettazione personale, modifiche materiali, rinuncia e assenza di effetti normativi automatici seguono l’ADR.
@@ -207,9 +213,9 @@ Campi MVP: cosa, assignee, due date opzionale, status, provenance, link opzional
 
 ### 5.3 Context-aware Follow-up
 
-Miriam segue gli impegni in modo contestuale usando deadline, importanza, Goal, stato del Task, conversazione corrente e Collaboration Policy. Il follow-up non è un reminder meccanico: può chiedere se qualcosa è avvenuto e aggiornare Task/Context/Event sulla base della risposta.
+Emme segue gli impegni in modo contestuale usando deadline, importanza, Goal, stato del Task, conversazione corrente e Collaboration Policy. Il follow-up non è un reminder meccanico: può chiedere se qualcosa è avvenuto e aggiornare Task/Context/Event sulla base della risposta.
 
-**REFINED — ADR-0013:** follow-up e reminder non conferiscono responsabilità o authority. Gli aggiornamenti conseguenziali restano soggetti agli atti e ai controlli della capability interessata; la risposta o il reminder non li autorizzano automaticamente.
+**REFINED — ADR-0013:** follow-up e reminder non conferiscono responsabilità o authority. Gli aggiornamenti conseguenziali restano soggetti agli atti e ai controlli della capability interessata; la risposta o il reminder non li autorizzano automaticamente. Alla scadenza Emme pubblica il testo del promemoria nella chat in cui è stato impostato. Nello spazio condiviso lo vedono tutti i partecipanti abilitati, in Personale soltanto il titolare. Le notifiche fuori dall’app richiedono l’attivazione sul dispositivo per quello spazio.
 
 ## 6. Awareness e Semantic Collaboration Layer
 
@@ -233,9 +239,9 @@ Catch-up = State user knew → relevant changes → Current State, con provenanc
 
 ### 6.3 Semantic Collaboration Layer
 
-> Gli utenti non devono decidere dove appartiene il lavoro. Devono soltanto fare il lavoro. Miriam mantiene la struttura coerente con il significato di ciò che stanno facendo.
+> Gli utenti non devono decidere dove appartiene il lavoro. Devono soltanto fare il lavoro. Emme mantiene la struttura coerente con il significato di ciò che stanno facendo.
 
-La Conversation può rimanere linearmente fluida mentre Miriam mantiene Workstreams semantici emergenti. Un singolo evento può appartenere a più Workstream senza duplicazione o spostamento fisico.
+La Conversation può rimanere linearmente fluida mentre Emme mantiene Workstreams semantici emergenti. Un singolo evento può appartenere a più Workstream senza duplicazione o spostamento fisico.
 
 Lifecycle indicativo: Signal → Emerging → Active → Structured → Dormant / Resolved.
 
@@ -249,33 +255,33 @@ Un Workstream rappresenta un filone di lavoro; un Sub-goal rappresenta un risult
 
 > Rich internal structure, calm external surface.
 
-Miriam valuta Cost of Entanglement e Cost of Fragmentation. La struttura visibile emerge solo quando crea coordination value.
+Emme valuta Cost of Entanglement e Cost of Fragmentation. La struttura visibile emerge solo quando crea coordination value.
 
 > Il gruppo può permettersi di essere disordinato nella conversazione senza diventare disordinato nel lavoro.
 
 ### 6.4 Intent-Aware Conversation & Goal Routing
 
-Miriam comprende continuamente cosa il gruppo sta cercando di ottenere e come il nuovo intento si collega al precedente. Distingue continuazione, focus temporaneo, Sub-goal, nuovo Goal collegato, Goal replacement e Goal completion.
+Emme comprende continuamente cosa il gruppo sta cercando di ottenere e come il nuovo intento si collega al precedente. Distingue continuazione, focus temporaneo, Sub-goal, nuovo Goal collegato, Goal replacement e Goal completion.
 
-La struttura può emergere retroattivamente: Miriam può riconoscere dopo diversi messaggi che è nato un filone autonomo e collegare retroattivamente messaggi e Context pertinenti.
+La struttura può emergere retroattivamente: Emme può riconoscere dopo diversi messaggi che è nato un filone autonomo e collegare retroattivamente messaggi e Context pertinenti.
 
 > Intent before structure. Structure only when it creates coordination value. Structure can emerge retroactively. Context follows intent, selectively. Structure is reversible; history is not lost.
 
-I Goal successivi mantengono Goal Lineage. Quando nasce un nuovo Goal, Miriam propone un Context Handoff selettivo: non parte vuoto e non copia indiscriminatamente tutto.
+I Goal successivi mantengono Goal Lineage. Quando nasce un nuovo Goal, Emme propone un Context Handoff selettivo: non parte vuoto e non copia indiscriminatamente tutto.
 
 **REFINED:** “Goal derivato” indica un’origine documentata, non una categoria persistente distinta; un risultato subordinato è un Sub-goal. Lineage e Handoff preservano riferimenti e storia senza trasferire automaticamente adesioni, mandati o validità del Context. Regole complete su relazioni, stato preesistente e lavoro in corso: [ADR-0003, punti 4–11](../decisions/ADR-0003-lifecycle-goal-continuita-relazioni.md#testo-esatto-approvato).
 
-## 7. Miriam: identità, presenza e collaborazione
+## 7. Emme: identità, presenza e collaborazione
 
 ### 7.1 Identità
 
-> Miriam ha un'identità stabile, ma uno stile collaborativo adattabile.
+> Emme ha un'identità stabile, ma uno stile collaborativo adattabile.
 
 Default: leggermente umana, naturale e presente, ma inequivocabilmente AI. Non simula emozioni, sonno, presenza umana o altre caratteristiche fittizie.
 
 ### 7.2 Presence & Adaptive Attention
 
-Miriam è un membro AI permanente dello spazio, ma la sua presenza è proporzionale al valore che può creare. Essere sempre presente non significa parlare sempre.
+Emme è un membro AI permanente dello spazio, ma la sua presenza è proporzionale al valore che può creare. Essere sempre presente non significa parlare sempre.
 
 Tre livelli di presenza: Observe → signal discreetly → intervene conversationally. Attenzione dinamica: low, normal, high. Gli utenti possono chiedere esplicitamente maggiore attenzione.
 
@@ -283,33 +289,33 @@ Tre livelli di presenza: Observe → signal discreetly → intervene conversatio
 
 ### 7.3 Collaboration Policy
 
-Miriam parte da un baseline progettato e può essere educata conversazionalmente dal gruppo. Preset semplici: Discreto, Collaborativo, Proattivo. Le regole persistenti possono riguardare Intervention, Context Authority, confirmation threshold, criticality, initiative e stile.
+Emme parte da un baseline progettato e può essere educata conversazionalmente dal gruppo. Preset semplici: Discreto, Collaborativo, Proattivo. Le regole persistenti possono riguardare Intervention, Context Authority, confirmation threshold, criticality, initiative e stile.
 
-Default corrente, coerente con il GTM: intervento conversazionale quando Miriam è chiamata esplicitamente; partecipazione proattiva mediante opt-in esplicito. La preferenza non crea authority e non autorizza analisi delle chiamate. Essere presente nel Workspace non significa partecipare live alle chiamate umane (§2.5, ADR-0015).
+In assenza di una preferenza registrata si applica «Solo quando chiamata». Il normale invio al gruppo, anche di un saluto, una domanda o un imperativo, non sollecita un intervento di Emme. Una persona può rivolgersi esplicitamente a Emme, usare «Chiedi a Emme» mentre scrive o richiedere una risposta a uno specifico messaggio già condiviso; il riferimento rimane quel messaggio anche se nel frattempo ne arrivano altri. Le preferenze Collaborative o Propositive già scelte nello spazio restano efficaci. Il lavoro effettivamente in corso e i suoi risultati restano consultabili tramite una presenza discreta (§11). La preferenza non crea authority e non autorizza analisi delle chiamate. Essere presente nel Workspace non significa partecipare live alle chiamate umane (§2.5, ADR-0015).
 
 Preset e soglie rispettano i confini di accettazione e gli atti espliciti richiesti da ADR-0002; non possono aggirarli.
 
 > Comprensione ≠ comportamento ≠ autorità.
 
-> Miriam nasce pronta a collaborare, ma impara come quel gruppo vuole collaborare con lei.
+> Emme nasce pronta a collaborare, ma impara come quel gruppo vuole collaborare con lei.
 
-Progressive discoverability: Miriam rende gradualmente evidente che può essere educata, offrendo piccoli suggerimenti contestuali anziché un pannello di configurazione iniziale.
+Progressive discoverability: Emme rende gradualmente evidente che può essere educata, offrendo piccoli suggerimenti contestuali anziché un pannello di configurazione iniziale.
 
 ### 7.4 Progressive Permission & Behavioral Learning
 
 > First value, then configuration.
 
-Comportamenti più invasivi o consequenziali - push, reminder fuori app, eventi, servizi esterni, azioni verso terzi, modifiche distruttive - non vengono preconfigurati. Miriam fa emergere la scelta quando diventa rilevante e apprende dalla risposta.
+Comportamenti più invasivi o consequenziali - push, reminder fuori app, eventi, servizi esterni, azioni verso terzi, modifiche distruttive - non vengono preconfigurati. Emme fa emergere la scelta quando diventa rilevante e apprende dalla risposta.
 
 Il setup facoltativo dell’authority approvato nel §9 non costituisce un’abilitazione automatica di questi comportamenti.
 
 ## 8. Multi-user Collaborative Intelligence
 
-Miriam è il collaborative intelligence layer del gruppo: mantiene coerenza tra Intent, Shared State, Alignment, Decisions e Actions, contribuendo con judgment proprio senza appropriarsi dell'autorità degli esseri umani.
+Emme è il collaborative intelligence layer del gruppo: mantiene coerenza tra Intent, Shared State, Alignment, Decisions e Actions, contribuendo con judgment proprio senza appropriarsi dell'autorità degli esseri umani.
 
 ### 8.1 Alignment & Decision Readiness
 
-Miriam mantiene implicitamente un Alignment State: settled, proposed, contested, unclear, blocked, superseded. Non cerca massimo consenso: cerca il minimo allineamento necessario per permettere progresso coerente.
+Emme mantiene implicitamente un Alignment State: settled, proposed, contested, unclear, blocked, superseded. Non cerca massimo consenso: cerca il minimo allineamento necessario per permettere progresso coerente.
 
 > Informed Progress over Agreement.
 
@@ -321,29 +327,29 @@ Prima di decisioni importanti valuta Decision Readiness attraverso Alignment, Ev
 
 > Challenge once, respect informed override.
 
-Miriam può avere una valutazione forte e comunicarla, ma la distingue dallo Shared State. Se il gruppo sceglie consapevolmente diversamente e non viola System Boundaries, Miriam rispetta l'override.
+Emme può avere una valutazione forte e comunicarla, ma la distingue dallo Shared State. Se il gruppo sceglie consapevolmente diversamente e non viola System Boundaries, Emme rispetta l'override.
 
 ### 8.2 Project Tensions
 
-Il Context rappresenta tensioni, trade-off e blocker del progetto, non giudizi sulle persone. Alcune tensioni strategiche possono persistere nel tempo, come qualità vs costo o crescita vs rischio, e aiutare Miriam a interpretare decisioni successive.
+Il Context rappresenta tensioni, trade-off e blocker del progetto, non giudizi sulle persone. Alcune tensioni strategiche possono persistere nel tempo, come qualità vs costo o crescita vs rischio, e aiutare Emme a interpretare decisioni successive.
 
 > Record project tensions, never personal judgments.
 
 ### 8.3 Shared-space loyalty
 
-Dentro uno spazio condiviso Miriam serve il progetto condiviso e non favorisce arbitrariamente chi parla per ultimo o più forte. Lo spazio è un shared epistemic environment: non crea memorie segrete su opinioni individuali. Le riflessioni private appartengono a uno spazio 1:1 separato.
+Dentro uno spazio condiviso Emme serve il progetto condiviso e non favorisce arbitrariamente chi parla per ultimo o più forte. Lo spazio è un shared epistemic environment: non crea memorie segrete su opinioni individuali. Le riflessioni private appartengono a uno spazio 1:1 separato.
 
 ## 9. Progressive & Scoped Authority
 
 **Aggiornamento approvato il 2026-09-08:** [Decisione 1 / ADR-0001](../decisions/ADR-0001-prima-authority-goal-iniziale-setup-progressivo.md). Il divieto assoluto precedente di configurare authority all’onboarding è superseduto; restano esclusi setup obbligatorio e authority implicita.
 
-> Gli utenti non amministrano un permission system per poter iniziare a collaborare. Miriam può facilitare accordi espliciti attraverso poche domande pertinenti, anche all’inizio, senza imporre una configurazione completa.
+> Gli utenti non amministrano un permission system per poter iniziare a collaborare. Emme può facilitare accordi espliciti attraverso poche domande pertinenti, anche all’inizio, senza imporre una configurazione completa.
 
 Il setup dell’authority è facoltativo e progressivo: può avvenire alla creazione del Workspace, all’ingresso di nuovi membri, quando cambia significativamente la composizione del gruppo e durante il lavoro. L’authority necessaria viene verificata al Commit Point: il momento in cui un’attività passa da esplorazione reversibile a modifica significativa dello Shared State, impegno per altre persone o azione esterna. Saltare il setup non concede authority e non impedisce di conversare, comprendere, analizzare o preparare il lavoro.
 
 > Check authority at the Commit Point. Ask only when authority is unresolved.
 
-Prima del Commit Point Miriam privilegia ricerca, analisi, scenari, draft e preview. Se l’authority è già stabilita procede secondo Action Policy e riutilizza il mandato entro i suoi limiti; se è ambigua chiede il minimo chiarimento; se è assente preserva optionality. Il chiarimento necessario per procedere al commitment è distinto dalla facilitazione facoltativa degli accordi: non occorre ristabilire authority valida per il solo fatto che Miriam offra un setup.
+Prima del Commit Point Emme privilegia ricerca, analisi, scenari, draft e preview. Se l’authority è già stabilita procede secondo Action Policy e riutilizza il mandato entro i suoi limiti; se è ambigua chiede il minimo chiarimento; se è assente preserva optionality. Il chiarimento necessario per procedere al commitment è distinto dalla facilitazione facoltativa degli accordi: non occorre ristabilire authority valida per il solo fatto che Emme offra un setup.
 
 ### 9.1 Fonti di authority
 
@@ -368,7 +374,7 @@ Il primo mandato nasce da atti espliciti delle persone legittimate a conferirlo.
 
 Nell’MVP sono supportati mandati individuali circoscritti e approvazioni congiunte nominative, senza ruoli generici o un motore generale di policy. Non è richiesta l’approvazione di tutti i membri per ogni decisione: servono i consensi e i poteri pertinenti al perimetro effettivo. Persone non rappresentate, limiti comuni applicabili, ambiti incerti, regole incompatibili e authority mancante non possono essere superati tramite permessi impliciti.
 
-Miriam può proporre formulazioni e individuare bisogni di chiarimento, ma non rende efficace una authority mediante inferenza. Il server verifica atti espliciti riferiti a contenuti precisi e applica soltanto mandati rappresentabili nelle forme supportate. Ruolo tecnico, membership, comportamento osservato, dichiarazioni unilaterali e silenzio non sostituiscono tali atti. Un atto già inequivocabile non richiede una seconda conferma rituale.
+Emme può proporre formulazioni e individuare bisogni di chiarimento, ma non rende efficace una authority mediante inferenza. Il server verifica atti espliciti riferiti a contenuti precisi e applica soltanto mandati rappresentabili nelle forme supportate. Ruolo tecnico, membership, comportamento osservato, dichiarazioni unilaterali e silenzio non sostituiscono tali atti. Un atto già inequivocabile non richiede una seconda conferma rituale.
 
 ### 9.3 Nuovi membri, modifiche e contestazioni
 
@@ -383,7 +389,7 @@ Gli accordi emersi successivamente nella conversazione seguono le stesse regole 
 > Autonomy proportional to consequences.
 
 - Read / analyze / research: autonomo.
-- Prepare / propose: Miriam può creare draft, report, proposed events, checklist e scenari.
+- Prepare / propose: Emme può creare draft, report, proposed events, checklist e scenari.
 - Execute con conseguenze esterne o rilevanti: richiede authority/approvazione esplicita secondo le regole dello spazio.
 
 Il sistema preferisce azioni reversibili quando l'authority è incerta. Comprendere che il gruppo desidera un'azione non equivale ad avere il permesso di eseguirla.
@@ -394,17 +400,17 @@ Il sistema preferisce azioni reversibili quando l'authority è incerta. Comprend
 
 **APPROVED — 2026-09-10:** [ADR-0014 v2](../decisions/ADR-0014-active-work-specialist-contribution.md) precisa iniziativa autonoma senza sovrapposizioni inutili, controllo operativo condiviso, conflitti e lifecycle. Il controllo non modifica gli oggetti governati né amplia authority; `Completed` non significa adozione o validità corrente. L’approvazione non avvia BUILD.
 
-> Quando Miriam riceve un incarico, non genera semplicemente una risposta: apre un'attività contestuale che vive nello stesso stato del progetto e rimane coerente con la sua evoluzione.
+> Quando Emme riceve un incarico, non genera semplicemente una risposta: apre un'attività contestuale che vive nello stesso stato del progetto e rimane coerente con la sua evoluzione.
 
 Gli incarichi non istantanei possono diventare Active Work collegati a Goal, Workstream e Shared State. Ogni Active Work mantiene un Work Contract persistente, versionato e consultabile: objective, scope, relevant inputs, assumptions, authority boundaries ed expected output.
 
-Il Work Contract viene inferito dalla conversazione; Miriam chiede solo le informazioni materialmente mancanti.
+Il Work Contract viene inferito dalla conversazione; Emme chiede solo le informazioni materialmente mancanti.
 
 ### 11.1 State awareness
 
 > Active Work is state-aware, not snapshot-bound.
 
-Durante il lavoro Miriam monitora solo cambiamenti semanticamente rilevanti. Può adottare il nuovo stato, rivalutare una parte del lavoro, chiedere chiarimento o invalidare l'attività. Le assunzioni esplicitamente fissate nel Work Contract possono essere anchored e non cambiano silenziosamente.
+Durante il lavoro Emme monitora solo cambiamenti semanticamente rilevanti. Può adottare il nuovo stato, rivalutare una parte del lavoro, chiedere chiarimento o invalidare l'attività. Le assunzioni esplicitamente fissate nel Work Contract possono essere anchored e non cambiano silenziosamente.
 
 > Context awareness does not mean silent goal drift.
 
@@ -424,7 +430,7 @@ La Conversation mostra solo Meaningful Work Events: finding importante, input ne
 
 > Multi-actor workspace, not multi-bot chat.
 
-Il workspace può contenere Humans, Miriam e Specialist Actors. Gli specialisti possono avere una presenza conversazionale quando utile, ma il loro valore fondamentale è contribuire capabilities al workspace. Miriam non è un semplice main agent: è la manifestazione conversazionale dell'intelligenza collaborativa dello spazio.
+Il workspace può contenere Humans, Emme e Specialist Actors. Gli specialisti possono avere una presenza conversazionale quando utile, ma il loro valore fondamentale è contribuire capabilities al workspace. Emme non è un semplice main agent: è la manifestazione conversazionale dell'intelligenza collaborativa dello spazio.
 
 ### 12.1 Actor model
 
@@ -448,15 +454,15 @@ Un agente può richiedere più Context ma non appropriarsene autonomamente; allo
 
 Gli agenti producono Contributions: Finding, Evidence, Recommendation, Candidate Context, Artifact Draft, Proposed Task, Proposed Action o Question. Le Contributions passano attraverso la governance del workspace prima di diventare Shared State, Artifact change o Action.
 
-### 12.4 Miriam e specialisti
+### 12.4 Emme e specialisti
 
-> Specialist knows the domain; Miriam knows the project.
+> Specialist knows the domain; Emme knows the project.
 
-Miriam può criticare o contestualizzare un output specialistico rispetto ai vincoli del progetto. Gli agenti possono collaborare nello state layer, ma il prodotto evita agent-debate theatre nella Conversation.
+Emme può criticare o contestualizzare un output specialistico rispetto ai vincoli del progetto. Gli agenti possono collaborare nello state layer, ma il prodotto evita agent-debate theatre nella Conversation.
 
 > Results over Routing.
 
-L'utente può invocare esplicitamente uno specialista, ma normalmente deve poter esprimere solo l'obiettivo e lasciare al sistema la scelta delle capability. Se Miriam delega un incarico che ha preso in carico, mantiene responsabilità per la continuità del risultato.
+L'utente può invocare esplicitamente uno specialista, ma normalmente deve poter esprimere solo l'obiettivo e lasciare al sistema la scelta delle capability. Se Emme delega un incarico che ha preso in carico, mantiene responsabilità per la continuità del risultato.
 
 > Delegation does not transfer responsibility.
 
@@ -470,7 +476,7 @@ Context, history e decisioni appartengono al workspace, non agli agenti temporan
 - Calendario condiviso/basic calendar essenziale.
 - Generazione e aggiornamento di documenti/Artifacts basati sullo Shared Context.
 - Ingestion di testo, file/documenti, immagini e messaggi vocali.
-- Dialogo vocale con RIMIAM nello stesso Context della Conversation e chiamate audio tra partecipanti umani, entro ADR-0015 (§2.5); nessuna RIMIAM live nelle chiamate umane.
+- Dialogo vocale con Emme nello stesso Context della Conversation e chiamate audio tra partecipanti umani, entro ADR-0015 (§2.5); nessun intervento live di Emme nelle chiamate umane.
 - Workspace Email: lettura privata, disclosure, bozze e invio esatto autorizzato secondo ADR-0012.
 - Task recognition, assignment e context-aware follow-up.
 - Context-aware Active Work.
@@ -511,11 +517,15 @@ La natura del prodotto implica conversazioni private, memoria persistente, file,
 7. **Bounded delegation.** Delegation is invitation-handling only, explicitly accepted, with restriction/revocation reserved to current stewards individually authorized by the governing arrangement under the accepted terms. It grants no protected participation, governance-modification power or onward delegation.
 8. **Limits and deferrals.** No automatic succession or exceptional governance recovery is provided. Workspace closure/archive/delete remains deferred. Technical durations, token mechanisms, locking, indexes, endpoints and equivalent implementation details may be selected during coding within these rules and the approved ADRs.
 
+**Inviti alla creazione (Web).** Si può creare uno spazio da soli o invitare più persone via email o dalla propria rubrica RIMIAM. La rubrica suggerisce solo persone con cui si è partecipato contemporaneamente ad almeno uno spazio, anche in passato. Mostra il nome e mantiene privati l’indirizzo email del contatto e gli spazi di provenienza. L’invito è legato allo spazio appena creato e segue la normale ammissione personale descritta sopra.
+
+**Scheda personale (Web).** Nella chat dello spazio i membri attivi e idonei possono aprire il profilo di un altro membro attivo e idoneo. In una chat privata i due partecipanti idonei possono consultare il profilo reciproco. La scheda mostra l’email dell’account e, se la persona lo ha aggiunto, il suo numero di telefono. Il titolare può aggiornare o rimuovere il numero dal proprio profilo. Questi recapiti si consultano su richiesta, separatamente dalla rubrica, dalla cronologia e dal Contesto condiviso.
+
 Questa approvazione chiude B2 per la pianificazione implementativa, non approva l’intera proposta architetturale né autorizza implementazione. ADR-0001–ADR-0008 restano invariati; le precedenti esclusioni nelle voci storiche del Decision Log conservano il perimetro dei rispettivi atti.
 
 ## 15. Esplicitamente fuori dall'MVP
 
-- Videochiamate native e partecipazione live di RIMIAM alle chiamate umane. La precedente esclusione anche dell’audio è superseded nel solo perimetro approvato in [ADR-0015](../decisions/ADR-0015-voce-chiamate-consenso-registrazione.md).
+- Videochiamate native e partecipazione live di Emme alle chiamate umane. La precedente esclusione anche dell’audio è superseded nel solo perimetro approvato in [ADR-0015](../decisions/ADR-0015-voce-chiamate-consenso-registrazione.md).
 - Marketplace pubblico completo di agenti/plugin/capability.
 - SDK/protocollo ecosystem definitivo per agenti terzi.
 - Governance enterprise avanzata e RBAC sofisticato.
@@ -533,7 +543,7 @@ Questa approvazione chiude B2 per la pianificazione implementativa, non approva 
 - Progressive disclosure: mostrare complessità solo quando porta valore.
 - Provenance e 'Perché?' devono rendere le inferenze importanti ispezionabili.
 - Le correzioni devono essere naturali, versionate e reversibili.
-- Miriam può essere proattiva; la distruzione è conservativa.
+- Emme può essere proattiva; la distruzione è conservativa.
 - First value, then configuration.
 - Results over Routing: capability-first, non agent-first.
 - Shared truth, personalized attention.
@@ -570,7 +580,7 @@ Le sezioni precedenti costituiscono la specifica consolidata. Questa sezione con
 
 **Decisione presa:** Ogni spazio ha un Goal esplicito ma non bloccante.
 
-**Motivazione:** Orienta Context Engine e Miriam senza imporre project management.
+**Motivazione:** Orienta Context Engine e Emme senza imporre project management.
 
 **Rischi / assunzioni:** Goal troppo rigido può limitare conversazione.
 
@@ -606,11 +616,11 @@ Le sezioni precedenti costituiscono la specifica consolidata. Questa sezione con
 
 ### Multi-user Collaborative Intelligence
 
-**Contesto:** Miriam deve coordinare gruppi senza diventare leader o arbitro.
+**Contesto:** Emme deve coordinare gruppi senza diventare leader o arbitro.
 
 **Alternative considerate:** Bot reattivo; leader AI; facilitatore solo su conflitto.
 
-**Decisione presa:** Miriam mantiene Intent/Alignment/Readiness/Authority e usa judgment senza appropriarsi dell'autorità.
+**Decisione presa:** Emme mantiene Intent/Alignment/Readiness/Authority e usa judgment senza appropriarsi dell'autorità.
 
 **Motivazione:** Permette progresso informato e challenge proporzionale alle conseguenze.
 
@@ -624,7 +634,7 @@ Le sezioni precedenti costituiscono la specifica consolidata. Questa sezione con
 
 **Alternative considerate:** RBAC all'onboarding; authority implicita all'ultimo speaker.
 
-**Decisione presa, raffinata dalla Decisione 1 il 2026-09-08:** Authority scoped, verificata al Commit Point e riutilizzata entro i mandati validi. Miriam può facilitare anche un setup facoltativo iniziale o contestuale ai cambiamenti del gruppo, senza governance obbligatoria o authority implicita.
+**Decisione presa, raffinata dalla Decisione 1 il 2026-09-08:** Authority scoped, verificata al Commit Point e riutilizzata entro i mandati validi. Emme può facilitare anche un setup facoltativo iniziale o contestuale ai cambiamenti del gruppo, senza governance obbligatoria o authority implicita.
 
 **Provenance del raffinamento:** approvazione formale dell’utente; [ADR-0001](../decisions/ADR-0001-prima-authority-goal-iniziale-setup-progressivo.md) conserva il testo approvato e la formulazione precedente superseduta.
 
@@ -652,9 +662,9 @@ Le sezioni precedenti costituiscono la specifica consolidata. Questa sezione con
 
 **Contesto:** Altri agenti devono poter contribuire senza trasformare la chat in bot theatre.
 
-**Alternative considerate:** Multi-bot chat; Miriam come unico agente onnipotente.
+**Alternative considerate:** Multi-bot chat; Emme come unico agente onnipotente.
 
-**Decisione presa:** Specialist Actors con Capability Contract e Context Projection; Miriam mantiene coherence. Continuità e Contributions seguono [ADR-0014](../decisions/ADR-0014-active-work-specialist-contribution.md).
+**Decisione presa:** Specialist Actors con Capability Contract e Context Projection; Emme mantiene coherence. Continuità e Contributions seguono [ADR-0014](../decisions/ADR-0014-active-work-specialist-contribution.md).
 
 **Motivazione:** Capability-first, sostituibilità degli agenti e memoria durevole del workspace.
 
@@ -722,6 +732,10 @@ Le sezioni precedenti costituiscono la specifica consolidata. Questa sezione con
 
 **APPROVED · 2026-09-10.** Swift/SwiftUI per iOS, Kotlin/Compose per Android, Next.js per il web; TypeScript/Node e PostgreSQL mantengono il dominio autorevole sul server. Contratto e comportamento comuni, senza KMP per ora. Provenance, motivazione e limiti: [ADR-0010](../decisions/ADR-0010-client-nativi-backend-comune.md).
 
+**Perimetro della distribuzione · 2026-11-19.** Per questa fase Riccardo ha scelto il Web responsive su computer e telefono e ha richiesto di rimuovere dal repository i due frontend nativi. Il contratto versionato e il dominio server di ADR-0010 continuano a valere. [Stato del lavoro locale](../development/WEB_REDESIGN.md).
+
+**Aggiornamento del 2026-11-20.** Riccardo ha richiesto un unico frontend React Native per iOS e Android, accanto al Web responsive. Il server mantiene stato e autorizzazioni per tutti i client. [Decisione e provenance](../decisions/ADR-0010-client-nativi-backend-comune.md).
+
 ### Calendar — stato temporale, osservazioni e azioni
 
 **APPROVED · 2026-09-10.** Modello richiesto dal brief Calendar BUILD, registrato in [ADR-0011](../decisions/ADR-0011-calendar-stato-temporale-osservazioni-azioni.md); sintesi nel §13. Non approva un provider né autorizza WIRE o Workspace Email.
@@ -740,7 +754,7 @@ L’elenco seguente conserva l’ordine raccomandato nella discovery iniziale, n
 
 1. Workspace multi-user + Goal + Conversation realtime.
 2. Context Engine incrementale + Shared Context strutturato + provenance/versioning + Correction Loop.
-3. Miriam baseline + Context updates + Adaptive Attention/Collaboration Policy essenziale.
+3. Emme baseline + Context updates + Adaptive Attention/Collaboration Policy essenziale.
 4. Current State + Catch-up + Decision State Transitions + disagreement/Decision Debt.
 5. Semantic Collaboration Layer + Workstreams/semantic views.
 6. Artifacts + Tasks + Context-aware Follow-up.
@@ -756,13 +770,13 @@ L'MVP è riuscito se un piccolo gruppo può usare il prodotto per far avanzare u
 
 > Il gruppo parla e lavora normalmente. Il sistema mantiene il significato, lo stato e la continuità.
 
-Il test più importante non è quante feature Miriam possiede, ma se il gruppo deve ancora ricostruire manualmente cosa è stato deciso, dove sono le informazioni, cosa è cambiato, cosa blocca il Goal e quale strumento usare per compiere il passo successivo.
+Il test più importante non è quante feature Emme possiede, ma se il gruppo deve ancora ricostruire manualmente cosa è stato deciso, dove sono le informazioni, cosa è cambiato, cosa blocca il Goal e quale strumento usare per compiere il passo successivo.
 
 ### 19.1 Direzione futura: valutazioni comportamentali
 
 **Non normativa · 2026-09-10.** Registrata su richiesta dell’utente nella chiusura del BUILD Active Work. Esplicita come valutare in futuro la qualità collaborativa già descritta nei §§7 e 11; non amplia lo scope MVP, non approva un’architettura e non autorizza BUILD o WIRE.
 
-Valutazioni comportamentali riproducibili potrebbero affiancare le verifiche strutturali per misurare utilità e tempestività degli interventi, giudizio contestuale, autonomia proporzionata, qualità delle domande, iniziativa Active Work, utilità dei risultati e capacità di non intervenire quando opportuno. Scenari e condizioni ripetibili non implicano risposte del modello identiche. Lo scopo è valutare quanto Miriam collabori bene, oltre alla validità del suo comportamento.
+Valutazioni comportamentali riproducibili potrebbero affiancare le verifiche strutturali per misurare utilità e tempestività degli interventi, giudizio contestuale, autonomia proporzionata, qualità delle domande, iniziativa Active Work, utilità dei risultati e capacità di non intervenire quando opportuno. Scenari e condizioni ripetibili non implicano risposte del modello identiche. Lo scopo è valutare quanto Emme collabori bene, oltre alla validità del suo comportamento.
 
 L’enforcement deterministico di authority, sicurezza, isolamento, provenance, versioning e Commit Points resta autorevole e non può essere sostituito da valutazioni probabilistiche. **Controlli deterministici + valutazione model-based calibrata + revisione umana** sono una strategia candidata, non una scelta approvata. Il feedback reale degli utenti potrebbe diventare uno scenario di regressione comportamentale, verificando una modifica proposta sia sul caso segnalato sia rispetto a regressioni negli altri scenari.
 
@@ -778,8 +792,8 @@ Questa direzione non implica supervisione runtime di ogni risposta da parte di u
 
 > “Gli utenti non devono decidere dove appartiene il lavoro. Devono soltanto fare il lavoro.”
 
-> “Miriam può avere un'opinione senza avere autorità.”
+> “Emme può avere un'opinione senza avere autorità.”
 
-> “Miriam non aspetta semplicemente di rispondere: lavora dentro lo stesso stato vivo in cui lavora il gruppo.”
+> “Emme non aspetta semplicemente di rispondere: lavora dentro lo stesso stato vivo in cui lavora il gruppo.”
 
 > “Agents are replaceable; workspace memory is durable.”

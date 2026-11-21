@@ -1,9 +1,12 @@
+import { taskOfferLineSchema, reminderLineSchema } from "./agenda.ts";
 import { productAssistanceSchema } from "./product-assistance.ts";
 import { conversationOperationSchema } from "./conversation-operation.ts";
 import { z } from "zod";
-import { commandSchema } from "./commands.ts";
+import { commandSchema, messageAttachmentsSchema } from "./commands.ts";
 import { workstreamFocusSchema } from "./attention.ts";
 import { conversationReferenceSchema } from "./activity.ts";
+import { workspaceInvitationsSchema } from "./workspace-invitations.ts";
+import { conversationDirectoryEntrySchema } from "./conversation-reading.ts";
 
 export const apiVersion = "1" as const;
 export const integer = z
@@ -13,8 +16,29 @@ export const integer = z
   .max(Number.MAX_SAFE_INTEGER);
 export const workspaceSchema = z.object({ id: z.uuid(), name: z.string() });
 export const workspacesSchema = z.object({
-  workspaces: z.array(workspaceSchema),
+  workspaces: z.array(conversationDirectoryEntrySchema),
 });
+export const contactsSchema = z.object({
+  contacts: z.array(
+    z.object({ id: z.string(), name: z.string(), nameAmbiguous: z.boolean() }),
+  ),
+  nextOffset: integer.nullable(),
+});
+export type PersonalContacts = z.infer<typeof contactsSchema>;
+export const incomingInvitationsSchema = z.object({
+  invitations: z.array(
+    z.object({
+      id: z.uuid(),
+      workspaceName: z.string(),
+      inviterName: z.string(),
+      expiresAt: z.iso.datetime(),
+    }),
+  ),
+});
+export const acceptInvitationSchema = z
+  .object({ fullHistoryAccepted: z.literal(true) })
+  .strict();
+export const acceptedInvitationSchema = z.object({ workspaceId: z.uuid() });
 export const commandRequestSchema = z
   .object({
     commandId: z.uuid(),
@@ -22,12 +46,20 @@ export const commandRequestSchema = z
     command: commandSchema,
   })
   .strict();
+import {
+  assistantConnectionId,
+  connectionRevision,
+} from "./assistant-settings.ts";
 export const createWorkspaceSchema = z
   .object({
     commandId: z.uuid(),
     expectedActorId: z.string().min(1).optional(),
     name: z.string().trim().min(1).max(120),
     description: z.string().trim().max(2000).optional(),
+    assistantConnectionId: assistantConnectionId.optional(),
+    assistantConnectionRevision: connectionRevision.optional(),
+    invitations: workspaceInvitationsSchema.optional(),
+    attachments: messageAttachmentsSchema.optional(),
   })
   .strict();
 export const receiptSchema = z.object({
@@ -74,6 +106,7 @@ export const nativeAccountResultSchema = z.object({
 });
 export const stateSchema = z.object({
   workspace: workspaceSchema.extend({
+    personal: z.boolean().optional(),
     revision: integer,
     contextRevision: integer,
     accessRevision: integer,
@@ -115,6 +148,9 @@ export const stateSchema = z.object({
   ),
 });
 export const messageSchema = z.object({
+  taskOffer: taskOfferLineSchema.nullable().optional(),
+  reminder: reminderLineSchema.nullable().optional(),
+  quoteMessageId: z.uuid().nullable().optional(),
   assistanceContext: productAssistanceSchema.nullable().optional(),
   operationResult: conversationOperationSchema.nullable().optional(),
   id: z.uuid(),
@@ -126,6 +162,10 @@ export const messageSchema = z.object({
     "conversation",
     "workspace_introduction",
     "workspace_welcome",
+    "workstream_event",
+    "goal_event",
+    "followup_reminder",
+    "task_offer",
   ]),
   citationSourceIds: z.array(z.uuid()),
   replyToSourceId: z.uuid().nullable(),
@@ -155,3 +195,20 @@ export const historySchema = z.object({
 });
 export type MessagePage = z.infer<typeof messagesSchema>;
 export type CommandReceipt = z.infer<typeof receiptSchema>;
+export const personalSpaceRequestSchema = z
+  .object({ expectedActorId: z.string().min(1) })
+  .strict();
+export const personalSpaceResultSchema = z.object({ id: z.uuid() });
+export const personalHomeSchema = z.object({
+  readyResearch: z.object({ thread: z.uuid(), workId: z.uuid() }).optional(),
+  id: z.uuid().nullable(),
+  reminders: z
+    .array(
+      z.object({
+        id: z.uuid(),
+        content: z.string(),
+        nextRemindAt: z.iso.datetime({ offset: true }),
+      }),
+    )
+    .max(3),
+});

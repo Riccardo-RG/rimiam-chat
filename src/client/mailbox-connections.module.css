@@ -1,0 +1,28 @@
+.section {
+  display: grid;
+  gap: 0.65rem;
+  margin-block-end: 1.25rem;
+}
+.section h3,
+.section p {
+  margin: 0;
+}
+.choices {
+  display: flex;
+  flex-direction: column;
+  border-block-start: 1px solid var(--line);
+}
+.choice {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  align-items: center;
+  min-height: 3rem;
+  padding-block: 0.35rem;
+  border-block-end: 1px solid var(--line);
+}
+.choice small {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}

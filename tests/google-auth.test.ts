@@ -1,4 +1,10 @@
-import { createHash, generateKeyPairSync, randomUUID, sign } from "node:crypto";
+import {
+  createHash,
+  generateKeyPairSync,
+  randomBytes,
+  randomUUID,
+  sign,
+} from "node:crypto";
 import {
   afterAll,
   afterEach,
@@ -20,6 +26,8 @@ const fixture = vi.hoisted(() => {
 });
 
 import { auth, googleSignInAvailable, nativeAuth } from "../src/server/auth";
+import { handleAPI } from "../src/server/api";
+import { nativeSocialRedirect } from "../src/server/native-social";
 import { pool } from "../src/server/db";
 import { createWorkspace } from "../src/server/commands";
 
@@ -84,23 +92,31 @@ async function post(
   return response;
 }
 
-async function start(returnTo = "/", extra: Record<string, unknown> = {}) {
-  const response = await post("sign-in/social", {
-    provider: "google",
-    callbackURL: returnTo,
-    errorCallbackURL: "/?authError=1",
-    disableRedirect: true,
-    ...extra,
-  });
+async function start(
+  returnTo = "/",
+  extra: Record<string, unknown> = {},
+  sessionCookie = "",
+) {
+  const response = await post(
+    sessionCookie ? "link-social" : "sign-in/social",
+    {
+      provider: "google",
+      callbackURL: returnTo,
+      errorCallbackURL: "/?authError=1",
+      disableRedirect: true,
+      ...extra,
+    },
+    sessionCookie,
+  );
   expect(response.status).toBe(200);
   return {
     url: new URL((await response.json()).url),
-    cookie: cookies(response),
+    cookie: [sessionCookie, cookies(response)].filter(Boolean).join("; "),
   };
 }
 
-async function complete(person: Profile, returnTo = "/") {
-  const flow = await start(returnTo);
+async function complete(person: Profile, returnTo = "/", sessionCookie = "") {
+  const flow = await start(returnTo, {}, sessionCookie);
   const code = randomUUID();
   pending.set(code, {
     profile: person,
@@ -109,9 +125,8 @@ async function complete(person: Profile, returnTo = "/") {
   const callback = new URL(`${base}/api/auth/callback/google`);
   callback.searchParams.set("state", flow.url.searchParams.get("state")!);
   callback.searchParams.set("code", code);
-  return auth.handler(
-    new Request(callback, { headers: { Cookie: flow.cookie } }),
-  );
+  const request = new Request(callback, { headers: { Cookie: flow.cookie } });
+  return nativeSocialRedirect(request, await auth.handler(request));
 }
 
 async function session(response: Response) {
@@ -200,6 +215,163 @@ describe.sequential(
   "Google identity authentication with deterministic provider endpoints",
   { timeout: 60000 },
   () => {
+    it("exchanges a native Google sign-in on its original device only, once, and retains independent browser and app sessions", async () => {
+      const verifier = randomBytes(32).toString("hex"),
+        state = randomBytes(32).toString("hex");
+      const challenge = createHash("sha256")
+        .update(verifier)
+        .digest("base64url");
+      const returnTo =
+        "/account/native/return?" +
+        new URLSearchParams({ provider: "google", state, challenge });
+      const signed = await complete(profile(), returnTo);
+      const device = new URL(signed.headers.get("location")!);
+      expect(device.protocol + device.pathname).toBe(
+        "com.rimiam.chat:/oauth/complete",
+      );
+      expect([...device.searchParams.keys()].sort()).toEqual(["code", "state"]);
+      expect(device.searchParams.get("state")).toBe(state);
+      const { user } = (await session(signed))!;
+      const code = device.searchParams.get("code")!;
+      const exchange = (
+        v: string,
+        s: string,
+        extraHeaders: Record<string, string> = {},
+      ) =>
+        handleAPI(
+          new Request(base + "/api/v1/native/social/exchange", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", ...extraHeaders },
+            body: JSON.stringify({ code, state: s, verifier: v }),
+          }),
+        );
+      expect(
+        (await exchange(randomBytes(32).toString("hex"), state)).status,
+      ).toBe(401);
+      expect(
+        (await exchange(verifier, randomBytes(32).toString("hex"))).status,
+      ).toBe(401);
+      expect(
+        (await exchange(verifier, state, { Cookie: cookies(signed) })).status,
+      ).toBe(403);
+      const [a, b] = await Promise.all([
+        exchange(verifier, state),
+        exchange(verifier, state),
+      ]);
+      expect([a.status, b.status].sort()).toEqual([200, 401]);
+      const ok = a.ok ? a : b;
+      expect(ok.headers.has("set-cookie")).toBe(false);
+      const result = await ok.json();
+      expect(result.user.id).toBe(user.id);
+      const methods = (headers: Record<string, string>) =>
+        handleAPI(
+          new Request(base + "/api/v1/native/social/accounts", { headers }),
+        );
+      expect((await methods({})).status).toBe(401);
+      expect(
+        await (
+          await methods({ Authorization: "Bearer " + result.token })
+        ).json(),
+      ).toMatchObject({
+        google: { linked: true, available: true },
+        microsoft: { linked: false },
+      });
+      const startLink = (actor: string) =>
+        auth.handler(
+          new Request(base + "/api/auth/link-social", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Origin: base,
+              Cookie: cookies(signed),
+              "x-rimiam-link-account": actor,
+            },
+            body: JSON.stringify({
+              provider: "google",
+              callbackURL: "/",
+              disableRedirect: true,
+            }),
+          }),
+        );
+      expect((await startLink(randomUUID())).status).toBe(403);
+      expect((await startLink(user.id)).status).toBe(200);
+      const native = (method: string) =>
+        handleAPI(
+          new Request(base + "/api/v1/native/session", {
+            method,
+            headers: { Authorization: "Bearer " + result.token },
+          }),
+        );
+      expect((await native("GET")).status).toBe(200);
+      expect((await native("DELETE")).status).toBe(200);
+      expect((await native("GET")).status).toBe(401);
+      expect((await session(signed))?.user.id).toBe(user.id);
+      const withoutNewCookie = await nativeSocialRedirect(
+        new Request(base + "/api/auth/callback/google", {
+          headers: { Cookie: cookies(signed) },
+        }),
+        new Response(null, { status: 302, headers: { location: returnTo } }),
+      );
+      expect(
+        new URL(withoutNewCookie.headers.get("location")!).searchParams.has(
+          "code",
+        ),
+      ).toBe(false);
+      // Eligibility can end after the provider succeeded but before the native grant is stored.
+      await pool.query('UPDATE "user" SET eligible=false WHERE id=$1', [
+        user.id,
+      ]);
+      const revokedHeaders = new Headers(signed.headers);
+      revokedHeaders.set("location", returnTo);
+      const denied = await nativeSocialRedirect(
+        new Request(base + "/api/auth/callback/google"),
+        new Response(null, { status: 302, headers: revokedHeaders }),
+      );
+      const redirect = new URL(denied.headers.get("location")!);
+      expect(redirect.searchParams.get("error")).toBe("access_failed");
+      expect(redirect.searchParams.has("code")).toBe(false);
+    });
+
+    it.each(["expired", "browser revoked", "ineligible"] as const)(
+      "refuses a native Google exchange after %s",
+      async (reason) => {
+        const verifier = randomBytes(32).toString("hex"),
+          state = randomBytes(32).toString("hex");
+        const challenge = createHash("sha256")
+          .update(verifier)
+          .digest("base64url");
+        const signed = await complete(
+          profile(),
+          "/account/native/return?" +
+            new URLSearchParams({ provider: "google", state, challenge }),
+        );
+        const code = new URL(signed.headers.get("location")!).searchParams.get(
+          "code",
+        )!;
+        const current = (await session(signed))!;
+        if (reason === "expired")
+          await pool.query(
+            "UPDATE native_social_handoff SET expires_at=now() WHERE code_hash=$1",
+            [createHash("sha256").update(code).digest("hex")],
+          );
+        if (reason === "browser revoked")
+          await pool.query("DELETE FROM session WHERE id=$1", [
+            current.session.id,
+          ]);
+        if (reason === "ineligible")
+          await pool.query('UPDATE "user" SET eligible=false WHERE id=$1', [
+            current.user.id,
+          ]);
+        const r = await handleAPI(
+          new Request(base + "/api/v1/native/social/exchange", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ code, state, verifier }),
+          }),
+        );
+        expect(r.status).toBe(reason === "ineligible" ? 403 : 401);
+      },
+    );
     it("uses dedicated credentials, identity scopes, online PKCE and bound return URLs", async () => {
       expect(googleSignInAvailable).toBe(true);
       expect(nativeAuth.options.socialProviders).toEqual({});
@@ -329,6 +501,26 @@ describe.sequential(
       expect(
         (await post("sign-in/email", { email: local.email, password })).status,
       ).toBe(200);
+    });
+
+    it("links a matching verified Google identity from the signed-in account page", async () => {
+      const local = await passwordAccount(true);
+      const cookie = cookies(
+        await post("sign-in/email", { email: local.email, password }),
+      );
+      const person = profile(local.email);
+      const target = "/account/access?returnTo=%2F&provider=google";
+      const wrong = await complete(profile(), target, cookie);
+      expect(
+        new URL(wrong.headers.get("location")!, base).searchParams.has("error"),
+      ).toBe(true);
+      expect(await providerAccount(local.id)).toHaveLength(0);
+      const linked = await complete(person, target, cookie);
+      expect(linked.headers.get("location")).toBe(target);
+      expect(await providerAccount(local.id)).toMatchObject([
+        { accountId: person.sub, accessToken: null, idToken: null },
+      ]);
+      expect((await session(await complete(person)))?.user.id).toBe(local.id);
     });
 
     it("does not link Google into an unverified password preregistration or bypass password verification", async () => {

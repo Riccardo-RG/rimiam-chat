@@ -50,11 +50,11 @@ export async function processDocument(
     await lockWorkspace(tx, p.workspace_id);
     const row = (
       await tx.query(
-        "SELECT p.*,s.original_bytes,s.filename,s.media_type FROM document_processing p JOIN external_source s ON s.id=p.source_id WHERE p.source_id=$1 FOR UPDATE OF p",
+        "SELECT p.*,s.original_bytes,s.filename,s.media_type,coalesce(v.version,1) AS visibility_version FROM document_processing p JOIN available_external_source s ON s.id=p.source_id LEFT JOIN document_visibility v ON (v.workspace_id,v.source_id)=(p.workspace_id,p.source_id) WHERE p.source_id=$1 FOR UPDATE OF p",
         [sourceId],
       )
     ).rows[0];
-    if (row.status !== "queued") return null;
+    if (!row || row.status !== "queued") return null;
     try {
       await eligible(tx, row);
     } catch {
@@ -104,6 +104,7 @@ export async function processDocument(
   if (!claim) return;
   try {
     const input: MediaInput = {
+      workspace: claim.workspace_id,
       kind: claim.kind,
       filename: claim.filename,
       mediaType: claim.media_type,
@@ -116,10 +117,23 @@ export async function processDocument(
     await transaction(async (tx) => {
       await lockWorkspace(tx, claim.workspace_id);
       const current = (
-        await tx.query("SELECT * FROM document_processing WHERE source_id=$1", [
-          sourceId,
-        ])
+        await tx.query(
+          "SELECT p.*,coalesce(v.version,1) AS visibility_version FROM document_processing p LEFT JOIN document_visibility v ON (v.workspace_id,v.source_id)=(p.workspace_id,p.source_id) WHERE p.source_id=$1",
+          [sourceId],
+        )
       ).rows[0];
+      if (current.visibility_version !== claim.visibility_version) {
+        await documentProcessingEvent(
+          tx,
+          claim.workspace_id,
+          sourceId,
+          claim.attempt,
+          claim.requested_by,
+          "superseded",
+          "DOCUMENT_WITHDRAWN",
+        );
+        return;
+      }
       let publication = "published";
       if (
         current.status !== "processing" ||

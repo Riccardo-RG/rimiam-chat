@@ -1,0 +1,77 @@
+name: Web quality
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: web-quality-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+      AI_MODE: unconfigured
+      MAIL_PROVIDER: unconfigured
+      RESEARCH_PROVIDER: unconfigured
+      TRANSCRIPTION_PROVIDER: unconfigured
+    services:
+      postgres:
+        image: postgres:18.3-alpine
+        env:
+          POSTGRES_USER: miriam
+          POSTGRES_PASSWORD: miriam_local_only
+          POSTGRES_DB: miriam
+        ports:
+          - 54329:5432
+        options: >-
+          --health-cmd "pg_isready -U miriam -d miriam"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: npm
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements-documents.txt
+      - name: Install pinned dependencies and local media tools
+        run: |
+          npm ci
+          python -m pip install -r requirements-documents.txt
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg
+      - name: Reject known high and critical dependency advisories
+        run: npm audit --audit-level=high
+      - name: Prepare isolated test configuration and database
+        run: |
+          npm run setup:env
+          npm run test:setup
+          npx next typegen
+      - name: Static checks and deterministic regression
+        run: npm run check
+      - name: Install Web test browsers
+        run: npx playwright install --with-deps chromium webkit
+      - name: Two-person Web smoke
+        run: npm run test:e2e -- tests/e2e/slice01.spec.ts tests/e2e/command-recovery.spec.ts
+      - name: Two-member chat and explicit Emme replies on Chromium and WebKit
+        run: npm run test:e2e -- chat-mobile-send.spec.ts message-question.spec.ts --browser=all --project=chromium --project=webkit
+      - name: Build the actual deployable image
+        run: docker build --tag rimiam-ci:${{ github.sha }} .
+      - name: Verify isolated runtime document extraction
+        run: sh scripts/check-runtime-image.sh rimiam-ci:${{ github.sha }}

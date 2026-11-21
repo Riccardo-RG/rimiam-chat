@@ -1,4 +1,6 @@
 "use client";
+import { useUiLanguage } from "./ui-language";
+
 import { ProductHelp } from "./product-help";
 import { useState } from "react";
 import type { WorkspaceLink } from "@/contracts/workspace-links";
@@ -18,14 +20,16 @@ export function WorkspaceLinks({
   open: (id: string) => void;
   busy: boolean;
 }) {
+  const { t: uiText } = useUiLanguage();
   const [target, setTarget] = useState("");
   return (
     <section>
-      <h3>Spazi collegati</h3>
+      <h3>{uiText("Spazi collegati")}</h3>
       <ProductHelp screen="workspace_links" />
       <p className="hint">
-        Collegamenti visibili solo a chi accede a entrambi gli spazi. Nessun
-        contenuto o permesso viene ereditato.
+        {uiText(
+          "Collegamenti visibili solo a chi accede a entrambi gli spazi. Nessun contenuto o permesso viene ereditato.",
+        )}
       </p>
       {links
         .filter((l) => l.active)
@@ -47,13 +51,15 @@ export function WorkspaceLinks({
                 })
               }
             >
-              Scollega
+              {uiText("Scollega")}
             </button>
             <details>
-              <summary>Origine del collegamento</summary>
+              <summary>{uiText("Origine del collegamento")}</summary>
               {l.history.map((h) => (
                 <p key={h.version}>
-                  v{h.version} · {h.active ? "Collegato" : "Scollegato"} ·{" "}
+                  {uiText("v")}
+                  {h.version} ·{" "}
+                  {h.active ? uiText("Collegato") : uiText("Scollegato")} ·{" "}
                   {h.actor_id} · {h.created_at}
                 </p>
               ))}
@@ -61,9 +67,9 @@ export function WorkspaceLinks({
           </div>
         ))}
       <label>
-        Altro spazio a cui partecipi
+        {uiText("Altro spazio a cui partecipi")}
         <select value={target} onChange={(e) => setTarget(e.target.value)}>
-          <option value="">Scegli uno spazio</option>
+          <option value="">{uiText("Scegli uno spazio")}</option>
           {spaces
             .filter(
               (s) =>
@@ -89,7 +95,7 @@ export function WorkspaceLinks({
           setTarget("");
         }}
       >
-        Collega gli spazi
+        {uiText("Collega gli spazi")}
       </button>
     </section>
   );

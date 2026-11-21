@@ -1,0 +1,324 @@
+.shell {
+  inline-size: 100%;
+  max-inline-size: 64rem;
+  margin-inline: auto;
+  min-inline-size: 0;
+  padding: clamp(1rem, 4vw, 3rem);
+  color: var(--ink);
+}
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.head h1 {
+  font: 500 clamp(2rem, 5vw, 3.65rem)/1.05 var(--editorial);
+  letter-spacing: -0.035em;
+  margin: 0.5rem 0 1.2rem;
+}
+button.back {
+  padding-inline-start: 0;
+  font-size: 0.86rem;
+}
+.nav {
+  display: flex;
+  gap: clamp(0.1rem, 2vw, 1.4rem);
+  border-block-end: 1px solid var(--line);
+}
+.nav button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-block-size: 44px;
+  border-radius: 0;
+  border-block-end: 2px solid transparent;
+  padding: 0.4rem 0.35rem;
+  color: var(--muted);
+}
+.nav button[aria-current] {
+  color: var(--graphite-ink, var(--ink));
+  border-block-end-color: var(--graphite-ink, var(--accent));
+}
+.content {
+  min-inline-size: 0;
+  padding-block: 1rem;
+}
+.content > h2 {
+  margin: 0 0 0.75rem;
+  font: 500 clamp(1.4rem, 3vw, 1.9rem)/1.2 var(--editorial);
+}
+.empty,
+.meta,
+.day,
+.byline time {
+  color: var(--muted);
+}
+.timeline {
+  max-block-size: min(49vh, 42rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.turn {
+  padding: 0.55rem 0.2rem;
+}
+.day {
+  border-block-start: 1px solid var(--line);
+  font-size: var(--type-caption);
+  margin: 0 0 1rem;
+  padding-block-start: 0.6rem;
+}
+.byline,
+.byline strong,
+.controls,
+.controls button {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+.byline {
+  gap: 0.7rem;
+  font-size: 0.9rem;
+}
+.byline time {
+  font-size: var(--type-caption);
+}
+.byline svg {
+  color: var(--accent);
+}
+.body,
+.original {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.55;
+}
+.body {
+  margin: 0.25rem 0;
+}
+.compose {
+  border-block-start: 1px solid var(--line);
+  padding-block-start: 0.8rem;
+}
+.compose textarea {
+  display: block;
+  min-block-size: 4.8rem;
+  inline-size: 100%;
+  box-sizing: border-box;
+  padding: 0.65rem 0.8rem;
+  resize: vertical;
+}
+.controls {
+  justify-content: space-between;
+  margin-block: 0.5rem;
+}
+.controls button:last-child {
+  margin-inline-start: auto;
+}
+.controls svg,
+.nav svg {
+  flex: 0 0 1rem;
+  inline-size: 1rem;
+  block-size: 1rem;
+}
+.source {
+  inline-size: min(35rem, calc(100vw - 2rem));
+  max-block-size: 80dvh;
+  padding: 1.2rem;
+  overflow-y: auto;
+  background: var(--white);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 0.55rem;
+}
+.source header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.source header h2 {
+  margin: 0;
+}
+.source::backdrop {
+  background: rgb(12 22 35 / 55%);
+}
+@media (max-width: 430px) {
+  .nav {
+    flex-wrap: wrap;
+  }
+  .nav svg {
+    display: none;
+  }
+  .timeline {
+    max-block-size: 44dvh;
+  }
+}
+.tools {
+  margin-block: 0.3rem 1rem;
+  border-block-end: 1px solid var(--line);
+  padding-block-end: 0.65rem;
+}
+.toolbar,
+.selection {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.8rem;
+}
+.toolbar button,
+.selection button {
+  font-size: 0.85rem;
+}
+.selection {
+  border-inline-start: 0.2rem solid var(--accent);
+  padding-inline-start: 0.7rem;
+  margin-block: 0.5rem;
+}
+.tools form,
+.tools section,
+.research form {
+  display: flex;
+  align-items: start;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  margin-block: 0.7rem;
+}
+.tools form > label:first-child,
+.tools small,
+.tools section label,
+.research label {
+  flex-basis: 100%;
+}
+.tools input[type="checkbox"] {
+  width: auto;
+}
+.research {
+  padding-inline-start: 0.9rem;
+  border-inline-start: 1px solid var(--line);
+  margin-block: 0.5rem;
+}
+
+/* Let the personal header and its disclosure reflow independently at larger text sizes. */
+.head {
+  flex-wrap: wrap;
+  align-items: center;
+  row-gap: 0.25rem;
+}
+.head > * {
+  min-inline-size: 0;
+  max-inline-size: 100%;
+}
+.head > details[open] {
+  flex-basis: 100%;
+}
+.head summary {
+  overflow-wrap: anywhere;
+}
+.content {
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+}
+.content :is(fieldset, input, textarea, select) {
+  min-inline-size: 0;
+  max-inline-size: 100%;
+}
+@media (max-width: 430px) {
+  .head {
+    justify-content: flex-start;
+  }
+  .head {
+    gap: 0.25rem;
+  }
+  .head > div:first-child {
+    flex: 1 1 9rem;
+    display: flex;
+    gap: 0.4rem;
+    align-items: center;
+  }
+  .head h1 {
+    margin: 0;
+    font-size: 1.23rem;
+  }
+  .head :is(.back, button[aria-haspopup], summary) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0.25rem;
+  }
+  .head :is(.back, button[aria-haspopup], summary) > span {
+    position: absolute;
+    clip-path: inset(50%);
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+  }
+  .head details[open] {
+    flex-basis: 100%;
+  }
+  .head summary::marker {
+    content: "";
+  }
+}
+
+.back svg {
+  transform: rotate(180deg);
+}
+.head summary svg {
+  vertical-align: middle;
+  margin-inline-end: 0.25rem;
+}
+
+.shell .personalHeading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.45rem;
+}
+.personalHeading h1 {
+  margin: 0;
+  font: 600 clamp(1.25rem, 2.25vw, 1.85rem)/1.22 var(--display);
+}
+.head {
+  justify-content: flex-start;
+  gap: 0.25rem 0.75rem;
+  padding-block-end: 0.65rem;
+}
+.personalHeading {
+  margin-inline-end: auto;
+}
+.head .back {
+  order: 1;
+  font-weight: 500;
+}
+@media (min-width: 761px) {
+  .head .back {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    width: 100%;
+    min-height: 32px;
+  }
+}
+.content {
+  padding-block-start: clamp(1rem, 2vw, 1.5rem);
+}
+
+.head summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-block-size: 44px;
+  padding-inline: 0.5rem;
+  border-radius: 0.45rem;
+  list-style: none;
+  color: var(--soft-ink);
+}
+.head summary::-webkit-details-marker {
+  display: none;
+}
+.head details[open] summary,
+.head summary:hover {
+  background: var(--selected);
+}

@@ -5,7 +5,7 @@ export function safeAccountReturn(raw: string | null | undefined): string {
   if (url.origin !== "https://miriam.invalid" || url.pathname !== "/")
     return "/";
   const invite = url.searchParams.get("invite");
-  if (invite && /^[A-Za-z0-9_-]{43}$/.test(invite))
+  if (invite && isInvitationToken(invite))
     return `/?invite=${encodeURIComponent(invite)}`;
   const workspace = url.searchParams.get("workspace");
   if (
@@ -17,13 +17,51 @@ export function safeAccountReturn(raw: string | null | undefined): string {
     return `/?workspace=${workspace}`;
   return "/";
 }
+
+function isInvitationToken(token: string) {
+  return /^[A-Za-z0-9_-]{43}$/.test(token);
+}
 export function accountReturnFromSearch(search: string) {
   const params = new URLSearchParams(search);
   return safeAccountReturn(params.get("returnTo") ?? `/${search}`);
 }
 
-export function accountOAuthErrorReturn(returnTo: string): string {
-  return `/?returnTo=${encodeURIComponent(safeAccountReturn(returnTo))}`;
+export function workspaceEntryFromSearch(search: string) {
+  const params = new URLSearchParams(search);
+  // An already signed-in browser can land on the same local callback URL as the
+  // login form. Resolve its allowlisted destination before showing the directory.
+  const target =
+    params.has("returnTo") && !params.has("invite")
+      ? new URL(accountReturnFromSearch(search), "https://miriam.invalid")
+          .searchParams
+      : params;
+  const token = target.get("invite");
+  return {
+    invitation: token && isInvitationToken(token) ? token : "",
+    invalidInvitation: token !== null && !isInvitationToken(token),
+    workspace: token !== null ? "" : (target.get("workspace") ?? ""),
+  };
+}
+
+export function accountOAuthErrorReturn(
+  returnTo: string,
+  provider?: "google" | "microsoft",
+): string {
+  const query = new URLSearchParams({ returnTo: safeAccountReturn(returnTo) });
+  if (provider === "microsoft") query.set("provider", "microsoft");
+  return `/?${query}`;
+}
+export function socialCallbackError(search: string) {
+  const query = new URLSearchParams(search);
+  const error = query.get("error") ?? "";
+  if (
+    query.get("provider") === "microsoft" &&
+    ["email_not_found", "email_not_verified", "account_not_linked"].includes(
+      error,
+    )
+  )
+    return "microsoft_link_required";
+  return error;
 }
 
 // Provider/callback error text is untrusted; expose only local, actionable copy.
@@ -43,9 +81,13 @@ export function accountErrorMessage(code?: string, status?: number): string {
     case "PASSWORD_TOO_LONG":
       return "La password può contenere al massimo 128 caratteri.";
     case "access_denied":
-      return "Accesso con Google annullato. Puoi riprovare o usare email e password.";
+      return "Accesso annullato. Puoi riprovare o usare email e password.";
     case "account_not_linked":
-      return "Non possiamo collegare questo accesso Google. Se hai già un account con la stessa email, accedi con la password e verifica l’indirizzo prima di riprovare.";
+      return "Accedi con il tuo metodo abituale e verifica l’indirizzo email.";
+    case "microsoft_link_required":
+      return "Accedi o registrati con email e password e verifica la tua casella. Poi apri «Metodi di accesso» nel tuo profilo e collega Microsoft.";
+    case "email_not_found":
+      return "Il servizio non ha fornito un indirizzo email. Puoi accedere con email e password.";
     case "email_not_verified":
     case "google_email_unverified":
       return "Google non ha confermato l’indirizzo email. Usa un indirizzo verificato o registrati con email e password.";

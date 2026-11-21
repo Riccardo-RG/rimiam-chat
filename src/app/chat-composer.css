@@ -1,0 +1,173 @@
+/* One writing surface. The keyboard indicator follows the whole composer. */
+.workspace .composer-dock {
+  box-shadow: none;
+}
+.workspace .composer-dock:focus-within {
+  border-color: var(--control-line);
+}
+.workspace .composer-dock:has(textarea:focus-visible) {
+  border-color: var(--focus);
+}
+.workspace .composer-dock .composer-field textarea:is(:focus, :focus-visible) {
+  outline: none;
+  box-shadow: none;
+}
+.conversation .composer-row .composer-audio {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  min-width: 44px;
+  padding-inline: 0.5rem;
+  color: var(--muted);
+}
+.conversation .composer-row .composer-audio:is(:hover, [data-audio-status]) {
+  color: var(--ink);
+  background: var(--soft);
+}
+.conversation .composer-row .composer-audio[data-audio-status] {
+  max-width: 100%;
+  font-size: var(--type-control);
+  white-space: normal;
+}
+.composer-audio-dialog {
+  position: fixed;
+  inset: 0;
+  box-sizing: border-box;
+  width: min(27rem, calc(100% - 1.5rem));
+  max-height: min(84dvh, 42rem);
+  overflow: auto;
+  overscroll-behavior: contain;
+  margin: auto;
+  padding: 0;
+  border: 1px solid var(--control-line);
+  border-radius: 1rem;
+  background: var(--paper);
+  color: var(--ink);
+  box-shadow: var(--shadow-sm);
+}
+.composer-audio-dialog::backdrop {
+  background: rgb(0 0 0 / 40%);
+}
+.composer-audio-dialog > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.6rem 1rem;
+  border-bottom: 1px solid var(--line);
+}
+.composer-audio-dialog h2 {
+  margin: 0;
+  font-size: 1.125rem;
+}
+.composer-audio-dialog > header button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 44px;
+}
+.composer-audio-body {
+  display: grid;
+  gap: 0.7rem;
+  padding: 1rem;
+  font-size: 1rem;
+  line-height: 1.5;
+}
+.composer-audio-body :is(p, label) {
+  margin: 0;
+}
+.composer-audio-body label {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+.composer-audio-body input[type="checkbox"] {
+  flex: none;
+  width: 1.1rem;
+}
+.composer-audio-dialog .composer-audio-body button {
+  min-height: 44px;
+  font-size: max(var(--type-control), 0.9375rem);
+}
+@media (pointer: coarse) {
+  [data-compose-surface] button {
+    touch-action: manipulation;
+  }
+  main[data-keyboard-pan]:has([data-compose-surface][data-editing]) {
+    position: relative;
+    top: var(--chat-keyboard-pan);
+  }
+  .app-shell:has(.workspace .composer-dock),
+  .app-shell:has(.workspace .composer-dock) .rail-frame:not([open]) {
+    min-height: 0;
+  }
+  .app-shell:has(.workspace .composer-dock) :is(.rail-frame[open], .sidebar) {
+    height: min(100dvh, var(--chat-viewport-height, 100dvh));
+  }
+}
+@media (max-width: 760px), (pointer: coarse) and (max-height: 500px) {
+  [data-compose-surface]:not([data-editing]) [data-composer-action],
+  .workspace
+    .composer-dock:not([data-editing])
+    .composer-row
+    > :not(.composer-field, dialog, [data-audio-status]) {
+    display: none;
+  }
+  .workspace .composer-dock:not([data-editing]) .conversation-composer {
+    padding-block: 0;
+  }
+  .workspace .composer-availability {
+    flex: 1;
+    min-width: 0;
+    line-height: 1.2;
+  }
+}
+/* A portrait phone with its keyboard up can have less than 320px of content
+   height. Yield the two-row header while the person is actually composing. */
+@media (pointer: coarse) and (max-width: 639px) {
+  .workspace[data-low-viewport]:has(.composer-dock[data-editing])
+    > .workspace-header {
+    display: none;
+  }
+}
+@media (forced-colors: active) {
+  .workspace .composer-dock:has(textarea:focus-visible) {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+}
+.conversation .composer-row .composer-camera {
+  display: none;
+}
+@media (any-pointer: coarse) {
+  .conversation .composer-dock[data-editing] .composer-camera {
+    display: inline-grid;
+    place-items: center;
+    padding-inline: 0;
+  }
+}
+.message-attachments-queue .draft-photo {
+  display: inline-block;
+  vertical-align: middle;
+  object-fit: cover;
+  border-radius: 0.45rem;
+}
+
+/* An uncertain send can survive a reload. Its recovery controls must remain
+   reachable alongside the timeline and draft even with a short mobile viewport. */
+.workspace[data-view="conversation"] > .pending-operations {
+  max-block-size: min(
+    12rem,
+    22dvh,
+    calc(var(--chat-viewport-height, 100dvh) * 0.22)
+  );
+  overflow: auto;
+  overscroll-behavior: contain;
+  margin-block: 0.25rem;
+  padding: 0.5rem 0.75rem;
+}
+.workspace[data-view="conversation"] > .pending-operations h2 {
+  margin: 0;
+  font-size: 1rem;
+}

@@ -1,29 +1,126 @@
 "use client";
+import { useUiLanguage } from "./ui-language";
+
+import { workstreamDescription } from "@/shared/assistant-presentation";
 import { ProductHelp } from "./product-help";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import type { AttentionView } from "@/contracts/attention";
 import type { Command } from "@/contracts/commands";
-import { api } from "./api";
-const modeLabels = {
-  discreet: "Solo quando chiamata",
-  collaborative: "Collaborativa",
-  proactive: "Propositiva",
-};
-const changeLabels: Record<string, string> = {
-  goal: "Goal",
-  information: "Informazioni accettate",
-  commitment: "Impegni",
-  project: "Decisioni e vincoli",
-  task: "Task",
-  work: "Lavoro di Miriam",
-  artifact: "Documenti",
-  question: "Domande",
-  workstream: "Filoni di lavoro",
-};
+import { api, errorText } from "./api";
+import {
+  collaborationModeLabels as modeLabels,
+  attentionReasonLabel,
+  workspaceChangeLabel,
+} from "../shared/workspace-labels";
+export type CompactAttention = { count: number; unavailable: boolean };
+
+function TopicEditor({
+  topic,
+  busy,
+  perform,
+}: {
+  topic: AttentionView["workstreams"][number];
+  busy: boolean;
+  perform: (command: Command) => Promise<boolean>;
+}) {
+  const { t: uiText } = useUiLanguage();
+  const [draft, setDraft] = useState<Pick<
+    typeof topic,
+    "version" | "title" | "description"
+  > | null>(null);
+  const snapshot = () => ({
+    version: topic.version,
+    title: topic.title,
+    description: topic.description,
+  });
+  const stale = draft !== null && draft.version !== topic.version;
+  return (
+    <details
+      onToggle={(e) => {
+        const open = e.currentTarget.open;
+        setDraft((current) => (open ? (current ?? snapshot()) : null));
+      }}
+    >
+      <summary>{uiText("Modifica l’argomento")}</summary>
+      {draft && (
+        <form
+          onSubmit={async (e) => {
+            e.preventDefault();
+            if (stale || busy) return;
+            const details = e.currentTarget.closest("details");
+            if (
+              (await perform({
+                type: "workstream.save",
+                id: topic.id,
+                expectedVersion: draft.version,
+                title: draft.title,
+                description: draft.description,
+              })) &&
+              details
+            )
+              details.open = false;
+          }}
+        >
+          <label>
+            {uiText("Nome")}
+            <input
+              name="title"
+              value={draft.title}
+              onChange={(e) => setDraft({ ...draft, title: e.target.value })}
+              required
+              maxLength={160}
+            />
+          </label>
+          <label>
+            {uiText("Descrizione")}
+            <textarea
+              name="description"
+              value={draft.description}
+              onChange={(e) =>
+                setDraft({ ...draft, description: e.target.value })
+              }
+              maxLength={4000}
+            />
+          </label>
+          {stale && (
+            <div role="status">
+              <p>
+                {uiText(
+                  "L’argomento è cambiato mentre scrivevi. Ora nello spazio:",
+                )}
+              </p>
+              <strong>{topic.title}</strong>
+              <p>{topic.description}</p>
+              <button
+                type="button"
+                className="quiet"
+                onClick={() => setDraft(snapshot())}
+              >
+                {uiText("Usa il testo aggiornato")}
+              </button>
+              <button
+                type="button"
+                className="quiet"
+                onClick={() => setDraft({ ...draft, version: topic.version })}
+              >
+                {uiText("Continua con la mia modifica")}
+              </button>
+            </div>
+          )}
+          <button disabled={busy || stale}>
+            {uiText("Aggiorna argomento")}
+          </button>
+        </form>
+      )}
+    </details>
+  );
+}
+
 export function WorkspaceAttention({
   workspace,
   actor,
   compact = false,
+  renderSummary,
   open,
   command,
   action,
@@ -37,6 +134,7 @@ export function WorkspaceAttention({
   workspace: string;
   actor: string;
   compact?: boolean;
+  renderSummary?: (attention: CompactAttention) => ReactNode;
   open: (panel: string) => void;
   command: (c: Command) => Promise<unknown>;
   action: (fn: () => Promise<void>) => Promise<void>;
@@ -47,6 +145,8 @@ export function WorkspaceAttention({
   onWorkstreams?: (streams: AttentionView["workstreams"]) => void;
   showChanges?: boolean;
 }) {
+  const { locale: uiLocale } = useUiLanguage();
+  const { t: uiText } = useUiLanguage();
   const [view, setView] = useState<AttentionView | null>(null),
     [showInactive, setShowInactive] = useState(false),
     [error, setError] = useState(""),
@@ -68,7 +168,7 @@ export function WorkspaceAttention({
       } catch (e) {
         if (active) {
           setView(null);
-          setError((e as Error).message);
+          setError(errorText(e));
         }
       } finally {
         running = false;
@@ -92,86 +192,110 @@ export function WorkspaceAttention({
         onWorkstreams?.(next.workstreams);
       } catch {
         setError(
-          "Operazione registrata. Non è stato possibile aggiornare la vista: sarà ricaricata automaticamente.",
+          uiText(
+            "Modifica salvata. La schermata si aggiornerà appena possibile.",
+          ),
         );
       }
     });
     return committed;
   };
+  // Work already has its own header entry. Keep the general attention link for
+  // other items such as a question or a pending decision.
+  const otherAttention = view?.attention.filter((item) => item.kind !== "work");
+  if (compact && renderSummary)
+    return renderSummary({
+      count: otherAttention?.length ?? 0,
+      unavailable: Boolean(error),
+    });
+  if (compact && !error && !otherAttention?.length) return null;
   if (compact)
     return (
       <div className="activity-entry">
         <button
           className="quiet"
           onClick={() => open("attention")}
-          aria-label="Apri Activity e filoni"
+          aria-label={uiText("Apri attività e argomenti")}
         >
-          Activity{" "}
-          {view?.attention.length
-            ? `· ${view.attention.length} da seguire`
+          {uiText("Attività")}{" "}
+          {otherAttention?.length
+            ? uiText("· {0} da seguire", String(otherAttention.length))
             : "↗"}
         </button>
-        {error && <small role="status">Aggiornamento non disponibile</small>}
+        {error && (
+          <small role="status">{uiText("Aggiornamento non disponibile")}</small>
+        )}
       </div>
     );
   return (
-    <section aria-label="Current State">
-      <ProductHelp screen="workstreams" />
+    <section
+      className="workspace-attention"
+      aria-label={uiText("Current State")}
+    >
+      {!view && !error && (
+        <p role="status">{uiText("Caricamento delle attività…")}</p>
+      )}
       {error && <p role="alert">{error}</p>}
       {view && (
         <>
-          <p className="muted">
-            Una vista di ciò che merita attenzione. Apri un elemento per il suo
-            contenuto, le fonti e i controlli.
-          </p>
-          {view.attention.length === 0 && (
-            <p>Nessuna domanda o attività richiede attenzione adesso.</p>
-          )}
-          {view.attention.map((item) => (
-            <button
-              className="attention-item"
-              key={`${item.kind}:${item.id}`}
-              onClick={() => {
-                if (item.kind === "work") {
-                  open("work");
-                } else
-                  open(
-                    item.kind === "task"
-                      ? "work"
-                      : item.kind === "artifact"
-                        ? "artifacts"
-                        : "context",
-                  );
-              }}
-            >
-              <small>{item.reason}</small>
-              <strong>{item.text}</strong>
-              <span aria-hidden>↗</span>
-            </button>
-          ))}
+          <details className="activity-group">
+            <summary>
+              <span>
+                <strong>
+                  {uiText("Da seguire · ")}
+                  {view.attention.length}
+                </strong>
+                <small>
+                  {uiText("Domande e attività che richiedono attenzione.")}
+                </small>
+              </span>
+            </summary>
+            {view.attention.length === 0 && (
+              <p className="hint">{uiText("Tutto in ordine.")}</p>
+            )}
+            {view.attention.map((item) => (
+              <button
+                className="attention-item"
+                key={`${item.kind}:${item.id}`}
+                onClick={() => {
+                  if (item.kind === "work") {
+                    open("work");
+                  } else
+                    open(
+                      item.kind === "task"
+                        ? "work"
+                        : item.kind === "artifact"
+                          ? "artifacts"
+                          : "context",
+                    );
+                }}
+              >
+                <small>{uiText(attentionReasonLabel(item.reason))}</small>
+                <strong>{item.text}</strong>
+                <span aria-hidden>↗</span>
+              </button>
+            ))}
+          </details>
           {showChanges && (
-            <details open>
-              <summary>Cosa è cambiato dal tuo ultimo allineamento</summary>
+            <details>
+              <summary>
+                {uiText("Cosa è cambiato dal tuo ultimo allineamento")}
+              </summary>
               <p className="hint">
-                Il punto personale indica fino a dove hai ricostruito lo stato;
-                non è consenso o accettazione delle decisioni.
+                {uiText(
+                  "Il punto personale indica fino a dove hai ricostruito lo stato; non è consenso o accettazione delle decisioni.",
+                )}
               </p>
               {view.changes.length === 0 ? (
-                <p className="muted">Nessun nuovo cambiamento strutturato.</p>
+                <p className="muted">
+                  {uiText("Nessun nuovo cambiamento strutturato.")}
+                </p>
               ) : (
                 view.changes.map((c) => (
                   <div className="history-entry" key={c.revision}>
-                    <strong>
-                      {changeLabels[c.kind.split(".")[0]] ??
-                        "Aggiornamento dello spazio"}
-                    </strong>
+                    <strong>{uiText(workspaceChangeLabel(c.kind))}</strong>
                     <small>
-                      {c.kind
-                        .split(".")
-                        .slice(1)
-                        .join(" · ")
-                        .replaceAll("_", " ")}{" "}
-                      · {new Date(c.createdAt).toLocaleString("it-IT")}
+                      {new Date(c.createdAt).toLocaleString(uiLocale)}
                     </small>
                   </div>
                 ))
@@ -181,12 +305,12 @@ export function WorkspaceAttention({
                   className="quiet"
                   onClick={() => setBefore(view.nextBefore!)}
                 >
-                  Cambiamenti precedenti
+                  {uiText("Cambiamenti precedenti")}
                 </button>
               )}
               {before !== undefined ? (
                 <button className="quiet" onClick={() => setBefore(undefined)}>
-                  Torna agli ultimi cambiamenti
+                  {uiText("Torna agli ultimi cambiamenti")}
                 </button>
               ) : (
                 <button
@@ -198,54 +322,29 @@ export function WorkspaceAttention({
                     })
                   }
                 >
-                  Sono allineato fino a qui
+                  {uiText("Sono allineato fino a qui")}
                 </button>
               )}
             </details>
           )}
-          <details>
-            <summary>Il ritmo di Miriam</summary>
-            <p className="hint">
-              Regola quanto spesso proporre un contributo utile. Permessi,
-              dissenso e limiti del lavoro restano invariati.
-            </p>
-            <label>
-              Preferenza condivisa
-              <select
-                value={view.preference.mode}
-                disabled={!canContribute || busy}
-                onChange={(e) =>
-                  void perform({
-                    type: "attention.preference",
-                    mode: e.target.value as AttentionView["preference"]["mode"],
-                    expectedVersion: view.preference.version,
-                  })
-                }
-              >
-                {Object.entries(modeLabels).map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {view.preference.actor && (
-              <small>Scelta da {name(view.preference.actor)}</small>
-            )}
-          </details>
-          <details>
-            <summary>Filoni della conversazione</summary>
-            <p className="hint">
-              Organizzano temi senza creare chat separate o nuovi Goal. I
-              messaggi originali restano al loro posto.
-            </p>
+          <details className="activity-group">
+            <summary>
+              <span>
+                <strong>{uiText("Argomenti della conversazione")}</strong>
+                <small>
+                  {uiText("Ritrova i messaggi che parlano dello stesso tema.")}
+                </small>
+              </span>
+            </summary>
             <label>
               <input
                 type="checkbox"
                 checked={showInactive}
                 onChange={(e) => setShowInactive(e.target.checked)}
               />
-              Includi proposte e filoni conclusi
+              {uiText(
+                "Mostra anche gli argomenti proposti, conclusi e archiviati",
+              )}
             </label>
             {view.workstreams
               .filter((s) => showInactive || s.state === "active")
@@ -253,31 +352,32 @@ export function WorkspaceAttention({
                 <details key={s.id}>
                   <summary>
                     {s.title} ·{" "}
-                    {
+                    {uiText(
                       {
                         active: "Attivo",
                         proposed: "Proposto",
                         resolved: "Risolto",
                         archived: "Archiviato",
-                      }[s.state]
-                    }{" "}
-                    · {s.sources.filter((x) => x.included).length} fonti
+                      }[s.state],
+                    )}{" "}
+                    · {s.sources.filter((x) => x.included).length}
+                    {uiText(" fonti")}
                   </summary>
-                  <p>{s.description}</p>
+                  <p>{workstreamDescription(s.origin, s.description)}</p>
                   {focus && (
                     <button className="quiet" onClick={() => focus(s)}>
-                      Apri la conversazione di questo filone
+                      {uiText("Apri la conversazione di questo argomento")}
                     </button>
                   )}
                   {canContribute && (
                     <div className="actions">
                       {(s.state === "proposed"
-                        ? ["activate"]
+                        ? ["activate", "archive"]
                         : s.state === "active"
-                          ? ["resolve"]
+                          ? ["resolve", "archive"]
                           : s.state === "resolved"
                             ? ["reopen", "archive"]
-                            : ["reopen"]
+                            : ["restore"]
                       ).map((transition) => (
                         <button
                           key={transition}
@@ -289,109 +389,96 @@ export function WorkspaceAttention({
                               workstreamId: s.id,
                               expectedVersion: s.version,
                               action: transition as
-                                "activate" | "resolve" | "archive" | "reopen",
+                                | "activate"
+                                | "resolve"
+                                | "archive"
+                                | "reopen"
+                                | "restore",
                             })
                           }
                         >
-                          {
+                          {uiText(
                             {
-                              activate: "Attiva filone",
+                              activate: "Attiva argomento",
                               resolve: "Segna come risolto",
-                              archive: "Archivia filone",
-                              reopen: "Riapri filone",
-                            }[transition]
-                          }
+                              archive: "Archivia argomento",
+                              reopen: "Riapri argomento",
+                              restore: "Ripristina argomento",
+                            }[transition] ?? "",
+                          ) || transition}
                         </button>
                       ))}
                     </div>
                   )}
                   <small>
                     {s.origin === "miriam"
-                      ? "Organizzazione proposta da Miriam"
-                      : `Organizzato da ${name(s.actor!)}`}
+                      ? uiText("Organizzazione proposta da Emme")
+                      : uiText("Organizzato da {0}", String(name(s.actor!)))}
                   </small>
-                  {s.sources
-                    .filter((x) => x.included)
-                    .map((source) => (
-                      <blockquote key={source.id}>
-                        <p>{source.content}</p>
-                        <small>
-                          {source.kind === "message"
-                            ? "Messaggio originale"
-                            : "Fonte condivisa"}
-                        </small>
-                        {canContribute && (
-                          <button
-                            className="quiet"
-                            disabled={busy}
-                            onClick={() =>
-                              void perform({
-                                type: "workstream.link",
-                                workstreamId: s.id,
-                                sourceId: source.id,
-                                expectedVersion: source.version,
-                                included: false,
-                              })
-                            }
-                          >
-                            Togli da questo filone
-                          </button>
-                        )}
-                      </blockquote>
-                    ))}
+                  {s.sources.some((source) => source.included) && (
+                    <details>
+                      <summary>{uiText("Messaggi e fonti collegati")}</summary>
+                      {s.sources
+                        .filter((x) => x.included)
+                        .map((source) => (
+                          <blockquote key={source.id}>
+                            <p>{source.content}</p>
+                            <small>
+                              {source.kind === "message"
+                                ? uiText("Messaggio originale")
+                                : uiText("Fonte condivisa")}
+                            </small>
+                            {canContribute && (
+                              <button
+                                className="quiet"
+                                disabled={busy}
+                                onClick={() =>
+                                  void perform({
+                                    type: "workstream.link",
+                                    workstreamId: s.id,
+                                    sourceId: source.id,
+                                    expectedVersion: source.version,
+                                    included: false,
+                                  })
+                                }
+                              >
+                                {uiText("Togli da questo argomento")}
+                              </button>
+                            )}
+                          </blockquote>
+                        ))}
+                    </details>
+                  )}
                   <details>
-                    <summary>Storia del filone</summary>
+                    <summary>{uiText("Storia dell’argomento")}</summary>
                     {s.history.map((h) => (
                       <div className="history-entry" key={h.version}>
                         <strong>
-                          v{h.version} · {h.title}
+                          {uiText("v")}
+                          {h.version} · {h.title}
                         </strong>
                         <p>{h.description}</p>
+                        {h.lifecycleState && (
+                          <small>
+                            {uiText(
+                              {
+                                active: "Attivo",
+                                archived: "Archiviato",
+                                proposed: "Proposto",
+                                resolved: "Concluso",
+                              }[h.lifecycleState],
+                            )}
+                          </small>
+                        )}
                         <small>
-                          {h.lifecycleState ??
-                            "Lifecycle non registrato in questa versione"}{" "}
-                          {h.lifecycleAction}
-                        </small>
-                        <small>
-                          {h.actor ? name(h.actor) : "Miriam"} ·{" "}
-                          {new Date(h.createdAt).toLocaleString("it-IT")}
+                          {h.actor ? name(h.actor) : uiText("Emme")} ·{" "}
+                          {new Date(h.createdAt).toLocaleString(uiLocale)}
                         </small>
                       </div>
                     ))}
                   </details>
-                  {canContribute && (
-                    <form
-                      onSubmit={(e) => {
-                        e.preventDefault();
-                        const f = new FormData(e.currentTarget);
-                        void perform({
-                          type: "workstream.save",
-                          id: s.id,
-                          expectedVersion: s.version,
-                          title: String(f.get("title")),
-                          description: String(f.get("description")),
-                        });
-                      }}
-                    >
-                      <label>
-                        Nome
-                        <input
-                          name="title"
-                          defaultValue={s.title}
-                          required
-                          maxLength={160}
-                        />
-                      </label>
-                      <label>
-                        Descrizione
-                        <textarea
-                          name="description"
-                          defaultValue={s.description}
-                          maxLength={4000}
-                        />
-                      </label>
-                      <button disabled={busy}>Aggiorna filone</button>
-                    </form>
+                  {canContribute && s.state !== "archived" && (
+                    <TopicEditor topic={s} busy={busy} perform={perform} />
                   )}
                 </details>
               ))}
@@ -410,20 +497,57 @@ export function WorkspaceAttention({
                 }}
               >
                 <label>
-                  Un nuovo filone
+                  {uiText("Un nuovo argomento")}
                   <input
                     name="title"
                     required
                     maxLength={160}
-                    placeholder="Per esempio: preparare la beta"
+                    placeholder={uiText("Per esempio: preparare la beta")}
                   />
                 </label>
-                <button disabled={busy}>Crea filone</button>
+                <button disabled={busy}>{uiText("Crea argomento")}</button>
               </form>
+            )}
+          </details>
+          <details className="activity-group">
+            <summary>
+              <span>
+                <strong>{uiText("Il ritmo di Emme")}</strong>
+                <small>
+                  {uiText("Scegli quando può intervenire nello spazio.")}
+                </small>
+              </span>
+            </summary>
+            <label>
+              {uiText("Preferenza condivisa")}
+              <select
+                value={view.preference.mode}
+                disabled={!canContribute || busy}
+                onChange={(e) =>
+                  void perform({
+                    type: "attention.preference",
+                    mode: e.target.value as AttentionView["preference"]["mode"],
+                    expectedVersion: view.preference.version,
+                  })
+                }
+              >
+                {Object.entries(modeLabels).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {uiText(label)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {view.preference.actor && (
+              <small>
+                {uiText("Scelta da ")}
+                {name(view.preference.actor)}
+              </small>
             )}
           </details>
         </>
       )}
+      <ProductHelp screen="workstreams" />
     </section>
   );
 }

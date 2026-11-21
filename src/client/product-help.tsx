@@ -1,4 +1,7 @@
 "use client";
+import { translateUi } from "../shared/i18n";
+import { useUiLanguage } from "./ui-language";
+
 import {
   createContext,
   useContext,
@@ -22,7 +25,14 @@ const requirements = {
   conditional: "richiesto in alcuni casi",
 };
 
-export function assistanceLabel(context: ProductAssistance) {
+type UiText = (source: string, ...values: (string | number)[]) => string;
+const italian: UiText = (source, ...values) =>
+  translateUi("it", source, ...values);
+
+export function assistanceLabel(
+  context: ProductAssistance,
+  t: UiText = italian,
+) {
   const screen = productScreens[context.screen];
   const field = screen.fields.find((field) => field.id === context.field);
   return [
@@ -30,12 +40,19 @@ export function assistanceLabel(context: ProductAssistance) {
     field?.label,
     context.issue && issueLabels[context.issue],
   ]
-    .filter(Boolean)
+    .filter((value): value is string => Boolean(value))
+    .map((value) => t(value))
     .join(" · ");
 }
 
-export function assistanceQuestion(context: ProductAssistance) {
-  return `@RIMIAM, aiutami con ${assistanceLabel(context)}. Cosa devo fare?`;
+export function assistanceQuestion(
+  context: ProductAssistance,
+  t: UiText = italian,
+) {
+  return t(
+    "@Emme, aiutami con {0}. Cosa devo fare?",
+    assistanceLabel(context, t),
+  );
 }
 
 const HelpContext = createContext<
@@ -60,6 +77,7 @@ export function ProductHelp({
   screen: ProductAssistance["screen"];
   field?: string;
 }) {
+  const { t: uiText } = useUiLanguage();
   const ask = useContext(HelpContext);
   const id = useId();
   const [field, setField] = useState(initialField ?? "");
@@ -68,22 +86,42 @@ export function ProductHelp({
   const guide = productScreens[screen];
   return (
     <details className={styles.help}>
-      <summary>Chiedi a Miriam · {guide.label}</summary>
+      <summary>
+        {screen === "conversation" && !initialField ? (
+          <>
+            {uiText("Aiuto")}
+            <span className="sr-only">
+              {uiText(" · Chiedi a Emme · ")}
+              {uiText(guide.label)}
+            </span>
+          </>
+        ) : (
+          <>
+            {uiText("Aiuto sul modulo")}
+            <span className="sr-only">
+              {uiText(" · Chiedi a Emme · ")}
+              {uiText(guide.label)}
+            </span>
+          </>
+        )}
+      </summary>
       <div className={styles.options}>
-        <label htmlFor={`${id}-field`}>Su cosa vuoi aiuto?</label>
+        <label htmlFor={`${id}-field`}>{uiText("Su cosa vuoi aiuto?")}</label>
         <select
           id={`${id}-field`}
           value={field}
           onChange={(event) => setField(event.target.value)}
         >
-          <option value="">Questa schermata</option>
+          <option value="">{uiText("Questa schermata")}</option>
           {guide.fields.map((item) => (
             <option key={item.id} value={item.id}>
-              {item.label} · {requirements[item.requirement]}
+              {uiText(item.label)} · {uiText(requirements[item.requirement])}
             </option>
           ))}
         </select>
-        <label htmlFor={`${id}-issue`}>Situazione da spiegare</label>
+        <label htmlFor={`${id}-issue`}>
+          {uiText("Situazione da spiegare")}
+        </label>
         <select
           id={`${id}-issue`}
           value={issue ?? ""}
@@ -91,17 +129,17 @@ export function ProductHelp({
             setIssue((event.target.value || undefined) as typeof issue)
           }
         >
-          <option value="">Come funziona</option>
+          <option value="">{uiText("Come funziona")}</option>
           {Object.entries(issueLabels).map(([value, label]) => (
             <option key={value} value={value}>
-              {label}
+              {uiText(label)}
             </option>
           ))}
         </select>
         <p className="hint">
-          Prepara una domanda modificabile nella conversazione condivisa. Allega
-          solo schermata, campo e situazione scelti, senza i valori del modulo.
-          La bozza del modulo resta qui.
+          {uiText(
+            "Prepara una domanda modificabile nella conversazione condivisa. Allega solo schermata, campo e situazione scelti, senza i valori del modulo. La bozza del modulo resta qui.",
+          )}
         </p>
         <button
           type="button"
@@ -114,7 +152,7 @@ export function ProductHelp({
             })
           }
         >
-          Prepara domanda a Miriam
+          {uiText("Prepara domanda a Emme")}
         </button>
       </div>
     </details>
@@ -128,17 +166,21 @@ export function AssistanceReference({
   context: ProductAssistance;
   remove?: () => void;
 }) {
+  const { t: uiText } = useUiLanguage();
   return (
     <span className={styles.reference}>
-      <span>Aiuto su: {assistanceLabel(context)}</span>
+      <span>
+        {uiText("Aiuto su: ")}
+        {assistanceLabel(context, uiText)}
+      </span>
       {remove && (
         <button
           type="button"
           className="quiet"
           onClick={remove}
-          aria-label="Rimuovi il riferimento di aiuto dal messaggio"
+          aria-label={uiText("Rimuovi il riferimento di aiuto dal messaggio")}
         >
-          Rimuovi
+          {uiText("Rimuovi")}
         </button>
       )}
     </span>
