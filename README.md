@@ -118,7 +118,7 @@ Before reactivating a worker, follow the [release runbook](docs/development/RELE
 
 ## Verify a change
 
-With the local database running:
+Keep the local database running and install the [document tools](#local-document-parsers) for the full suite. The PDF preview tests also require `pdftoppm` on your PATH, provided by `poppler-utils` on Debian and Ubuntu or `poppler` on macOS with Homebrew.
 
 ```sh
 npm run test:setup

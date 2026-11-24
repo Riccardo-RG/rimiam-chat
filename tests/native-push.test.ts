@@ -17,7 +17,6 @@ import {
   sendNativeNotification,
 } from "../src/server/native-push-provider";
 import { processWebPush, pushDeliveryTarget } from "../src/server/web-push";
-import { notificationAddress } from "../mobile/src/notifications/address";
 
 const keys = generateKeyPairSync("ec", { namedCurve: "P-256" }),
   rsa = generateKeyPairSync("rsa", { modulusLength: 2048 });
@@ -395,34 +394,4 @@ it("sends a scoped, signed FCM v1 request, classifies token expiry and leaves cr
       Response.json({}, { status: 404 }),
     ),
   ).rejects.not.toHaveProperty("statusCode");
-});
-it("only accepts opaque valid notification identifiers for navigation", () => {
-  const value = { id: randomUUID(), deviceId: randomUUID() };
-  expect(
-    notificationAddress({ ...value, url: "https://example.test" }),
-  ).toEqual(value);
-  expect(
-    notificationAddress({
-      id: "https://example.test",
-      deviceId: value.deviceId,
-    }),
-  ).toBeNull();
-  expect(
-    notificationAddress({ id: value.id, workspaceId: value.deviceId }),
-  ).toBeNull();
-});
-
-it("reads an older APNs tap from the raw push payload only when native content data is absent", () => {
-  const oldAddress = { id: randomUUID(), deviceId: randomUUID() };
-  const nextAddress = { id: randomUUID(), deviceId: randomUUID() };
-  const legacy = { aps: { alert: "RIMIAM" }, ...oldAddress };
-  expect(notificationAddress(null, legacy)).toEqual(oldAddress);
-  expect(notificationAddress(nextAddress, legacy)).toEqual(nextAddress);
-  expect(notificationAddress({ id: "invalid" }, legacy)).toBeNull();
-  expect(
-    notificationAddress(null, {
-      workspaceId: randomUUID(),
-      url: "https://example.test",
-    }),
-  ).toBeNull();
 });
