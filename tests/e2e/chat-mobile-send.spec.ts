@@ -84,16 +84,15 @@ test("mobile Return writes a newline and tapping Send delivers once to both memb
       { length: 18 },
       (_, i) => `Passo ${i + 1} della prova mobile.`,
     ).join("\n");
-    const seed = await guest.request.post(
-      `/api/workspaces/${workspace}/commands`,
-      {
-        headers: { Origin: new URL(guest.url()).origin },
-        data: {
-          commandId: crypto.randomUUID(),
-          command: { type: "message.send", content: historyText },
-        },
+    const seed = await guest.request.post(path, {
+      headers: { Origin: new URL(guest.url()).origin },
+      // Playwright replays the same command ID if the connection resets.
+      maxRetries: 1,
+      data: {
+        commandId: crypto.randomUUID(),
+        command: { type: "message.send", content: historyText },
       },
-    );
+    });
     expect(seed.ok()).toBe(true);
     await expect(page.locator(".messages")).toContainText(
       "Passo 18 della prova mobile.",
