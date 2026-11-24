@@ -76,6 +76,8 @@ Stop application terminals with Ctrl-C and use `docker compose stop` to stop the
 
 ### Run the React Native app
 
+The iOS and Android apps share the TypeScript frontend in [mobile](mobile/). Expo generates each platform project locally from [app.config.ts](mobile/app.config.ts) when you build it.
+
 Keep the local server running. From the repository root, install the mobile dependencies with `npm ci --prefix mobile`. Run `npm --prefix mobile run ios` for the iOS simulator (macOS, Xcode and CocoaPods), or `npm --prefix mobile run android` for the Android emulator (Android Studio, Android SDK and JDK 17). At sign-in, enter `http://127.0.0.1:3000` on the iOS simulator or `http://10.0.2.2:3000` on the standard Android emulator. See [mobile setup and checks](docs/development/MULTICLIENT.md#run-the-mobile-app) for the two-account fixture and provider setup.
 
 ### Try two accounts

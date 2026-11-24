@@ -1,16 +1,11 @@
 import { preferredVoiceLanguage } from "../../../src/shared/i18n/locale";
 import { useUiLanguage } from "../i18n";
-import { requireOptionalNativeModule } from "expo";
 import * as Speech from "expo-speech";
 import React, { useEffect, useRef, useState } from "react";
 import { AppState, Platform, Text } from "react-native";
 import { Action, usePalette } from "../ui";
-const androidVoice = requireOptionalNativeModule<{
-  speak: (text: string, lang: string) => Promise<void>;
-  stop: () => Promise<void>;
-}>("RimiamDeviceVoice");
+import { startOfflineSpeech } from "./offline-speech";
 
-/** The Android platform module checks both installation and network requirements. */
 export function DeviceSpeech({
   text,
   startAutomatically = false,
@@ -22,14 +17,14 @@ export function DeviceSpeech({
   const p = usePalette(),
     [playing, setPlaying] = useState(false),
     [error, setError] = useState(""),
-    generation = useRef(0);
+    generation = useRef(0),
+    androidPlayback = useRef<ReturnType<typeof startOfflineSpeech>>(undefined);
   useEffect(() => {
     let active = true;
     function stop() {
       generation.current++;
-      void (
-        Platform.OS === "android" ? androidVoice?.stop() : Speech.stop()
-      )?.catch(() => {});
+      if (Platform.OS === "android") androidPlayback.current?.stop();
+      else void Speech.stop().catch(() => {});
       if (active) setPlaying(false);
     }
     const listener = AppState.addEventListener("change", (state) => {
@@ -49,7 +44,8 @@ export function DeviceSpeech({
   async function speak() {
     const token = ++generation.current;
     if (playing) {
-      await (Platform.OS === "android" ? androidVoice?.stop() : Speech.stop());
+      if (Platform.OS === "android") androidPlayback.current?.stop();
+      else await Speech.stop();
       setPlaying(false);
       return;
     }
@@ -61,11 +57,15 @@ export function DeviceSpeech({
         Intl.DateTimeFormat().resolvedOptions().locale,
       );
       if (Platform.OS === "android") {
-        if (!androidVoice)
-          throw new Error(
-            "Installa la versione aggiornata dell’app per usare la voce locale.",
-          );
-        await androidVoice.speak(text, language);
+        const { default: engine } =
+          await import("@nammayatri/react-native-tts").catch(() => {
+            throw new Error(
+              "Installa la versione aggiornata dell’app per usare la voce locale.",
+            );
+          });
+        if (token !== generation.current) return;
+        androidPlayback.current = startOfflineSpeech(engine, text, language);
+        await androidPlayback.current.done;
       } else {
         const voices = await Speech.getAvailableVoicesAsync();
         if (token !== generation.current) return;
