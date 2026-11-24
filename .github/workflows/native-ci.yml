@@ -6,6 +6,8 @@ on:
       - "mobile/**"
       - "src/contracts/**"
       - "src/shared/**"
+      - "package.json"
+      - "package-lock.json"
       - ".github/workflows/native-ci.yml"
   push:
     branches: [main]
@@ -13,6 +15,8 @@ on:
       - "mobile/**"
       - "src/contracts/**"
       - "src/shared/**"
+      - "package.json"
+      - "package-lock.json"
       - ".github/workflows/native-ci.yml"
   workflow_dispatch:
 
@@ -42,7 +46,12 @@ jobs:
         with:
           node-version: "24"
           cache: npm
-          cache-dependency-path: mobile/package-lock.json
+          cache-dependency-path: |
+            package-lock.json
+            mobile/package-lock.json
+      - name: Install shared contract dependencies
+        working-directory: .
+        run: npm ci --omit=dev
       - run: npm ci
       - run: npm run check
       - name: Build iOS and Android JavaScript bundles
