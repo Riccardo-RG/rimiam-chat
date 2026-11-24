@@ -9,7 +9,7 @@ type Status = {
   interpretationStatus: string | null;
   errorCode: string | null;
 };
-/** Only the response to this device's explicit, confirmed voice turn can be auto-spoken. */
+/** Show the assistant's written reply to this confirmed voice turn. */
 export function voiceReply(
   sourceId: string,
   messages: readonly Message[],

@@ -50,7 +50,6 @@ import { useTimelineExtras } from "./timeline-extras";
 import { HandoffReview } from "./HandoffReview";
 import type { ConversationHandoff } from "../../../src/contracts/conversation-handoff";
 import { AnswerRequest } from "./AnswerRequest";
-import { DeviceSpeech } from "./DeviceSpeech";
 
 type Message = Snapshot["messages"][number];
 export function Timeline({
@@ -824,10 +823,6 @@ export function Timeline({
             keyboardShouldPersistTaps="handled"
             contentContainerStyle={{ gap: 6 }}
           >
-            {selectedMessage.actor_kind === "miriam" &&
-              !!selectedMessage.content && (
-                <DeviceSpeech text={selectedMessage.content} />
-              )}
             {canWrite && (
               <>
                 <Action

@@ -13,7 +13,6 @@ import {
 } from "expo-audio";
 import { File } from "expo-file-system";
 import * as Crypto from "expo-crypto";
-import { DeviceSpeech } from "./DeviceSpeech";
 import { voiceReply } from "./voice-reply";
 import type { Snapshot } from "../../../src/contracts/web-snapshot";
 import type { z } from "zod";
@@ -316,7 +315,7 @@ export function VoicePanel({
         {mode === "miriam" && !messageId && (
           <Text style={{ color: p.muted }}>
             {uiText(
-              "Invia il tuo turno vocale. Con la schermata aperta, la voce del dispositivo legge la risposta di Emme.",
+              "Invia un vocale a Emme. Trovi la sua risposta qui e nella chat.",
             )}
           </Text>
         )}
@@ -335,16 +334,9 @@ export function VoicePanel({
               </Text>
             )}
             {reply?.kind === "ready" && (
-              <>
-                <Text selectable style={{ color: p.text }}>
-                  {reply.text}
-                </Text>
-                <DeviceSpeech
-                  key={reply.id}
-                  text={reply.text}
-                  startAutomatically
-                />
-              </>
+              <Text selectable style={{ color: p.text }}>
+                {reply.text}
+              </Text>
             )}
             <Action
               label={uiText("Termina turno vocale")}

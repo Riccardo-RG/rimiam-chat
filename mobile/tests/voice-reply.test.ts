@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { voiceReply } from "../src/workspace/voice-reply.ts";
-test("only the reply to this device’s exact voice turn is eligible for local playback", () => {
+test("the voice panel displays only the written reply to this device’s confirmed voice turn", () => {
   const messages = [
     {
       id: "peer",

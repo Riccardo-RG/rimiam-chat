@@ -2,8 +2,6 @@
 dist/
 /ios/
 /android/
-modules/*/android/build/
-modules/*/android/.gradle/
 .env*.local
 .env
 google-services.json

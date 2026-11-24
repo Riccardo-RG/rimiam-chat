@@ -4,7 +4,7 @@ RIMIAM supports Italian and English on Web, iOS and Android. Choose a language a
 
 ## What changes language
 
-Controls, navigation, suggested actions, accessible names, system explanations and formatted dates follow the selected language. Names, messages, filenames, drafts and shared source material remain as written. Emme answers in the language of the question or conversation. Changing the interface does not reinterpret history or request a model response. The beta notice includes the original terms alongside the English reading. Device read-aloud selects an installed voice for the chosen language and keeps its input on device. The operating system and external providers render their own permission, picker and account screens.
+Controls, navigation, suggested actions, accessible names, system explanations and formatted dates follow the selected language. Names, messages, filenames, drafts and shared source material remain as written. Emme answers in the language of the question or conversation. Changing the interface does not reinterpret history or request a model response. The beta notice includes the original terms alongside the English reading. On Web, read-aloud selects a local voice for the chosen language and keeps its input on device. The operating system and external providers render their own permission, picker and account screens.
 
 The same space command can be found in either language. For example, `/file` and `/files` open the same collection, and `/h` opens **Draw**. User-generated content passed into a translated sentence remains opaque, even when it happens to match an interface label.
 
