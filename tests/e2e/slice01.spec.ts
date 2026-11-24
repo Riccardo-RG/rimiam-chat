@@ -352,7 +352,7 @@ test("two people exercise admission, history, explicit adherence, context and co
       .getByRole("button", { name: "Lascia lo spazio", exact: true })
       .click();
     await expect(
-      b.getByRole("button", { name: "Crea spazio", exact: true }),
+      b.getByRole("heading", { name: "I tuoi spazi", level: 1, exact: true }),
     ).toBeVisible();
     expect(
       (await b.request.get(`/api/workspaces/${workspaceId}`)).status(),
