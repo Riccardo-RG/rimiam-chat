@@ -121,15 +121,15 @@ Conversation is primary, with a Lens entry that may sit alongside it when space 
 
 Support keyboard use, focus/dialogs, narrow responsive layouts and reachable history/sources. The browser uses the same commands and server rules as mobile; cookies/sessions and the journal must not be replaced by authoritative local state.
 
-## 15. iOS / SwiftUI constraints
+## 15. iOS constraints
 
-Native SwiftUI UI, currently targeting iOS 18+. Consider NavigationStack, appropriate sheets/detents, safe areas, Dynamic Type, VoiceOver, keyboard and native gestures. The exact container framework is an implementation choice; the user journey is design work.
+The iOS client of this snapshot targeted iOS 18+. Consider stack navigation, sheets and their sizes, safe areas, Dynamic Type, VoiceOver, keyboard and native gestures. The brief defines the user journey. Implementation determines the container.
 
 Sessions and pending commands use secure storage; reopening, foreground/background transitions and Workspace changes invalidate data/operations that are no longer allowed. Microphone permission, audio interruptions and visible recording cannot be hidden by a new composition. Do not propose a WebView instead of the native client.
 
-## 16. Android / Jetpack Compose constraints
+## 16. Android constraints
 
-Native Compose UI, currently targeting API 26+. Consider system Back, sheets and adaptive paths, keyboard/insets, TalkBack, font sizes and Activity recreation. Do not automatically copy iOS gestures, bars and navigation.
+The Android client of this snapshot targeted API 26+. Consider system Back, sheets, adaptive paths, keyboard insets, TalkBack, font sizes and Activity recreation. Respect Android navigation and gesture conventions.
 
 Keep the Keystore-protected journal, restoration after recreation and current server checks. Microphone permissions, audio lifecycle and recording state take priority over decoration. Do not introduce a new cross-platform framework or change the server boundary to standardize layout.
 
@@ -151,7 +151,7 @@ Client technologies, capabilities and semantics are not a request for a visual i
 
 Authority/adherence, privacy and shared history, representation, qualifications/provenance, canonical lifecycles, the description/Goal distinction, the internal nature of threads and observable-only Activity are fixed. No new ACL, agent hierarchy, requester ownership, consent through silence or automatic adoption.
 
-Do not add roles, billing, social features, post-MVP capabilities or an agent runtime; do not replace SwiftUI/Compose/Next.js. Do not hide a normative change behind an editorial correction. The server remains authoritative for state, permissions and Commit Points. Ideas requiring a new rule must be identified as out of scope, not silently incorporated into a mockup.
+Keep the client architecture approved at the time. Roles, billing, social features, post-MVP capabilities and an agent runtime are outside this brief. Editorial changes preserve existing rules. The server remains authoritative for state, permissions and Commit Points. Identify ideas that require a new rule as out of scope.
 
 ## What we want from Claude Design
 
@@ -160,8 +160,8 @@ Propose **at least three materially different UX/UI directions**, not three pale
 For **each direction**, study these separately:
 
 1. **Web / Next.js:** wide Workspace and narrow viewport, Conversation and Lens, deeper inspection and return.
-2. **iOS / SwiftUI:** compact native flow, Lens opening/depth, keyboard, gestures and accessibility.
-3. **Android / Jetpack Compose:** native flow, Back/restoration, disclosure and adaptation, without copying iOS.
+2. **iOS.** Explore the compact flow, Lens opening and depth, keyboard, gestures and accessibility.
+3. **Android.** Explore Back and restoration, disclosure and adaptive layouts.
 
 Semantics must remain consistent; **we do not want the same layout copied across all three platforms**. For each direction show entry/creation, returning to a Workspace, natural dialogue, work in progress/Needs Input/result, Context with a source and correction, a resolved/reopened thread, and access to Sources/People/Email/Calendar. Show at least one flow with two contributors and a restriction the UI cannot bypass.
 

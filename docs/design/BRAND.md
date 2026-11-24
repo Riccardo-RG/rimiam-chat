@@ -53,7 +53,7 @@ Retained as presentation history and the unchanged native baseline; the Web pale
 | Supporting purple         | `#713AB7`             | `#C5A3F0`             |
 | Attention orange          | `#A94B00`             | `#FFBD76`             |
 
-Implementation entry points: [web signature](../../src/client/brand-signature.tsx), SwiftUI tokens (`mobile/ios/Miriam/RIMIAMStyle.swift`, historical), Compose theme (`mobile/android/app/src/main/java/it/miriam/nativeapp/MainActivity.kt`, historical). This earlier palette used contrast-adjusted relatives of the logo colors, not literal pixel samples.
+This earlier palette used colors derived from the logo and adjusted for contrast. The Web signature and the React Native guide describe the implementation available today. [Web signature](../../src/client/brand-signature.tsx) · [React Native guide](../development/MULTICLIENT.md).
 
 ## Asset maintenance
 

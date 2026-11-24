@@ -36,7 +36,7 @@ Production has real adapters or explicit unavailable/Needs Input states. Determi
 
 ## Cross-client and design handoff
 
-Web, SwiftUI and Compose use the same server-owned capability rules. Presentation differs; command versions, actor/session binding, receipts, private/shared boundaries and current-state qualifiers do not. Entry points: [CODEMAP](CODEMAP.md), [multi-client boundary](MULTICLIENT.md), [design guide](PRODUCT_DESIGN.md).
+Web and mobile share server-owned capability rules, command versions, actor and session binding, receipts, privacy boundaries and current-state qualifiers. [Code map](CODEMAP.md) · [Client boundary](MULTICLIENT.md) · [Design guide](PRODUCT_DESIGN.md).
 
 Claude Design can replace layout, navigation composition, styling, typography, microcopy and interaction presentation. Keep API clients, command journals, native WorkspaceModels and server commands as the functional boundary. Preserve explicit disclosure/authorization, exact-content previews, conflicts, Needs Input/unknown outcomes, provenance, inspectable history and Contribution/adoption distinctions. Device speech and capture controllers are separable from their buttons.
 

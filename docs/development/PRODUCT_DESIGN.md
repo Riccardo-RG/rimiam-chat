@@ -30,7 +30,7 @@ The user's supplied geometric logo now defines the [brand assets and palette](..
 
 ## Earlier integration — Ritmo, 2026-09-14
 
-The user approved integrating the Ritmo direction and completing the actual Web/SwiftUI/Compose product, superseding the later handoff-only pause recorded below. The hierarchy is **Home → Conversation + Activity → Lens → Goal / Context / Work / Outputs**. Sources, People, Calendar and Email remain reachable secondary surfaces. Activity opens real historical references; returning to Conversation preserves the object/version and never performs its governed action. Workstream focus reads the same shared history, not a private channel.
+The user approved integrating the Ritmo direction into the Web and mobile implementations of that release, superseding the handoff-only pause recorded below. The hierarchy is **Home → Conversation + Activity → Lens → Goal / Context / Work / Outputs**. Sources, People, Calendar and Email remain reachable secondary surfaces. Activity opens real historical references; returning to Conversation preserves the object/version and never performs its governed action. Workstream focus reads the same shared history, not a private channel.
 
 The requested visual refinement uses stronger typographic hierarchy, intentional borders/dividers and neutral Light/Dark surfaces. Web uses responsive reading space and an optionally pinned inspector; iOS uses native navigation/sheets and safe areas; Android uses Compose/Material compact/expanded layouts and system Back. The isolated study's Android representation is an application surface rather than a copied iPhone frame. The example is Riccardo and Giulia developing RIMIAM; illustrative prototype content never becomes runtime data.
 

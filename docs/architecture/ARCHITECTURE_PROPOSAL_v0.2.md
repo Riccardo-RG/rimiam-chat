@@ -8,7 +8,7 @@
 
 **REFINED — 2026-09-10:** [ADR-0011](../decisions/ADR-0011-calendar-stato-temporale-osservazioni-azioni.md) defines Calendar temporal state, private observations, exact external actions, identity links and uncertain-outcome recovery. Illustrative integration/schema passages must follow those distinctions; they do not authorize mirroring or automatic canonical changes. Implemented boundaries are in [Calendar BUILD](../development/CALENDAR.md). This document remains a proposal.
 
-**REFINED — 2026-09-10:** [ADR-0010](../decisions/ADR-0010-client-nativi-backend-comune.md) approva client SwiftUI/Compose, Next.js come client web e backend TypeScript/Node/PostgreSQL comune. §§3–4 e 17–18 non rendono Next.js il confine dell’applicazione. Il resto del documento rimane una proposta.
+**REFINED — 2026-09-10:** ADR-0010 approva un contratto condiviso per Web, iOS e Android. Il client Web usa Next.js e il dominio resta sul backend comune TypeScript/Node/PostgreSQL. Le sezioni 3–4 e 17–18 seguono questo confine. Il resto del documento rimane una proposta. [ADR-0010](../decisions/ADR-0010-client-nativi-backend-comune.md).
 
 
 ## Allineamento documentale ad ADR-0009 e chiusura di B2

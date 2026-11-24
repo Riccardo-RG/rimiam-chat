@@ -730,7 +730,7 @@ Le sezioni precedenti costituiscono la specifica consolidata. Questa sezione con
 
 ### Client nativi e backend comune
 
-**APPROVED · 2026-09-10.** Swift/SwiftUI per iOS, Kotlin/Compose per Android, Next.js per il web; TypeScript/Node e PostgreSQL mantengono il dominio autorevole sul server. Contratto e comportamento comuni, senza KMP per ora. Provenance, motivazione e limiti: [ADR-0010](../decisions/ADR-0010-client-nativi-backend-comune.md).
+**APPROVED · 2026-09-10.** La prima scelta approvava implementazioni mobili dedicate, un client Web in Next.js e un contratto comune. TypeScript, Node e PostgreSQL mantengono il dominio autorevole sul server. [Provenance, motivazione e limiti](../decisions/ADR-0010-client-nativi-backend-comune.md).
 
 **Perimetro della distribuzione · 2026-11-19.** Per questa fase Riccardo ha scelto il Web responsive su computer e telefono e ha richiesto di rimuovere dal repository i due frontend nativi. Il contratto versionato e il dominio server di ADR-0010 continuano a valere. [Stato del lavoro locale](../development/WEB_REDESIGN.md).
 

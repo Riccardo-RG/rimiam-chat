@@ -10,25 +10,17 @@
 
 ## Aggiornamento del 20 novembre 2026
 
-Riccardo ha richiesto un unico frontend React Native per iOS e Android in sostituzione delle due implementazioni SwiftUI e Compose. Il frontend Web rimane Next.js. Contratto comune, autorità server, provenance e Commit Point continuano a seguire la decisione originale riportata sotto. [Implementazione e collaudo](../development/MULTICLIENT.md).
+Riccardo ha richiesto un unico frontend React Native per iOS e Android. Next.js serve il Web. Contratto comune, autorità server, provenance e Commit Point seguono la decisione originale. [Implementazione e collaudo](../development/MULTICLIENT.md).
 
 ## Direzione approvata
 
-Testo del brief, conservato senza estendere il perimetro dell’approvazione:
-
-> * iOS: Swift + SwiftUI
-> * Android: Kotlin + Jetpack Compose
-> * Web: Next.js
-> * backend autorevole comune: TypeScript/Node + PostgreSQL
-> * niente KMP per ora
-> * i client condividono contratto e comportamento, non necessariamente implementazione
-> * canonical state, authority, provenance, Context Engine, Commit Points, Specialists e integrazioni restano server-side
+Il brief del 10 settembre approvava due implementazioni mobili dedicate e un frontend Web in Next.js. I client condividevano contratto e comportamento. TypeScript, Node e PostgreSQL costituivano il backend comune. Stato canonico, authority, provenance, Context Engine, Commit Points, Specialists e integrazioni restavano server-side. [Testo integrale dell’approvazione nella cronologia Git](https://github.com/Riccardo-RG/rimiam-chat/blob/62b42b3cdc2f4a52bd55b712225b737622af38a5/docs/decisions/ADR-0010-client-nativi-backend-comune.md#direzione-approvata).
 
 ## Contesto e motivazione
 
 Il mobile è il client primario. Qualità tecnica, integrazione nativa e durata precedono velocità iniziale e massima condivisione del codice. L’implementazione esistente contiene servizi Node/PostgreSQL riutilizzabili e una UI web Next.js: renderli accessibili attraverso un contratto pubblico comune preserva quel lavoro senza rendere Next.js il confine implicito del prodotto.
 
-SwiftUI e Compose usano progetti e toolchain standard delle rispettive piattaforme. React Native e un livello cross-platform non fanno parte di questa direzione; KMP potrà essere rivalutato con un beneficio concreto, non per condividere codice fine a sé stesso.
+La scelta del 10 settembre usava progetti e toolchain delle rispettive piattaforme. La condivisione dell’implementazione mobile richiedeva un beneficio concreto. La scelta del 20 novembre definisce il frontend condiviso.
 
 ## Conseguenze e limiti
 
