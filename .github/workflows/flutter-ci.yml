@@ -87,6 +87,8 @@ jobs:
       - name: Compile the iOS simulator app
         if: runner.os == 'macOS'
         working-directory: ${{ runner.temp }}/rimiam-app
+        env:
+          DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
         run: |
-          export XCODE_XCCONFIG_FILE="$PWD/ios/Flutter/RimiamSimulatorSDK26.xcconfig"
+          xcodebuild -version
           flutter build ios --simulator --debug --no-pub
