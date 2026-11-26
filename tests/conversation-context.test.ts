@@ -159,6 +159,39 @@ it("supplies qualified, unadopted actual Contribution content and exact input pr
   expect(rows[0].contribution.qualification).toContain("non adottata");
   expect(rows[0].contribution.inputs.length).toBeGreaterThan(0);
 });
+it("repairs missing and exhausted queue deliveries while preserving a healthy delivery", async () => {
+  const t = await setup();
+  const message = await t.cmd({
+    type: "message.send",
+    content: "@Emme, quali sono le novità?",
+  });
+  const key = `interpret:${message.interpretationId}`;
+  const delivery = async () =>
+    (
+      await pool.query(
+        "SELECT id,revision,run_at,attempts,max_attempts FROM graphile_worker.jobs WHERE key=$1",
+        [key],
+      )
+    ).rows[0];
+  const first = await delivery();
+  expect(first).toBeDefined();
+  await recoverExpiredInterpretations();
+  expect(await delivery()).toEqual(first);
+
+  await pool.query("SELECT graphile_worker.remove_job($1)", [key]);
+  expect(await delivery()).toBeUndefined();
+  await recoverExpiredInterpretations();
+  const restored = await delivery();
+  expect(restored).toMatchObject({ attempts: 0, max_attempts: 5 });
+  await pool.query(
+    "SELECT graphile_worker.permanently_fail_jobs($1::bigint[])",
+    [[restored.id]],
+  );
+  expect((await delivery()).attempts).toBe(restored.max_attempts);
+  await recoverExpiredInterpretations();
+  expect(await delivery()).toMatchObject({ attempts: 0, max_attempts: 5 });
+});
+
 it("does not make another model disclosure after the inference lease is fenced by recovery", async () => {
   const t = await setup(),
     m = await t.cmd({

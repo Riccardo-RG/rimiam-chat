@@ -37,6 +37,3 @@
 .title h2:focus {
   outline: none;
 }
-.backArrow {
-  transform: rotate(180deg);
-}

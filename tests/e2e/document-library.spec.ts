@@ -1,5 +1,10 @@
 import { devices, expect, test } from "@playwright/test";
-import { fillWorkspaceName, openWorkspacePanel, register } from "./helpers";
+import {
+  fillWorkspaceName,
+  openMessageComposer,
+  openWorkspacePanel,
+  register,
+} from "./helpers";
 
 test.use({
   contextOptions: async ({ browserName }, provideOptions) => {
@@ -64,7 +69,8 @@ test("the document library shares files and pages and keeps unsent input when ex
     await expect(input).toHaveValue(address);
   }
   await library.getByRole("button", { name: "Condividi link" }).click();
-  const saved = library.getByRole("link", { name: address, exact: true });
+  const linkLabel = "example.org/…/" + "abcdefgh".repeat(4) + "abc…";
+  const saved = library.getByRole("link", { name: linkLabel, exact: true });
   await expect(saved).toHaveAttribute("href", address);
   await page.reload();
   await openWorkspacePanel(page, "artifacts", { dock: false });
@@ -88,7 +94,7 @@ test("the document library shares files and pages and keeps unsent input when ex
     ).toBeLessThanOrEqual(1);
   }
   await library
-    .getByRole("button", { name: "Rimuovi " + address, exact: true })
+    .getByRole("button", { name: "Rimuovi " + linkLabel, exact: true })
     .click();
   await library
     .getByRole("button", { name: "Nascondi su questo dispositivo" })
@@ -119,7 +125,7 @@ test("the document library shares files and pages and keeps unsent input when ex
   await expect(file).toBeVisible();
   await library
     .getByRole("listitem")
-    .filter({ has: page.getByRole("link", { name: address, exact: true }) })
+    .filter({ has: page.getByRole("link", { name: linkLabel, exact: true }) })
     .getByRole("button", { name: "Vai al messaggio" })
     .click();
   await expect(
@@ -175,4 +181,225 @@ test("personal documents keeps file intake together and lets the user open and l
   await expect(
     library.getByRole("button", { name: "Allega file", exact: true }),
   ).toBeVisible();
+  await library
+    .getByRole("button", { name: "Nuovo documento", exact: true })
+    .click();
+  await expect(
+    library.getByText(
+      "Destinazione: Documenti personali › Documenti di lavoro",
+    ),
+  ).toBeVisible();
+  await library.getByLabel("Titolo", { exact: true }).fill("Note di lancio");
+  await library.getByLabel("A cosa ti serve?").fill("Preparare il rilascio");
+  await library
+    .getByLabel("Contenuto", { exact: true })
+    .fill("Confermare la data di lancio.");
+  const receipt = page.waitForResponse(
+    (response) =>
+      response.request().method() === "POST" &&
+      new URL(response.url()).pathname.endsWith("/commands") &&
+      response.request().postDataJSON()?.command?.type === "artifact.compose",
+  );
+  await library
+    .getByRole("button", { name: "Salva documento", exact: true })
+    .click();
+  await expect(
+    library.getByRole("status").filter({
+      hasText:
+        "«Note di lancio» salvato in Documenti personali › Documenti di lavoro.",
+    }),
+  ).toBeVisible();
+  const first = await receipt;
+  const { artifactId, version } = (await first.json()).result;
+  expect(version).toBe(1);
+  const next = await page.request.post(first.url(), {
+    headers: { Origin: new URL(page.url()).origin },
+    data: {
+      commandId: crypto.randomUUID(),
+      command: {
+        ...first.request().postDataJSON().command,
+        artifactId,
+        expectedVersion: version,
+        title: "Note aggiornate",
+        blocks: [{ type: "paragraph", text: "La data è confermata." }],
+        reason: "Aggiornamento da una seconda sessione",
+      },
+    },
+  });
+  expect(next.ok()).toBe(true);
+  // A subsequent action refreshes the archive while keeping its save receipt.
+  const fullUrl =
+    "https://example.org/ricerca/agenda?periodo=" + "a".repeat(500);
+  await library
+    .getByRole("button", { name: "Aggiungi link", exact: true })
+    .click();
+  await library.getByLabel("Indirizzo della pagina").fill(fullUrl);
+  await library
+    .getByRole("button", { name: "Salva link", exact: true })
+    .click();
+  const compactLink = library.getByRole("link", {
+    name: "example.org/…/agenda",
+    exact: true,
+  });
+  await expect(compactLink).toHaveAttribute("href", fullUrl);
+  expect(
+    await library.evaluate((el) => el.scrollWidth - el.clientWidth),
+  ).toBeLessThanOrEqual(1);
+  await expect(
+    library.getByRole("heading", { name: "Note aggiornate" }),
+  ).toBeVisible();
+  await expect(
+    library.getByRole("status").filter({ hasText: "«Note di lancio» salvato" }),
+  ).toBeVisible();
+  await library
+    .getByRole("button", { name: "Apri il documento salvato" })
+    .click();
+  await expect(
+    library.getByText("Confermare la data di lancio.", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    library.getByText("Contenuto v1", { exact: true }),
+  ).toBeFocused();
+});
+
+test("the preview cites the selected quote version only after the reader sends and reopens the exact source", async ({
+  page,
+  browserName,
+}) => {
+  const suffix = crypto.randomUUID();
+  const space = "Preventivi " + suffix;
+  await register(page, "Ada", "version-" + suffix + "@example.test");
+  await fillWorkspaceName(page, space);
+  await page.getByRole("button", { name: "Crea spazio", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: space, exact: true }),
+  ).toBeVisible();
+  const w = new URL(page.url()).searchParams.get("workspace");
+  const path = "/api/v1/workspaces/" + w + "/commands";
+  const name = "Preventivo.txt";
+  async function upload(text: string, previousSourceId?: string) {
+    const response = await page.request.post(path, {
+      headers: { Origin: new URL(page.url()).origin },
+      data: {
+        commandId: crypto.randomUUID(),
+        command: {
+          type: "document.upload",
+          filename: name,
+          bytesBase64: Buffer.from(text).toString("base64"),
+          previousSourceId,
+        },
+      },
+    });
+    expect(response.ok()).toBe(true);
+    return (await response.json()).result.sourceId as string;
+  }
+  const v1 = await upload("Il totale è 120 euro.");
+  const v2 = await upload("Il totale è 470 euro.", v1);
+  const photo = "Screenshot.png";
+  const imageUpload = await page.request.post(path, {
+    headers: { Origin: new URL(page.url()).origin },
+    data: {
+      commandId: crypto.randomUUID(),
+      command: {
+        type: "document.upload",
+        filename: photo,
+        bytesBase64:
+          "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGNgaPgPAAIDAYAkYfWXAAAAAElFTkSuQmCC",
+      },
+    },
+  });
+  expect(imageUpload.ok()).toBe(true);
+  await page.reload();
+  await openWorkspacePanel(page, "artifacts", { dock: false });
+  const library = page.getByRole("dialog", { name: "Condivisi", exact: true });
+  await library
+    .getByRole("button", { name: "Apri " + photo, exact: true })
+    .click();
+  const imagePreview = page.getByRole("dialog", { name: photo, exact: true });
+  await expect(
+    imagePreview.getByRole("button", { name: "Chiedi a Emme su questo file" }),
+  ).toBeDisabled();
+  await expect(
+    imagePreview.getByText("Lettura con AI non autorizzata."),
+  ).toBeVisible();
+  page.once("dialog", async (dialog) => {
+    expect(dialog.type()).toBe("confirm");
+    await dialog.dismiss();
+  });
+  await imagePreview
+    .getByRole("button", { name: "Consenti lettura con AI…" })
+    .click();
+  await expect(
+    imagePreview.getByRole("button", { name: "Chiedi a Emme su questo file" }),
+  ).toBeDisabled();
+  await imagePreview
+    .getByRole("button", { name: "Chiudi", exact: true })
+    .click();
+  await library
+    .getByRole("button", { name: "Apri " + name, exact: true })
+    .click();
+  const preview = page.getByRole("dialog", { name, exact: true });
+  const favorite = preview.getByRole("button", {
+    name: "Aggiungi ai preferiti " + name,
+  });
+  await expect(favorite).toHaveAttribute("aria-pressed", "false");
+  await page.emulateMedia({ colorScheme: "light" });
+  const outline = await favorite.locator("svg path").getAttribute("fill");
+  expect(outline).toBe("none");
+  await favorite.click();
+  await page.emulateMedia({ colorScheme: "dark" });
+  await expect(
+    preview.getByRole("button", { name: "Rimuovi dai preferiti " + name }),
+  ).toHaveAttribute("aria-pressed", "true");
+  expect(
+    await preview
+      .getByRole("button", { name: "Rimuovi dai preferiti " + name })
+      .locator("svg path")
+      .getAttribute("fill"),
+  ).not.toBe("none");
+  const sent: string[] = [];
+  page.on("request", (req) => {
+    if (
+      new URL(req.url()).pathname === path &&
+      req.method() === "POST" &&
+      req.postDataJSON()?.command?.type === "message.send"
+    )
+      sent.push(req.postDataJSON().command.content);
+  });
+  await preview
+    .getByRole("button", { name: "Chiedi a Emme su questo file" })
+    .click();
+  await expect(page.locator(".composer-reference")).toContainText(
+    "Preventivo.txt · v2",
+  );
+  expect(sent).toEqual([]);
+  const editor = await openMessageComposer(page);
+  await editor.fill("Qual è il totale?");
+  const received = page.waitForResponse(
+    (res) =>
+      new URL(res.url()).pathname === path &&
+      res.request().postDataJSON()?.command?.reference?.id === v2,
+  );
+  if (browserName === "webkit")
+    await page.getByRole("button", { name: "Invia", exact: true }).tap();
+  else await editor.press("Enter");
+  const receipt = await received;
+  expect(receipt.ok()).toBe(true);
+  expect(receipt.request().postDataJSON().command).toMatchObject({
+    content: "@Emme Qual è il totale?",
+    reference: { kind: "source", id: v2, version: 1 },
+  });
+  const answer = page.locator(".messages article").filter({
+    hasText: "Risposta di prova al messaggio: Il totale è 470 euro.",
+  });
+  await expect(answer).toBeVisible();
+  const citation = answer.getByRole("button", { name: "Preventivo.txt · v2" });
+  if (browserName === "webkit") await citation.tap();
+  else await citation.click();
+  await expect(
+    page
+      .locator(".reference-detail pre")
+      .filter({ hasText: "Il totale è 470 euro." }),
+  ).toBeVisible();
+  await expect(page.locator(".reference-detail")).not.toContainText("120 euro");
 });

@@ -1,4 +1,7 @@
 {
+  "Questa chat è tra te e {0}. Scrivi il primo messaggio.": "This chat is between you and {0}. Send the first message.",
+  "Invia scrive a {0}. Per chiedere a Emme, crea uno spazio.": "Send goes to {0}. To ask Emme a question, create a space.",
+  "Apri il tuo riepilogo": "Open your personal summary",
   "{0} non ha potuto rispondere: limite di utilizzo dell’AI raggiunto. Il messaggio è salvo.": "{0} couldn’t reply because the AI usage limit was reached. Your message is saved.",
   "La connessione di {0} richiede una verifica. Il messaggio è salvo.": "The connection for {0} needs attention. Your message is saved.",
   "{0} è temporaneamente fuori servizio. Il messaggio è salvo.": "{0} is temporarily unavailable. Your message is saved.",

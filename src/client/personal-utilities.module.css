@@ -18,6 +18,11 @@
   margin: 0.5rem 0 1.2rem;
 }
 button.back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.35rem;
+  min-height: 44px;
   padding-inline-start: 0;
   font-size: 0.86rem;
 }
@@ -263,7 +268,7 @@ button.back {
 }
 
 .back svg {
-  transform: rotate(180deg);
+  flex: none;
 }
 .head summary svg {
   vertical-align: middle;
@@ -298,7 +303,7 @@ button.back {
     align-items: center;
     gap: 0.25rem;
     width: 100%;
-    min-height: 32px;
+    min-height: 44px;
   }
 }
 .content {
@@ -321,4 +326,34 @@ button.back {
 .head details[open] summary,
 .head summary:hover {
   background: var(--selected);
+}
+
+/* The personal area scrolls as a document. During mobile input anchor its
+   composer to the visible viewport, including Safari's keyboard pan. */
+@media (pointer: coarse) {
+  main.shell[data-keyboard-pan]:has(.compose[data-editing]) {
+    position: static;
+  }
+  .shell[data-keyboard-open]:has(.compose[data-editing]) .content {
+    padding-block-end: min(12rem, 50dvh);
+  }
+  .shell[data-keyboard-open] .compose[data-editing] {
+    position: fixed;
+    inset-inline: 0;
+    inset-block-start: calc(
+      var(--chat-viewport-offset) + var(--chat-viewport-height)
+    );
+    transform: translateY(-100%);
+    z-index: 4;
+    box-sizing: border-box;
+    max-block-size: var(--chat-viewport-height);
+    overflow-y: auto;
+    padding: 0.4rem max(0.65rem, env(safe-area-inset-right)) 0.25rem
+      max(0.65rem, env(safe-area-inset-left));
+    background: var(--paper);
+  }
+  .shell[data-keyboard-open] .compose textarea {
+    min-block-size: 2.6rem;
+    max-block-size: min(7rem, calc(var(--chat-viewport-height) * 0.4));
+  }
 }

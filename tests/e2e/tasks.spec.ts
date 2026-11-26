@@ -4,10 +4,61 @@ import {
   fillWorkspaceName,
   register,
   joinTestWorkspace,
+  reloadWithSession,
   openWorkspacePanel,
   holdWorkspaceReadsAcrossCommand,
+  openMessageComposer,
 } from "./helpers";
 import type { TasksView } from "../../src/contracts/tasks";
+
+test("uno spunto del contesto diventa un’attività solo dopo il salvataggio della bozza", async ({
+  page,
+}) => {
+  await register(page, "Ada", `spunto-${crypto.randomUUID()}@example.test`);
+  const name = "Scelta preventivi";
+  await fillWorkspaceName(page, name);
+  await page.getByRole("button", { name: "Crea spazio", exact: true }).click();
+  await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();
+  const workspace = new URL(page.url()).searchParams.get("workspace");
+  const view = async (): Promise<TasksView> => {
+    const response = await page.request.get(
+      `/api/v1/workspaces/${workspace}/tasks`,
+    );
+    expect(response.ok()).toBe(true);
+    return response.json();
+  };
+  const content = "Possiamo raccogliere preventivi?";
+  await (await openMessageComposer(page)).fill(content);
+  await page.getByRole("button", { name: "Invia", exact: true }).click();
+  await expect
+    .poll(async () => (await view()).suggestions.length)
+    .toBeGreaterThan(0);
+  const suggested = (await view()).suggestions[0];
+  await openWorkspacePanel(page, "work");
+  const region = page.getByRole("region", { name: "Da fare e promemoria" });
+  const prepare = region
+    .getByRole("button", { name: "Prepara bozza di attività" })
+    .first();
+  await expect(prepare).toBeHidden();
+  await region.getByText(/Spunti dal contesto ·/).click();
+  await prepare.click();
+  await expect(region.getByLabel("Attività", { exact: true })).toHaveValue(
+    suggested.subject,
+  );
+  await expect(region.getByLabel("Perimetro e aspettative")).toHaveValue(
+    suggested.content,
+  );
+  expect((await view()).tasks).toHaveLength(0);
+  await region
+    .getByRole("button", { name: "Crea attività", exact: true })
+    .click();
+  await expect
+    .poll(async () => (await view()).tasks)
+    .toMatchObject([
+      { candidateId: suggested.id, responsible: null, suggestedPerson: null },
+    ]);
+});
+
 test("Tasks: explicit responsibility, one shared reminder in both chats, recurring schedule and reload", async ({
   page,
   browser,
@@ -180,7 +231,7 @@ test("Tasks: explicit responsibility, one shared reminder in both chats, recurri
       .locator("summary")
       .filter({ hasText: recurringTitle });
     await expect(seriesSummary).toBeVisible();
-    await Promise.all([guest.reload(), page.reload()]);
+    await Promise.all([reloadWithSession(guest), reloadWithSession(page)]);
     await expect(sharedReminder(guest)).toHaveCount(1);
     await expect(sharedReminder(page)).toHaveCount(1);
     await openWorkspacePanel(page, "work");
@@ -296,6 +347,9 @@ test("Task register: a named offer, comments, standby and completion stay in syn
       "In attesa di te",
     );
     await guestRow.locator("summary").first().tap();
+    await expect(
+      guestRow.getByText("Proposta da Giulia a Matteo."),
+    ).toBeVisible();
     const text = "Ho verificato la prima schermata.";
     const sentComments: string[] = [];
     const commandPath = "**/api/v1/workspaces/*/commands";
@@ -338,7 +392,7 @@ test("Task register: a named offer, comments, standby and completion stay in syn
       .getByRole("button", { name: "Segna come completata", exact: true })
       .tap();
     await expect(row.locator("summary").first()).toContainText("Completata");
-    await Promise.all([guest.reload(), page.reload()]);
+    await Promise.all([reloadWithSession(guest), reloadWithSession(page)]);
     await Promise.all([
       openWorkspacePanel(guest, "work"),
       openWorkspacePanel(page, "work"),

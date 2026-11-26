@@ -12,6 +12,7 @@ import {
   staleArtifactInformation,
   useArtifactEditBase,
   type ArtifactInformationReference,
+  type SavedArtifactVersion,
 } from "./artifact-document";
 import {
   useEffect,
@@ -39,6 +40,7 @@ type Props = {
   ) => Promise<unknown>;
   action: (fn: () => Promise<void>) => Promise<void>;
   openSource: (id: string) => void;
+  onAskFile?: (file: Snapshot["sources"][number]) => void;
   handoff?: ConversationHandoff;
   documentExitGuard?: Ref<DocumentExitGuard>;
 };
@@ -76,6 +78,15 @@ export function WorkspaceArtifacts(props: Props) {
   );
   const modified = useRef(false);
   const panel = useRef<HTMLElement>(null);
+  const [savedDocument, setSavedDocument] = useState<SavedArtifactVersion>();
+  const destination = personal
+    ? uiText("Documenti personali")
+    : uiText("{0} › Condivisi", state.workspace.name);
+  const savedVersion = state.artifactVersions.find(
+    (v) =>
+      v.artifact_id === savedDocument?.id &&
+      v.version === savedDocument.version,
+  );
   const heading = useRef<HTMLHeadingElement>(null);
   const returnTarget = useRef<string | undefined>(undefined);
   const keepEditing = useRef<HTMLButtonElement>(null);
@@ -130,7 +141,10 @@ export function WorkspaceArtifacts(props: Props) {
         type="button"
         className="quiet"
         data-document-action="document"
-        onClick={() => setEditor({ kind: "document" })}
+        onClick={() => {
+          setSavedDocument(undefined);
+          setEditor({ kind: "document" });
+        }}
       >
         {uiText("Nuovo documento")}
       </button>
@@ -176,6 +190,9 @@ export function WorkspaceArtifacts(props: Props) {
                 ? uiText("Nuovo documento")
                 : uiText("Prepara un brief")}
           </h2>
+          <p className="hint">
+            {uiText("Destinazione: {0} › Documenti di lavoro", destination)}
+          </p>
           {discardAndLeave && (
             <div
               className={styles.discard}
@@ -230,7 +247,10 @@ export function WorkspaceArtifacts(props: Props) {
                 busy={busy}
                 command={command}
                 action={action}
-                onSaved={closeEditor}
+                onSaved={(saved) => {
+                  closeEditor();
+                  setSavedDocument(saved);
+                }}
                 onCancel={cancelEditor}
                 handoff={editor.fromConversation ? handoff : undefined}
               />
@@ -246,6 +266,37 @@ export function WorkspaceArtifacts(props: Props) {
         </div>
       )}
       <div hidden={!!editing}>
+        {savedVersion && (
+          <div className={styles.savedReceipt}>
+            <p role="status">
+              {uiText(
+                "«{0}» salvato in {1} › Documenti di lavoro.",
+                savedVersion.title,
+                destination,
+              )}
+            </p>
+            <button
+              type="button"
+              className="quiet"
+              onClick={() => {
+                const key =
+                  savedVersion.artifact_id + "-" + savedVersion.version;
+                const details =
+                  document.getElementById("saved-document-" + key) ??
+                  document.getElementById("saved-history-" + key);
+                if (details instanceof HTMLDetailsElement) {
+                  const history = details.parentElement?.closest("details");
+                  if (history) history.open = true;
+                  details.open = true;
+                  details.querySelector("summary")?.focus();
+                  details.scrollIntoView({ block: "nearest" });
+                }
+              }}
+            >
+              {uiText("Apri il documento salvato")}
+            </button>
+          </div>
+        )}
         {generate && (
           <GeneratedDocument
             workspace={state.workspace.id}
@@ -263,6 +314,7 @@ export function WorkspaceArtifacts(props: Props) {
           command={command}
           action={action}
           openSource={openSource}
+          onAskFile={props.onAskFile}
           documentActions={
             personal && contributes ? (
               <details className={styles.createMenu}>
@@ -324,7 +376,7 @@ export function WorkspaceArtifacts(props: Props) {
                   {v.outdated_reasons.join(" · ")}.
                 </p>
               )}
-              <details>
+              <details id={"saved-document-" + a.id + "-" + v.version}>
                 <summary>
                   {personal
                     ? uiText("Leggi il documento")
@@ -535,7 +587,7 @@ export function WorkspaceArtifacts(props: Props) {
                           {x.provider ? ` · ${x.provider} / ${x.model}` : ""}
                         </p>
                       )}
-                      <details>
+                      <details id={"saved-history-" + a.id + "-" + x.version}>
                         <summary>
                           {uiText("Contenuto v")}
                           {x.version}
@@ -556,7 +608,11 @@ export function WorkspaceArtifacts(props: Props) {
                           {uiText("Scarica v")}
                           {x.version}
                         </button>
-                        <pre className="artifact-body">{x.body}</pre>
+                        <ArtifactBody
+                          blocks={x.blocks}
+                          body={x.body}
+                          workspace={state.workspace.id}
+                        />
                         {!personal && (
                           <SourceLinks
                             state={state}

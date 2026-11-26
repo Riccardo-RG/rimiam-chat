@@ -175,6 +175,12 @@ it("binds local native opt-ins to the authenticated session, keeps repeated cons
     workspaceId: space,
   });
   expect((await call(target, writer.token)).status).toBe(404);
+  const anchored = target + "&anchor=message";
+  expect(await (await call(anchored, recipient.token)).json()).toEqual({
+    workspaceId: space,
+    messageId: queued.reference_id,
+  });
+  expect((await call(anchored, writer.token)).status).toBe(404);
   const session = (
     await pool.query("SELECT session_id FROM web_push_device WHERE id=$1", [
       deviceId,
@@ -198,6 +204,7 @@ it("binds local native opt-ins to the authenticated session, keeps repeated cons
   expect((await delivery()).status).toBe("suppressed");
   expect(sender).toHaveBeenCalledTimes(1);
   expect((await call(target, recipient.token)).status).toBe(404);
+  expect((await call(anchored, recipient.token)).status).toBe(404);
 });
 it("fences stale opt-ins, token ownership and foreign workspaces on native re-registration", async () => {
   const a = recipient,

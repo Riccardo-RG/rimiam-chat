@@ -40,7 +40,7 @@ RIMIAM is an AI-native collaborative workspace. It is not primarily a chatbot, g
 
 Keep these domain distinctions explicit: Conversation vs Shared Context; raw events vs derived/canonical state; Evidence vs Truth; Understanding vs Authority; Workstream vs Sub-goal; Emme vs Specialist Actors; Shared Context vs Current State; Contribution vs Shared State; Active Work vs a simple chat response. Current State is a projection of Shared Context. Contributions pass through workspace governance. Active Work follows [ADR-0014](docs/decisions/ADR-0014-active-work-specialist-contribution.md): shared steering never enlarges authority; preserve relevant state, anchored assumptions and unresolved restrictions. Semantic approval alone does not authorize BUILD.
 
-Approved client direction: [ADR-0010](docs/decisions/ADR-0010-client-nativi-backend-comune.md). The versioned server contract owns the domain boundary across client types. The hosted client is the responsive Web app. The local iOS and Android frontend uses React Native.
+Approved client direction: [ADR-0010](docs/decisions/ADR-0010-client-nativi-backend-comune.md). The versioned server contract owns the domain boundary across client types. The hosted client is the responsive Web app. The iOS and Android frontend uses Flutter.
 
 Calendar follows [ADR-0011](docs/decisions/ADR-0011-calendar-stato-temporale-osservazioni-azioni.md): temporal state, private observations and authorized external effects are separate; preserve identity/provenance and unknown outcomes, with no automatic propagation or inferred representation.
 
@@ -57,7 +57,7 @@ These are defaults, not a final architecture decision:
 - Prefer the simplest architecture that preserves product invariants, with a modular monolith initially. Avoid premature microservices and disposable demo architecture.
 - Do not introduce a generic multi-agent framework before it is needed, or full event sourcing without clear justification.
 - Build vertically in usable, testable slices. Future requirements should influence boundaries, not inflate current scope.
-- Client scope (2026-11-20): maintain the responsive Web app and one React Native frontend for iOS and Android, as requested by the founder. Generate native platform projects from mobile/app.config.ts. Keep server contracts and client-independent authority checks intact. See [STATUS](docs/development/STATUS.md) for current evidence.
+- Client scope (2026-11-26): maintain the responsive Web app and one Flutter frontend in `mobile/` for iOS and Android. Generate the platform projects with `mobile/tool/prepare_host.dart`. Keep server contracts and client-independent authority checks intact. See [STATUS](docs/development/STATUS.md) for current evidence.
 - Account registration/session/invitation/recovery UX is BUILD work; external provider delivery/credentials are WIRE. Authentication does not grant Workspace membership, Goal adherence or authority.
 - Treat AI model output as untrusted structured input; validate it before it changes domain state or triggers actions.
 - Write model-facing prompts and agent operating instructions in English. This does not change user-facing language: preserve requested response languages, original source text, examples and exact protocol values. Product documentation and approved ADR wording are not subject to this language rule.

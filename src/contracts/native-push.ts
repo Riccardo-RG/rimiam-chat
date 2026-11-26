@@ -44,4 +44,7 @@ export const nativePushReceipt = z.object({
   deviceId: z.uuid(),
   enabled: z.boolean(),
 });
-export const nativePushTarget = z.object({ workspaceId: z.uuid() });
+export const nativePushTarget = z.object({
+  workspaceId: z.uuid(),
+  messageId: z.uuid().optional(),
+});

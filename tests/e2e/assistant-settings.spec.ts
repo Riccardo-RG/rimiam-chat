@@ -1,7 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { expect, test } from "@playwright/test";
-import { fillWorkspaceName, register } from "./helpers";
+import {
+  openWithSession,
+  fillWorkspaceName,
+  register,
+  openWorkspacePanel,
+} from "./helpers";
 
 test("Home separates the private configuration from the agent chosen for a new space", async ({
   page,
@@ -42,7 +47,7 @@ test("Home separates the private configuration from the agent chosen for a new s
   await expect(
     page.getByRole("heading", { name: "Studio condiviso", exact: true }),
   ).toBeVisible();
-  await page.goto("/");
+  await openWithSession(page, "/");
   await expect(
     page.getByRole("region", { name: "Elenco degli spazi disponibili" }),
   ).toContainText("Agente di prova");
@@ -60,6 +65,9 @@ test("Home separates the private configuration from the agent chosen for a new s
   const guide = panel.getByLabel("Istruzioni dello spazio");
   const save = panel.getByRole("button", { name: "Salva impostazioni" });
   await expect(guide).toBeEmpty();
+  await expect(
+    panel.getByText(/^Il ritmo in Attività e argomenti/),
+  ).toBeVisible();
   await expect(save).toBeDisabled();
   await panel
     .getByText("Istruzioni predefinite di RIMIAM", { exact: true })
@@ -88,4 +96,31 @@ test("Home separates the private configuration from the agent chosen for a new s
   await expect(panel.getByLabel("Istruzioni personali")).toHaveValue(
     "Answer in two sentences.",
   );
+});
+
+test("the shared participation setting survives reopening the workspace on a narrow screen", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await register(page, "Ada", randomUUID() + "@example.test");
+  const name = "Ritmo " + randomUUID();
+  await fillWorkspaceName(page, name);
+  await page.getByRole("button", { name: "Crea spazio", exact: true }).click();
+  await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();
+  const openRhythm = async () => {
+    await openWorkspacePanel(page, "attention", { dock: false });
+    await page.getByText("Il ritmo di Emme", { exact: true }).click();
+  };
+  await openRhythm();
+  const setting = page.getByLabel("Preferenza condivisa");
+  await expect(setting).toHaveValue("discreet");
+  await setting.selectOption("proactive");
+  await expect(
+    page.getByText(
+      "Può anche segnalare un rischio concreto indicando la fonte.",
+    ),
+  ).toBeVisible();
+  await page.reload();
+  await openRhythm();
+  await expect(setting).toHaveValue("proactive");
 });

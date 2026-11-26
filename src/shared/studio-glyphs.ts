@@ -20,7 +20,26 @@ type Paint = {
 export type StudioShape = Paint &
   ({ d: string } | { cx: number; cy: number; r: number });
 const mark = emmeMarkPaths.map((d) => ({ d, fillRule: "evenodd" as const }));
+const starPath =
+  "m12 3 2.75 5.75 6.25.9-4.5 4.45 1.05 6.3L12 17.45l-5.55 2.95 1.05-6.3L3 9.65l6.25-.9Z";
 export const studioGlyphs = {
+  favorite: [
+    {
+      d: starPath,
+      fill: "none",
+      stroke: "currentColor",
+      strokeWidth: 1.5,
+      strokeLinejoin: "round",
+    },
+  ],
+  favoriteSelected: [
+    {
+      d: starPath,
+      stroke: "currentColor",
+      strokeWidth: 1.5,
+      strokeLinejoin: "round",
+    },
+  ],
   mark: mark,
   spark: mark,
   home: [
@@ -223,6 +242,9 @@ export const studioGlyphs = {
   ],
   plus: [{ d: "M10.7 3.4h2.6v7.3h7.3v2.6h-7.3v7.3h-2.6v-7.3H3.4v-2.6h7.3Z" }],
   arrow: [{ d: "M12.2 4.4h3.3l7 7.6-7 7.6h-3.3l5.8-6.3H2.1v-2.6H18Z" }],
+  back: [
+    { d: "M10.8 4.8 3.6 12l7.2 7.2 1.6-1.6-4.5-4.5h12.5v-2.2H7.9l4.5-4.5Z" },
+  ],
   more: [
     {
       d: "M2.6 10.4h2.9l.8.8v2.4H2.6Zm7.5 0H13l.8.8v2.4h-3.7Zm7.5 0h2.9l.8.8v2.4h-3.7Z",

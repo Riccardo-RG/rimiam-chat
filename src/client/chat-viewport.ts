@@ -1,11 +1,14 @@
 "use client";
 import { useEffect, type RefObject } from "react";
 
-export function useChatViewport(member: RefObject<HTMLElement | null>) {
+export function useChatViewport(
+  member: RefObject<HTMLElement | null>,
+  enabled = true,
+) {
   useEffect(() => {
     const viewport = window.visualViewport;
     const workspace = member.current?.closest("main");
-    if (!viewport || !workspace) return;
+    if (!enabled || !viewport || !workspace) return;
     // The rail and the Workspace share a grid. If only the Workspace shrinks,
     // Safari can still scroll the full-height page behind the software keyboard.
     const heightHost =
@@ -43,6 +46,10 @@ export function useChatViewport(member: RefObject<HTMLElement | null>) {
       const writing =
         active?.matches("[data-compose-surface] textarea") ||
         (surface && (active === document.body || surface.contains(active)));
+      workspace.style.setProperty(
+        "--chat-viewport-offset",
+        viewport.offsetTop + "px",
+      );
       const top =
         touch.matches && writing && viewport.scale === 1
           ? Math.max(0, viewport.pageTop)
@@ -52,6 +59,12 @@ export function useChatViewport(member: RefObject<HTMLElement | null>) {
       workspace.toggleAttribute("data-keyboard-pan", top > 0);
     };
     const fitKeyboard = () => {
+      workspace.toggleAttribute(
+        "data-keyboard-open",
+        touch.matches &&
+          viewport.scale === 1 &&
+          window.innerHeight - viewport.height > 100,
+      );
       workspace.toggleAttribute(
         "data-low-viewport",
         viewport.scale === 1 && viewport.height <= 320,
@@ -79,6 +92,8 @@ export function useChatViewport(member: RefObject<HTMLElement | null>) {
       window.removeEventListener("scroll", positionChat);
       workspace.removeEventListener("focusin", positionChat);
       workspace.removeAttribute("data-low-viewport");
+      workspace.removeAttribute("data-keyboard-open");
+      workspace.style.removeProperty("--chat-viewport-offset");
       workspace.removeAttribute("data-keyboard-pan");
       workspace.style.removeProperty("--chat-keyboard-pan");
       workspace.removeEventListener("focusin", updateWritingMode);
@@ -86,5 +101,5 @@ export function useChatViewport(member: RefObject<HTMLElement | null>) {
       workspace.removeAttribute("data-single-line-composer");
       heightHost.style.removeProperty("--chat-viewport-height");
     };
-  }, [member]);
+  }, [member, enabled]);
 }

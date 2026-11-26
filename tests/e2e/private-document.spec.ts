@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import {
+  openWithSession,
   fillWorkspaceName,
   register,
   joinTestWorkspace,
@@ -64,6 +65,70 @@ test("attiva la generazione personale e pubblica il documento nello spazio solo 
     await expect(
       peer.getByRole("button", {
         name: "Apri Piano di lancio.md",
+        exact: true,
+      }),
+    ).toBeVisible();
+    const peerCollection = peer.getByRole("dialog", {
+      name: "Condivisi",
+      exact: true,
+    });
+    const peerFile = peerCollection.getByRole("button", {
+      name: "Apri Piano di lancio.md",
+      exact: true,
+    });
+    await peerCollection
+      .getByRole("button", { name: "Rimuovi Piano di lancio.md", exact: true })
+      .click();
+    await expect(
+      peerCollection.getByRole("button", {
+        name: "Nascondi su questo dispositivo",
+      }),
+    ).toBeVisible();
+    await expect(
+      peerCollection.getByRole("button", { name: "Rimuovi per tutti" }),
+    ).toHaveCount(0);
+    await peerCollection
+      .getByRole("button", { name: "Annulla", exact: true })
+      .click();
+    await openWorkspacePanel(page, "artifacts", { dock: false });
+    const collection = page.getByRole("dialog", {
+      name: "Condivisi",
+      exact: true,
+    });
+    await collection
+      .getByRole("button", { name: "Rimuovi Piano di lancio.md", exact: true })
+      .click();
+    page.once("dialog", (d) => d.accept());
+    await collection
+      .getByRole("button", { name: "Rimuovi per tutti", exact: true })
+      .click();
+    await expect(peerFile).toHaveCount(0);
+    expect(await (await page.request.get(privateUrl!)).text()).toContain(
+      "Invitiamo due tester",
+    );
+    expect((await peer.request.get(privateUrl!)).status()).toBe(403);
+    await collection.getByText("File ritirati", { exact: true }).click();
+    page.once("dialog", (d) => d.accept());
+    await collection
+      .getByRole("button", { name: "Ripristina file", exact: true })
+      .click();
+    await expect(peerFile).toBeVisible();
+    await openWithSession(page, "/");
+    await page
+      .getByRole("region", { name: "Personale", exact: true })
+      .getByRole("button", { name: "Documenti", exact: true })
+      .click();
+    await page
+      .getByRole("region", { name: "Documenti personali", exact: true })
+      .getByRole("button", { name: "Apri Piano di lancio.md", exact: true })
+      .click();
+    const saved = page.getByRole("dialog", { name: "Piano di lancio.md" });
+    await expect(
+      saved.getByRole("link", { name: "Scarica originale" }),
+    ).toHaveAttribute("href", privateUrl!);
+    await expect(
+      saved.getByRole("button", {
+        name: "Condividi in " + workspace,
         exact: true,
       }),
     ).toBeVisible();

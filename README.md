@@ -8,7 +8,7 @@ People and Emme work in a shared Conversation. The server preserves sources, acc
 
 **Web beta · 21 November 2026.** The latest recorded Railway release runs the Web app and worker through database migration 075. The Home screen opens with conversations, followed by personal tools and the daily agenda. Two test accounts have exchanged messages, received an invitation by email and checked a contextual reply from Emme. [Open the beta](https://rimiam-chat-web-production.up.railway.app/) · [Deployment record](docs/development/RAILWAY_DEPLOYMENT.md#current-setup).
 
-**In this checkout.** The next release candidate adds a direct route to the daily agenda and keeps workspace navigation available in personal tools. In a populated space, you can browse shared screenshots, files and links by date or type and return to the original message. These changes have been tested locally. The React Native apps can be built for iOS and Android. Distribution to testers and physical-device acceptance are pending. [Current status and evidence](docs/development/STATUS.md) · [Technical case study](docs/development/PORTFOLIO_CASE_STUDY.md).
+**In this checkout.** The next release candidate adds a direct route to the daily agenda and keeps workspace navigation available in personal tools. In a populated space, you can browse shared screenshots, files and links by date or type and return to the original message. These changes have been tested locally. The Flutter app targets iOS and Android. Distribution to testers and physical-device acceptance are pending. [Current status and evidence](docs/development/STATUS.md) · [Technical case study](docs/development/PORTFOLIO_CASE_STUDY.md).
 
 ## What you can explore
 
@@ -29,7 +29,7 @@ The hosted app works in a browser on desktop, tablet and smartphone. To add the 
 ```mermaid
 flowchart LR
     Web[Next.js / React Web] --> API[Authenticated application boundary]
-    Mobile[React Native iOS and Android] --> API
+    Mobile[Flutter iOS and Android] --> API
     API --> Commands[Validated domain commands]
     Commands --> PG[(PostgreSQL current state + immutable history)]
     PG --> Worker[Graphile Worker]
@@ -74,11 +74,18 @@ Open [http://127.0.0.1:3000](http://127.0.0.1:3000). Keep this hostname consiste
 
 Stop application terminals with Ctrl-C and use `docker compose stop` to stop the database without deleting its volume. Do not use a production database for local setup or tests.
 
-### Run the React Native app
+### Run the Flutter app
 
-The iOS and Android apps share the TypeScript frontend in [mobile](mobile/). Expo generates each platform project locally from [app.config.ts](mobile/app.config.ts) when you build it.
+The [mobile client](mobile/) connects to the same versioned API as the Web app. With Flutter 3.50.1 installed, run the following from the repository root:
 
-Keep the local server running. From the repository root, install the mobile dependencies with `npm ci --prefix mobile`. Run `npm --prefix mobile run ios` for the iOS simulator (macOS, Xcode and CocoaPods), or `npm --prefix mobile run android` for the Android emulator (Android Studio, Android SDK and JDK 17). At sign-in, enter `http://127.0.0.1:3000` on the iOS simulator or `http://10.0.2.2:3000` on the standard Android emulator. See [mobile setup and checks](docs/development/MULTICLIENT.md#run-the-mobile-app) for the two-account fixture and provider setup.
+```sh
+cd mobile
+flutter pub get --enforce-lockfile
+flutter test
+dart run tool/prepare_host.dart
+```
+
+Open the generated directory printed by the last command and run `flutter run` with a connected device or simulator. Select your installation at sign-in. For the local two-account fixture, device URLs, build identifiers and platform setup see [mobile setup](mobile/README.md).
 
 ### Try two accounts
 

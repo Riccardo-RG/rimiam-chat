@@ -1,5 +1,7 @@
 # Web verification and runtime packaging
 
+The [Flutter workflow](../../.github/workflows/flutter-ci.yml) verifies the command and language catalogs, runs Dart analysis and Flutter tests, generates fresh platform hosts and compiles the Android debug and iOS Simulator clients. Device signing and store distribution are separate.
+
 [Web CI](../../.github/workflows/web-ci.yml) runs on pull requests, pushes to `main` and manual dispatch. It does not deploy, activate providers, publish images or change repository visibility. Execution on GitHub remains unverified until the workflow is committed and an authorized run completes.
 
 The job uses Node 24, Python 3.11 and ephemeral PostgreSQL 18.3. It rejects known high/critical npm advisories, generates a local authentication secret, applies the existing migrations to `miriam_test`, runs type/lint/format and deterministic regressions, then checks two-person collaboration and lost-command recovery in Chromium against separate `miriam_e2e`. Provider doubles are confined to the existing test harness; no production credentials are configured. Native clients are outside this workflow.

@@ -1,5 +1,10 @@
 import { expect, test, type Page, type Browser } from "@playwright/test";
-import { fillWorkspaceName, register, joinTestWorkspace } from "./helpers";
+import {
+  openWithSession,
+  fillWorkspaceName,
+  register,
+  joinTestWorkspace,
+} from "./helpers";
 
 test("a group opens at the bottom, or at the latest unread mention on a shorter phone", async ({
   page,
@@ -81,7 +86,7 @@ test("a group opens at the bottom, or at the latest unread mention on a shorter 
     await expect
       .poll(() => progress(guest))
       .toMatchObject({ anchorId: ids.at(-1), anchorAtBottom: true });
-    await guest.goto("/");
+    await openWithSession(guest, "/");
     const phone = await browser.newPage({
       storageState: await guest.context().storageState(),
       viewport: { width: 390, height: 667 },
@@ -222,7 +227,7 @@ async function verifyReading({
     const w = new URL(page.url()).searchParams.get("workspace"),
       path = "/api/v1/workspaces/" + w + "/commands",
       origin = new URL(guest.url()).origin;
-    await page.goto("/");
+    await openWithSession(page, "/");
     const ids: string[] = [];
     for (let index = 0; index < 43; index++) {
       const content =

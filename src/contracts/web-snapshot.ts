@@ -118,6 +118,7 @@ export interface Snapshot extends ArtifactSnapshot {
   sources: {
     id: string;
     shared_message_id?: string | null;
+    voice_message_id?: string | null;
     origin_workspace_id?: string | null;
     attachment_position?: number | null;
     withdrawn?: boolean;

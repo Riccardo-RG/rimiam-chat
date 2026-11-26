@@ -19,14 +19,12 @@
   border-bottom: 1px solid var(--border, currentColor);
   padding-bottom: 0.55rem;
 }
-.header a {
+.header > a {
   display: grid;
   place-items: center;
-  min-width: 40px;
-  min-height: 40px;
-}
-.header a svg {
-  transform: rotate(180deg);
+  flex: none;
+  min-width: 44px;
+  min-height: 44px;
 }
 .header > button:last-child {
   margin-left: auto;

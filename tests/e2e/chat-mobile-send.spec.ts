@@ -5,7 +5,12 @@ import {
   type Locator,
   type Request,
 } from "@playwright/test";
-import { fillWorkspaceName, joinTestWorkspace, register } from "./helpers";
+import {
+  fillWorkspaceName,
+  joinTestWorkspace,
+  openWithSession,
+  register,
+} from "./helpers";
 
 test.use({
   contextOptions: async ({ browserName }, provideOptions) => {
@@ -248,7 +253,7 @@ test("mobile Return writes a newline and tapping Send delivers once to both memb
     expect(sends).toEqual([content]);
     expect(navigations).toEqual([]);
     await test.step("A private chat offers the same multiline field and visible Send", async () => {
-      await page.goto("/");
+      await openWithSession(page, "/");
       await page.getByRole("button", { name: "Scrivi a un contatto" }).tap();
       await page
         .getByRole("button", { name: "Scrivi a Giulia", exact: true })
@@ -279,14 +284,14 @@ test("mobile Return writes a newline and tapping Send delivers once to both memb
       expect(bottom).toBeLessThanOrEqual(keyboardTop);
       await directSend.tap();
       await expect(field).toHaveValue("");
-      await guest.goto("/");
+      await openWithSession(guest, "/");
       await guest.getByRole("button", { name: /Luca.*Chat privata/ }).click();
       await expect(
         guest.getByText("Una nota privata\nLa seconda riga.", { exact: true }),
       ).toBeVisible();
     });
     await test.step("Personal Emme chat keeps the same compact entry and draft", async () => {
-      await page.goto("/");
+      await openWithSession(page, "/");
       await page
         .getByRole("button", { name: "Tu ed Emme", exact: true })
         .first()

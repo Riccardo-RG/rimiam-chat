@@ -4,6 +4,7 @@ import { useUiLanguage } from "./ui-language";
 import { useEffect, useRef, useState } from "react";
 import { auth } from "./auth-client";
 import { BrandSignature } from "@/client/brand-signature";
+import { WorkspaceIcon } from "./workspace-icon";
 import { AppearanceControl } from "@/client/appearance-control";
 import { AccountPassword } from "@/client/account-access";
 import styles from "./account-access.module.css";
@@ -283,7 +284,7 @@ export function AccountRecovery({
           </p>
         )}
         <a className={styles.recoveryBack} href={returnTo}>
-          <span aria-hidden="true">←</span>
+          <WorkspaceIcon name="back" />
           {uiText(" Torna all’accesso")}
         </a>
       </div>

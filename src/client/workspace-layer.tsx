@@ -2,6 +2,7 @@
 import { useUiLanguage } from "./ui-language";
 
 import {
+  Component,
   useEffect,
   useId,
   useLayoutEffect,
@@ -14,6 +15,23 @@ import styles from "./workspace-layer.module.css";
 import { WorkspaceIcon } from "./workspace-icon";
 
 export type DocumentExitGuard = (leave: () => void) => boolean;
+
+// A tool can fail to render (for example if its JS chunk is unavailable).
+// Keep the timeline, drafts and the panel's existing Close control mounted.
+class PanelContentBoundary extends Component<
+  { children: ReactNode; fallback: ReactNode },
+  { failed: boolean }
+> {
+  state = { failed: false };
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  render() {
+    return this.state.failed ? this.props.fallback : this.props.children;
+  }
+}
 
 const query = "(max-width: 760px)";
 function subscribe(listener: () => void) {
@@ -112,7 +130,7 @@ export function WorkspaceLayer({
             title={back.label}
             onClick={() => requestExit(back.open)}
           >
-            <WorkspaceIcon name="arrow" className={styles.backArrow} />
+            <WorkspaceIcon name="back" />
           </button>
         )}
         {openDirectory && (
@@ -162,7 +180,26 @@ export function WorkspaceLayer({
           <WorkspaceIcon name="close" />
         </button>
       </header>
-      <div className="layer-body">{children}</div>
+      <div className="layer-body">
+        <PanelContentBoundary
+          key={title}
+          fallback={
+            <div role="alert">
+              <p>{uiText("Impossibile aprire questo pannello.")}</p>
+              <p>
+                {uiText(
+                  "Puoi chiuderlo e continuare in chat, oppure ricaricare la pagina per riprovare.",
+                )}
+              </p>
+              <button type="button" onClick={() => window.location.reload()}>
+                {uiText("Ricarica la pagina")}
+              </button>
+            </div>
+          }
+        >
+          {children}
+        </PanelContentBoundary>
+      </div>
     </>
   );
   return (

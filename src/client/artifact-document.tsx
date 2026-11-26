@@ -299,6 +299,8 @@ const blockLabels: Record<ArtifactBlock["type"], string> = {
   image: "Immagine",
 };
 
+export type SavedArtifactVersion = { id: string; version: number };
+
 function emptyParagraph(block: ArtifactBlock) {
   return block.type === "paragraph" && !block.text.trim();
 }
@@ -320,7 +322,7 @@ export function ArtifactDocumentEditor({
   busy: boolean;
   command: (c: Command) => Promise<unknown>;
   action: (fn: () => Promise<void>) => Promise<void>;
-  onSaved: () => void;
+  onSaved: (saved?: SavedArtifactVersion) => void;
   onCancel: () => void;
   handoff?: ConversationHandoff;
 }) {
@@ -393,7 +395,7 @@ export function ArtifactDocumentEditor({
             throw new Error(
               "Il documento è cambiato: confronta la versione corrente prima di salvare. La tua bozza è conservata.",
             );
-          await command({
+          const result = await command({
             type: "artifact.compose",
             ...(artifactId
               ? { artifactId, expectedVersion: base!.version }
@@ -409,7 +411,16 @@ export function ArtifactDocumentEditor({
               ? { conversationOrigin: { handoffId: handoff.id } }
               : {}),
           });
-          onSaved();
+          onSaved(
+            result &&
+              typeof result === "object" &&
+              "artifactId" in result &&
+              typeof result.artifactId === "string" &&
+              "version" in result &&
+              typeof result.version === "number"
+              ? { id: result.artifactId, version: result.version }
+              : undefined,
+          );
         });
       }}
     >

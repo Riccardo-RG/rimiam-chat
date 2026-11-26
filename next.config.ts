@@ -31,6 +31,13 @@ export default function config(phase: string): NextConfig {
     devIndicators: false,
     // Root PDFs are local documents excluded from Git and the deployment context.
     outputFileTracingExcludes: { "/api/**": ["./*.[pP][dD][fF]"] },
+    // Python and FFmpeg come from the host. Only these document helpers ship with the API.
+    outputFileTracingIncludes: {
+      "/api/**": [
+        "./scripts/extract-document.py",
+        "./scripts/render-pdf-preview.py",
+      ],
+    },
     serverExternalPackages: ["pg", "graphile-worker"],
     poweredByHeader: false,
     async headers() {

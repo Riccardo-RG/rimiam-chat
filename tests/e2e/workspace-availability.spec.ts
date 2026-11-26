@@ -6,6 +6,48 @@ import {
   register,
 } from "./helpers";
 
+test("a tool that fails to load leaves the existing chat draft usable", async ({
+  page,
+}) => {
+  test.skip(
+    !["build", "start"].includes(process.env.MIRIAM_E2E_SERVER ?? ""),
+    "Requires production chunks without the development error overlay",
+  );
+  await register(page, "Ada", `panel-${crypto.randomUUID()}@example.test`);
+  const name = "Revisione documenti";
+  await fillWorkspaceName(page, name);
+  await page.getByRole("button", { name: "Crea spazio", exact: true }).click();
+  await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();
+  const draft = "Rileggo il documento prima della riunione";
+  await (await openMessageComposer(page)).fill(draft);
+  const scripts = /\/_next\/static\/chunks\/[^?]+\.js(?:\?|$)/;
+  await page.route(scripts, (route) => route.abort("failed"));
+  const shared = page
+    .getByRole("navigation", { name: "Viste dello spazio" })
+    .getByRole("button", { name: "Condivisi", exact: true });
+  await shared.click();
+  await expect(
+    page
+      .getByRole("alert")
+      .filter({ hasText: "Impossibile aprire questo pannello." }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Torna alla conversazione" }).click();
+  await expect(messageComposer(page)).toHaveValue(draft);
+  await page.unroute(scripts);
+  await shared.click();
+  await page.getByRole("button", { name: "Ricarica la pagina" }).click();
+  await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();
+  if (
+    !(await page
+      .getByRole("button", { name: "Allega file", exact: true })
+      .isVisible())
+  )
+    await shared.click();
+  await expect(
+    page.getByRole("button", { name: "Nuova nota", exact: true }),
+  ).toBeVisible();
+});
+
 test("Home distinguishes pending and failed reads from an empty list, and connection recovery preserves the message draft", async ({
   page,
   context,

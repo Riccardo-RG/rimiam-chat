@@ -3,7 +3,7 @@ import { useUiLanguage } from "./ui-language";
 
 import { setHumanCallActive } from "./call-audio-focus";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
-import { Room, RoomEvent, Track } from "livekit-client";
+import type { Room } from "livekit-client";
 import {
   callViewSchema,
   recordingConsentWordingSchema,
@@ -61,6 +61,9 @@ export function WorkspaceCall({
     const token = ++generation.current;
     void (async () => {
       try {
+        // Reading chat and checking call availability don't need the WebRTC SDK.
+        const { Room, RoomEvent, Track } = await import("livekit-client");
+        if (token !== generation.current) return;
         const credentials = await api<{ url: string; token: string }>(
           `/api/v1/workspaces/${workspace}/call-connect`,
           { callId: wanted },
@@ -111,7 +114,7 @@ export function WorkspaceCall({
           );
         }
       } finally {
-        joining.current = false;
+        if (token === generation.current) joining.current = false;
       }
     })();
   });

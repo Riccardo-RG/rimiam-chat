@@ -119,7 +119,7 @@ export async function extractLocalDocument(
 ) {
   const result = await new Promise<string>((resolveResult, reject) => {
     const child = spawn(
-      process.env.DOCUMENT_PYTHON_PATH ?? "python3",
+      /* turbopackIgnore: true */ process.env.DOCUMENT_PYTHON_PATH ?? "python3",
       [
         resolve(process.cwd(), "scripts/extract-document.py"),
         input.kind,

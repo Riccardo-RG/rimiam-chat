@@ -12,6 +12,27 @@ test("workspace activity keeps tablet controls reachable and mobile conversation
   const header = page.locator("main > header");
   const heading = header.getByRole("heading", { name: title, exact: true });
   await expect(heading).toBeVisible();
+  for (const theme of ["light", "dark"]) {
+    const colors = await heading.evaluate((node, mode) => {
+      const root = document.documentElement;
+      const originalMode = root.dataset.appearance,
+        originalAccent = root.dataset.accent;
+      root.dataset.appearance = mode;
+      root.dataset.accent = "neutral";
+      const neutral = getComputedStyle(node).color;
+      root.dataset.accent = "ocean";
+      const chosen = getComputedStyle(node).color;
+      if (originalMode) root.dataset.appearance = originalMode;
+      else delete root.dataset.appearance;
+      if (originalAccent) root.dataset.accent = originalAccent;
+      else delete root.dataset.accent;
+      return { neutral, chosen };
+    }, theme);
+    expect(colors.chosen).not.toBe(colors.neutral);
+    expect(colors.chosen).toBe(
+      theme === "dark" ? "rgb(166, 199, 238)" : "rgb(37, 84, 134)",
+    );
+  }
   await page.setViewportSize({ width: 768, height: 1024 });
 
   async function expectControl(button: Locator) {

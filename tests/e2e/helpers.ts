@@ -178,11 +178,10 @@ export async function chooseContextView(
     name: "Consulta riferimenti e proposte",
     exact: true,
   });
+  const sections = page.getByRole("group", { name: "Sezioni del contesto" });
+  await expect(inspect.or(sections)).toBeVisible();
   if (await inspect.isVisible()) await inspect.click();
-  await page
-    .getByRole("group", { name: "Sezioni del contesto" })
-    .getByRole("button", { name, exact: true })
-    .click();
+  await sections.getByRole("button", { name, exact: true }).click();
 }
 
 export async function expandContextRecord(
@@ -236,10 +235,11 @@ export async function openMessageComposer(page: Page) {
 }
 
 // Production deliberately has no HTTP test mailbox. Only this isolated test process
-// can inspect its own local database outbox, before exercising the real verification link.
-async function verificationMail(
+// can inspect its own local database outbox before exercising an account link.
+export async function testAccountMail(
   page: Page,
   email: string,
+  kind: "verification" | "password-reset",
 ): Promise<{ link: string }> {
   if (["build", "start"].includes(process.env.MIRIAM_E2E_SERVER ?? "")) {
     const db = new URL(process.env.DATABASE_URL!);
@@ -255,8 +255,8 @@ async function verificationMail(
     const { decryptAccountLink } =
       await import("../../src/server/account-delivery");
     const result = await pool.query(
-      "SELECT id,kind,recipient,encrypted_link FROM account_delivery WHERE recipient=$1 AND kind='verification' ORDER BY created_at DESC LIMIT 1",
-      [email],
+      "SELECT id,kind,recipient,encrypted_link FROM account_delivery WHERE recipient=$1 AND kind=$2 ORDER BY created_at DESC LIMIT 1",
+      [email, kind],
     );
     const row = result.rows[0];
     expect(row).toBeDefined();
@@ -272,10 +272,16 @@ async function verificationMail(
   const mails = (await response.json()) as {
     recipient: string;
     link: string;
+    subject: string;
   }[];
-  const mail = mails.find((item) => item.recipient === email);
-  if (!mail)
-    throw new Error("Missing verification message in the test mailbox");
+  const subject =
+    kind === "verification"
+      ? "Verify your MIRIAM email"
+      : "Reset your MIRIAM password";
+  const mail = mails.find(
+    (item) => item.recipient === email && item.subject === subject,
+  );
+  if (!mail) throw new Error("Missing account message in the test mailbox");
   return mail;
 }
 
@@ -294,6 +300,47 @@ export async function fillWorkspaceName(page: Page, name: string) {
   await field.fill(name);
 }
 
+export async function openWithSession(page: Page, url: string, email?: string) {
+  return navigateWithSession(page, () => page.goto(url), email);
+}
+
+export async function reloadWithSession(page: Page) {
+  return navigateWithSession(page, () => page.reload());
+}
+
+async function navigateWithSession(
+  page: Page,
+  navigate: () => Promise<unknown>,
+  email?: string,
+) {
+  async function relevantSession(response: Response) {
+    if (new URL(response.url()).pathname !== "/api/auth/get-session")
+      return false;
+    if (!email || response.status() === 429) return true;
+    const session = await response.json().catch(() => null);
+    return session?.user?.email === email;
+  }
+  const [initial] = await Promise.all([
+    page.waitForResponse(relevantSession),
+    navigate(),
+  ]);
+  let response = initial;
+  while (response.status() === 429) {
+    const seconds = Number(
+      response.headers()["x-retry-after"] ??
+        response.headers()["retry-after"] ??
+        60,
+    );
+    // The app retries this read itself. Allow the real server's wait without
+    // reloading the browser, resending a write, or relaxing UI assertions.
+    response = await page.waitForResponse(relevantSession, {
+      timeout:
+        (Number.isFinite(seconds) ? Math.max(1, seconds) : 60) * 1000 + 5000,
+    });
+  }
+  return { rateLimited: initial.status() === 429 };
+}
+
 export async function register(
   page: Page,
   name: string,
@@ -301,7 +348,7 @@ export async function register(
   destination = "/",
 ) {
   for (let attempt = 0; attempt < 3; attempt++) {
-    await page.goto(destination);
+    await openWithSession(page, destination);
     await page
       .getByRole("button", { name: "Crea un account", exact: true })
       .click();
@@ -327,28 +374,8 @@ export async function register(
   await expect(page.getByRole("status")).toContainText(
     "Controlla la tua email",
   );
-  const mail = await verificationMail(page, email);
-  // A long suite may exhaust the real session-read limiter after verification.
-  // Honour Retry-After and reload with the issued session; never disable auth protection.
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const sessionRead = page.waitForResponse(async (r) => {
-      if (!r.url().includes("/api/auth/get-session")) return false;
-      if (r.status() === 429) return true;
-      // Ignore an earlier unauthenticated page's in-flight session read.
-      const body = await r.json().catch(() => null);
-      return body?.user?.email === email;
-    });
-    if (attempt === 0) await page.goto(mail.link);
-    else await page.reload();
-    const response = await sessionRead;
-    if (response.status() !== 429) break;
-    const seconds = Number(
-      response.headers()["x-retry-after"] ??
-        response.headers()["retry-after"] ??
-        10,
-    );
-    await new Promise((resolve) => setTimeout(resolve, (seconds + 1) * 1000));
-  }
+  const mail = await testAccountMail(page, email, "verification");
+  await openWithSession(page, mail.link, email);
   const invited = new URL(destination, page.url()).searchParams.has("invite");
   await expect(
     invited

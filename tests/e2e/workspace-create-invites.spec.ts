@@ -73,13 +73,16 @@ test("two verified people create spaces with an email invitation and then their 
     const form = owner.getByRole("region", { name: "Creazione spazio" });
     await expect(form).toBeVisible();
     await expect(
-      owner.getByRole("heading", { name: "Personale", exact: true }),
+      owner.getByRole("region", { name: "Personale", exact: true }),
     ).toHaveCount(0);
     await expect(
-      owner.getByRole("heading", { name: "Oggi", exact: true }),
+      owner.getByRole("region", { name: "Agenda personale", exact: true }),
     ).toHaveCount(0);
     await expect(
-      owner.getByRole("heading", { name: "Conversazioni", exact: true }),
+      owner.getByRole("region", {
+        name: "Elenco degli spazi disponibili",
+        exact: true,
+      }),
     ).toHaveCount(0);
     await people.fill(guestName);
     await expect(
@@ -132,6 +135,9 @@ test("two verified people create spaces with an email invitation and then their 
     }
 
     await owner.goto("/");
+    await expect(
+      owner.getByRole("region", { name: "Elenco degli spazi disponibili" }),
+    ).toBeVisible({ timeout: 75000 });
     await owner
       .getByRole("button", { name: "Crea un nuovo spazio", exact: true })
       .click();
@@ -140,7 +146,7 @@ test("two verified people create spaces with an email invitation and then their 
       owner.getByRole("heading", { name: "I tuoi spazi", exact: true }),
     ).toBeVisible();
     await expect(
-      owner.getByRole("heading", { name: "Personale", exact: true }),
+      owner.getByRole("region", { name: "Personale", exact: true }),
     ).toBeVisible();
     await owner
       .getByRole("button", { name: "Crea un nuovo spazio", exact: true })

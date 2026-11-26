@@ -1,5 +1,6 @@
 "use client";
 import { useUiLanguage } from "./ui-language";
+import { connectionUsage } from "../shared/connection-name";
 
 import { useEffect, useRef, useState } from "react";
 import {
@@ -316,6 +317,7 @@ export function WorkspaceCreation({
             {uiText(
               "Puoi scegliere una nuova connessione da «Configura Emme».",
             )}
+            {selected.configured && " " + connectionUsage(selected, uiText)}
           </p>
         )}
         {settings.error && (

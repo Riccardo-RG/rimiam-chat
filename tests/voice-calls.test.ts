@@ -12,6 +12,7 @@ import {
   acceptInvitation,
 } from "../src/server/commands";
 import { voiceMessages } from "../src/server/voice";
+import { snapshot } from "../src/server/queries";
 import { processDocument } from "../src/server/media-worker";
 import { processCall, recoverCalls } from "../src/server/call-worker";
 import { callConnection, callView } from "../src/server/calls";
@@ -128,6 +129,12 @@ it("voice retains original history, explicit address and unaccepted transcript; 
   };
   const first = await execute(a, w, command, input);
   expect(await execute(a, w, command, input)).toEqual(first);
+  expect((await snapshot(a, w)).sources).toContainEqual(
+    expect.objectContaining({
+      id: first.sourceId,
+      voice_message_id: first.messageId,
+    }),
+  );
   await processDocument(String(first.sourceId), {
     async extract() {
       return {

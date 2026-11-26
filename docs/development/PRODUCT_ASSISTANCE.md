@@ -27,6 +27,10 @@ Forms offer contextual help and can attach a removable reference to the main com
 
 ## Verification and limits
 
+In the Flutter workspace chat, an operation receipt opens its exact topic. A message can start a question with its source preselected. Changing the source and saving the question are explicit actions. Tapping a versioned reference opens that revision. If a cited message is outside the visible conversation, its reference resolves against current workspace membership and allows a return to the original message.
+
+The [Flutter journey regressions](../../mobile/test/journey_test.dart) cover the question form, archived topics, versioned references and returning to an offscreen message in an 81-message conversation. The [local two-account fixture](../../mobile/test/workspace_handoff_local_fixture.dart) checks the HTTP records behind those entries and verifies both approvals before a suggested decision takes effect. It runs against `tests/run-native-server.ts` with the deterministic native worker.
+
 Focused coverage: [server/contract/provenance](../../tests/conversation-product-assistance.test.ts), [guide/configuration](../../tests/product-capabilities.test.ts), [web help](../../tests/product-help-client.test.ts). Native test compilation from the earlier local increment remains historical evidence in STATUS, not current native runtime acceptance. Completion evidence and pending deployment/live checks belong in [STATUS](STATUS.md).
 
 Model response usefulness and arbitrary conversational phrasing still need real-provider behavioral acceptance. Browser/manual/device validation is pending. The original local increment did not include provider activation, credential changes or publication. On 2026-10-07 the user authorized the Web redesign and commit/push; its publication includes these existing server/contract/Web dependencies and migration 037. Native changes remain unpublished. Apply migration 037 through the existing migration path before running the updated web/worker/API against a database.

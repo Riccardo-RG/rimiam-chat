@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { releaseId, staleEvent } from "../shared/web-release";
 import { finishAttachmentSaves } from "./attachment-draft-store";
 import styles from "./web-release-notice.module.css";
+import { LoadingStatus } from "./loading-status";
 
 type Phase = "checking" | "current" | "offline" | "update";
 const marker = "__rimiam_release";
@@ -208,16 +209,17 @@ function ReleaseGate({
   }, [initialRelease]);
   useEffect(() => {
     const element = dialog.current;
-    if (phase === "current") {
+    if (phase === "current" || (phase === "checking" && !opened)) {
       if (element?.open) element.close();
     } else if (element && !element.open) element.showModal();
-  }, [phase]);
+  }, [phase, opened]);
   return (
     <>
       {!opened && phase === "checking" && (
-        <p className={styles.startup} role="status">
-          {uiText("Verifica della versione di RIMIAM…")}
-        </p>
+        <LoadingStatus
+          fullPage
+          label={uiText("Verifica della versione di RIMIAM…")}
+        />
       )}
       <div ref={surface} className={styles.surface} inert={phase !== "current"}>
         {opened ? children : null}

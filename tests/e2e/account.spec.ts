@@ -1,5 +1,10 @@
 import { test, expect } from "@playwright/test";
-import { fillWorkspaceName, openAccountMenu, register } from "./helpers";
+import {
+  fillWorkspaceName,
+  openAccountMenu,
+  register,
+  testAccountMail,
+} from "./helpers";
 
 test("a new invitee verifies, explicitly joins, recovers access and invalidates old sessions without changing membership", async ({
   browser,
@@ -139,12 +144,7 @@ test("a new invitee verifies, explicitly joins, recovers access and invalidates 
     await expect(recovery.getByRole("status")).toContainText(
       "Se possiamo completare la richiesta",
     );
-    const mails = await (await recovery.request.get("/api/local-mail")).json();
-    const mail = mails.find(
-      (m: { recipient: string; subject: string }) =>
-        m.recipient === email && m.subject === "Reset your MIRIAM password",
-    );
-    expect(mail).toBeDefined();
+    const mail = await testAccountMail(recovery, email, "password-reset");
     await recovery.goto(mail.link);
     await expect(
       recovery.getByRole("heading", { name: "Scegli una nuova password" }),

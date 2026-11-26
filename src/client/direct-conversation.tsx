@@ -1,5 +1,6 @@
 "use client";
 import { useUiLanguage } from "./ui-language";
+import { showDirectAssistantHint } from "../shared/direct-chat-guidance";
 
 import Link from "next/link";
 import Image from "next/image";
@@ -17,6 +18,8 @@ import {
 import { usePersonalReading } from "./personal-reading";
 import { useConversationScroll } from "./conversation-scroll";
 import { useComposerInteraction } from "./chat-composer-interaction";
+import { LoadingStatus } from "./loading-status";
+import { SessionUnavailable } from "./session-unavailable";
 import { useChatViewport } from "./chat-viewport";
 import { onChatKeyDown } from "./chat-enter-to-send";
 import { IdentityImage } from "./identity-photos";
@@ -29,7 +32,14 @@ export function DirectConversation({ id }: { id: string }) {
   const { t: uiText } = useUiLanguage();
   const session = auth.useSession();
   if (session.isPending)
-    return <p role="status">{uiText("Apertura della conversazione…")}</p>;
+    return <LoadingStatus label={uiText("Apertura della conversazione…")} />;
+  if (!session.data && session.error && session.error.status !== 401)
+    return (
+      <SessionUnavailable
+        throttled={session.error.status === 429}
+        retry={session.refetch}
+      />
+    );
   if (!session.data)
     return (
       <main>
@@ -241,7 +251,7 @@ function DirectRoom({ id, actor }: { id: string; actor: string }) {
     <main ref={page} className={styles.page}>
       <header className={styles.header}>
         <Link href="/" aria-label={uiText("Torna alla Home")}>
-          <WorkspaceIcon name="arrow" />
+          <WorkspaceIcon name="back" />
         </Link>
         <div>
           <small>{uiText("Chat privata")}</small>
@@ -289,7 +299,7 @@ function DirectRoom({ id, actor }: { id: string; actor: string }) {
         </p>
       )}
       {!view && !error && (
-        <p role="status">{uiText("Caricamento della chat…")}</p>
+        <LoadingStatus label={uiText("Caricamento della chat…")} />
       )}
       {view && (
         <>
@@ -434,8 +444,10 @@ function DirectRoom({ id, actor }: { id: string; actor: string }) {
           >
             {!view.messages.length && (
               <p>
-                {uiText("Scrivi il primo messaggio a ")}
-                {view.peer.name}.
+                {uiText(
+                  "Questa chat è tra te e {0}. Scrivi il primo messaggio.",
+                  view.peer.name,
+                )}
               </p>
             )}
             {view.messages.map((m, index) => {
@@ -591,12 +603,22 @@ function DirectRoom({ id, actor }: { id: string; actor: string }) {
               </button>
             </div>
             {sendError && <p role="alert">{sendError}</p>}
-            {/^\s*(?:\/|@?(?:emme|miriam)\b)/i.test(text) && (
-              <p>
+            {showDirectAssistantHint(text) && (
+              <p role="status">
                 {uiText(
-                  "Qui Emme può preparare solo un riepilogo personale. Per domande e strumenti crea uno spazio con ",
-                )}
-                {view.peer.name}.
+                  "Invia scrive a {0}. Per chiedere a Emme, crea uno spazio.",
+                  view.peer.name,
+                )}{" "}
+                <button
+                  type="button"
+                  className="quiet"
+                  onClick={() => {
+                    setShowRecap(true);
+                    setCreating(false);
+                  }}
+                >
+                  {uiText("Apri il tuo riepilogo")}
+                </button>
               </p>
             )}
           </form>

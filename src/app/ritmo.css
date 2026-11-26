@@ -450,6 +450,9 @@ small,
   z-index: 11;
   overflow: visible;
 }
+.rail-account > details:not([open]) > .account-options {
+  display: none;
+}
 .account-options {
   position: absolute;
   z-index: 1;
@@ -1273,9 +1276,6 @@ button.goal-compass > .nav-icon:last-child {
   place-items: center;
   min-height: 44px;
   width: 44px;
-}
-.layer-back svg {
-  transform: rotate(180deg);
 }
 .layer-header .quiet {
   font-size: var(--type-caption);
@@ -2991,6 +2991,15 @@ body {
 }
 .workspace[data-view="conversation"] .workspace-heading {
   flex: 0 1 auto;
+}
+.workspace[data-view="conversation"] > .workspace-header h1.space-name {
+  font-size: clamp(1.25rem, 1.13rem + 0.55vw, 1.45rem);
+}
+:root:is([data-accent="ocean"], [data-accent="forest"], [data-accent="plum"])
+  .workspace[data-view="conversation"]
+  > .workspace-header
+  h1.space-name {
+  color: var(--accent);
 }
 .workspace-header-tools {
   display: contents;

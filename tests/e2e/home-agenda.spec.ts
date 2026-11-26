@@ -1,5 +1,5 @@
 import { test, expect, devices } from "@playwright/test";
-import { register, joinTestWorkspace } from "./helpers";
+import { openWithSession, register, joinTestWorkspace } from "./helpers";
 test.use({
   contextOptions: async ({ browserName }, provide) => {
     await provide(browserName === "webkit" ? devices["iPhone 13 Pro"] : {});
@@ -107,7 +107,7 @@ test("a named appointment reaches its invitee and a task answer updates the orig
     const who = await (await guest.request.get("/api/auth/get-session")).json();
     const title = "Revisione finale",
       offer = "Inviare i materiali";
-    await page.goto("/");
+    await openWithSession(page, "/");
     const calendar = page.getByRole("region", { name: "Agenda personale" });
     await calendar.getByRole("button", { name: "Nuovo appuntamento" }).click();
     await calendar.getByLabel("Destinazione").selectOption(id);
@@ -145,7 +145,7 @@ test("a named appointment reaches its invitee and a task answer updates the orig
       },
     );
     expect(task.ok(), await task.text()).toBe(true);
-    await guest.goto("/");
+    await openWithSession(guest, "/");
     const agenda = guest.getByRole("region", { name: "Agenda personale" });
     await expect(agenda.getByText(new RegExp(offer + " · "))).toBeVisible();
     await agenda
@@ -185,7 +185,7 @@ test("a named appointment reaches its invitee and a task answer updates the orig
       timeout: 20000,
     });
     await expect(senderLine).toHaveCount(1);
-    await guest.goto("/");
+    await openWithSession(guest, "/");
     await expect(agenda.getByText(new RegExp(offer + " · "))).toHaveCount(0);
   } finally {
     await guest.close();
@@ -194,6 +194,7 @@ test("a named appointment reaches its invitee and a task answer updates the orig
 
 test("the same rail connects a private chat, its group spaces and the focused agenda", async ({
   page,
+  browserName,
 }, info) => {
   await register(page, "Lea", `nav-${crypto.randomUUID()}@example.test`);
   const api = await page.request.post("/api/v1/workspaces", {
@@ -212,7 +213,15 @@ test("the same rail connects a private chat, its group spaces and the focused ag
   });
   async function openRail() {
     const toggle = page.getByRole("button", { name: "Apri navigazione" });
-    if (await toggle.isVisible()) await toggle.click();
+    if (await toggle.isVisible()) {
+      const hit = await toggle.boundingBox();
+      expect(hit!.width).toBeGreaterThanOrEqual(44);
+      expect(hit!.height).toBeGreaterThanOrEqual(44);
+      if (browserName === "webkit") {
+        await toggle.tap();
+        await expect(nav.locator(":focus")).toHaveCSS("outline-style", "none");
+      } else await toggle.click();
+    }
     await expect(nav).toBeVisible();
   }
   for (const width of [1440, 390]) {

@@ -12,7 +12,7 @@ test.use({
 test("Home opens isolated personal documents, scheduled reminders and a solo conversation", async ({
   page,
   browser,
-}) => {
+}, info) => {
   const other = await browser.newPage();
   try {
     const id = crypto.randomUUID();
@@ -28,6 +28,24 @@ test("Home opens isolated personal documents, scheduled reminders and a solo con
       exact: true,
     });
     await expect(docs).toBeVisible();
+    const back = page.getByRole("button", {
+      name: "Torna a tutti gli spazi",
+      exact: true,
+    });
+    for (const width of [390, 600, 1280]) {
+      await page.setViewportSize({ width, height: 844 });
+      await expect(back).toBeInViewport({ ratio: 1 });
+      const aligned = await back.evaluate((button) => {
+        const hit = button.getBoundingClientRect();
+        const icon = button.querySelector("svg")!.getBoundingClientRect();
+        return (
+          hit.height >= 44 &&
+          icon.width > 0 &&
+          Math.abs(hit.top + hit.height / 2 - icon.top - icon.height / 2) <= 2
+        );
+      });
+      expect(aligned).toBe(true);
+    }
     const personalId = new URL(page.url()).searchParams.get("workspace")!;
     await docs.getByRole("button", { name: "Nuova nota", exact: true }).click();
     const privateNote = "Appunti miei: primo colloquio";
@@ -65,6 +83,27 @@ test("Home opens isolated personal documents, scheduled reminders and a solo con
     await expect(
       reminders.getByText(reminder, { exact: true }).first(),
     ).toBeVisible();
+    const reminderRow = reminders.locator("details[data-schedule-id]", {
+      hasText: reminder,
+    });
+    for (const width of [1280, 390]) {
+      await page.setViewportSize({ width, height: 844 });
+      await expect(reminderRow.locator("summary")).toBeInViewport();
+      await info.attach("Promemoria personali " + width, {
+        body: await page.screenshot(),
+        contentType: "image/png",
+      });
+    }
+    await reminderRow.locator("summary").click();
+    await reminderRow
+      .getByRole("button", { name: "Modifica promemoria" })
+      .click();
+    await expect(reminders.getByLabel("Cosa vuoi ricordare?")).toHaveValue(
+      reminder,
+    );
+    await reminders
+      .getByRole("button", { name: "Annulla", exact: true })
+      .click();
     await expect(page.getByText("Nuova attività", { exact: true })).toHaveCount(
       0,
     );

@@ -330,7 +330,7 @@ export async function sourceRecords(tx: Tx, w: string, actor: string) {
       `SELECT s.id,s.kind,s.title,CASE WHEN v.withdrawn THEN '' ELSE coalesce(e.content,s.content) END AS content,
  coalesce(v.withdrawn,false) AS withdrawn,coalesce(v.version,1) AS visibility_version,
  (v.source_id IS NOT NULL AND s.contributed_by=$2 AND EXISTS(SELECT 1 FROM membership m WHERE m.workspace_id=s.workspace_id AND m.user_id=$2 AND m.active AND m.contributes)) AS can_manage_visibility,s.contributed_by,s.qualification||coalesce(' '||e.qualification,'') AS qualification,s.content_hash,s.created_at,s.document_id,s.document_version,s.previous_source_id,s.filename,s.media_type,s.url,s.provider,s.work_id,
- ma.message_id AS shared_message_id, ma.position AS attachment_position,
+ ma.message_id AS shared_message_id, ma.position AS attachment_position, vm.message_id AS voice_message_id,
  COALESCE((SELECT o.origin_workspace_id FROM library_copy_origin o
   JOIN workspace personal ON personal.id=o.workspace_id AND personal.personal_owner_id=$2
   JOIN membership m ON m.workspace_id=o.origin_workspace_id AND m.user_id=$2 AND m.active
@@ -341,7 +341,7 @@ export async function sourceRecords(tx: Tx, w: string, actor: string) {
  EXISTS(SELECT 1 FROM library_favorite f WHERE f.workspace_id=s.workspace_id AND f.source_id=s.id AND f.user_id=$2) AS favorite,
  p.status AS processing_status,p.error_code AS processing_error,e.attempt_id AS extraction_id,e.provider AS extraction_provider,e.content_hash AS extraction_hash,e.created_at AS extracted_at,
  coalesce((SELECT jsonb_agg(jsonb_build_object('id',h.id,'attempt_id',h.attempt_id,'actor_id',h.actor_id,'kind',h.kind,'error_code',h.error_code,'created_at',h.created_at) ORDER BY h.created_at,h.id) FROM document_processing_event h WHERE h.workspace_id=s.workspace_id AND h.source_id=s.id),'[]'::jsonb) AS processing_history
- FROM external_source s LEFT JOIN document_visibility v ON (v.workspace_id,v.source_id)=(s.workspace_id,s.id) LEFT JOIN message_attachment ma ON ma.workspace_id=s.workspace_id AND ma.source_id=s.id LEFT JOIN document_processing p ON p.source_id=s.id LEFT JOIN document_extraction e ON e.source_id=s.id AND e.publication='published' AND v.withdrawn IS NOT TRUE WHERE s.workspace_id=$1 ORDER BY s.created_at`,
+ FROM external_source s LEFT JOIN voice_message vm ON (vm.workspace_id,vm.source_id)=(s.workspace_id,s.id) LEFT JOIN document_visibility v ON (v.workspace_id,v.source_id)=(s.workspace_id,s.id) LEFT JOIN message_attachment ma ON ma.workspace_id=s.workspace_id AND ma.source_id=s.id LEFT JOIN document_processing p ON p.source_id=s.id LEFT JOIN document_extraction e ON e.source_id=s.id AND e.publication='published' AND v.withdrawn IS NOT TRUE WHERE s.workspace_id=$1 ORDER BY s.created_at`,
       [w, actor],
     )
   ).rows;

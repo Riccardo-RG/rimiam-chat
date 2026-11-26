@@ -1,6 +1,6 @@
 # Contributing to RIMIAM
 
-The hosted beta uses the responsive Web client. A single [React Native app](mobile/App.tsx) serves iOS and Android. Both clients use the common server contracts. Discuss changes that alter product semantics, authorization or persistent data before implementing them.
+The hosted beta uses the responsive Web client. A single [Flutter app](mobile/lib/main.dart) serves iOS and Android. Both clients use the common server contracts. Discuss changes that alter product semantics, authorization or persistent data before implementing them.
 
 ## Start with the relevant evidence
 
@@ -18,7 +18,7 @@ Set up the project using [README](README.md#run-locally). Use fictional local/te
 
 ## Verification cadence
 
-For a mobile change, follow the [React Native setup and simulator checks](docs/development/MULTICLIENT.md) and run `npm --prefix mobile run check`. Native platform projects are generated from [the Expo configuration](mobile/app.config.ts).
+For a mobile change, follow the [Flutter setup](mobile/README.md), run `dart analyze lib test tool` and `flutter test` in `mobile/`, then exercise the affected flow on the relevant simulator or device. The [mobile workflow](.github/workflows/flutter-ci.yml) compiles both platforms.
 
 Use the smallest relevant test while coding, then targeted regression for the coherent increment. Run broad checks at meaningful milestones and before release. Increase verification for authority, access isolation, sessions, provenance, canonical state, migrations, idempotency, external effects and recovery.
 

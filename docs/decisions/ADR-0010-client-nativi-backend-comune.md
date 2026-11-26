@@ -8,6 +8,10 @@
 - **Fonte primaria:** brief `0216c55a-6338-4e83-879d-75eaab6bac04/pasted-text.txt`, conversazione `01a082d6-6a10-7d30-8e76-71c7928fcb96`, sezione «Direzione approvata».
 - **Relazioni:** integra [la specifica canonica](../product/MVP_SPEC_v0.1.md) e [ADR-0005](ADR-0005-postgresql-stato-canonico-storia-provenance.md). ADR-0001–0009 rimangono invariati.
 
+## Aggiornamento del 26 novembre 2026
+
+Riccardo ha scelto Flutter per iOS e Android dopo il collaudo dei flussi Web. Il client usa la stessa API versionata. Next.js continua a servire il Web. Il collaudo e la distribuzione delle build mobili sono registrati separatamente in [MULTICLIENT](../development/MULTICLIENT.md).
+
 ## Aggiornamento del 20 novembre 2026
 
 Riccardo ha richiesto un unico frontend React Native per iOS e Android. Next.js serve il Web. Contratto comune, autorità server, provenance e Commit Point seguono la decisione originale. [Implementazione e collaudo](../development/MULTICLIENT.md).

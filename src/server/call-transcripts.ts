@@ -144,7 +144,7 @@ async function audioChunks(key: string, directory: string) {
     );
   await new Promise<void>((resolve, reject) => {
     const p = spawn(
-      process.env.FFMPEG_PATH ?? "ffmpeg",
+      /* turbopackIgnore: true */ process.env.FFMPEG_PATH ?? "ffmpeg",
       [
         "-nostdin",
         "-v",

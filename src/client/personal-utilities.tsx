@@ -48,6 +48,8 @@ import {
   ConversationAttachment,
   type AttachmentPicker,
 } from "./conversation-attachment";
+import { LoadingStatus } from "./loading-status";
+import { useChatViewport } from "./chat-viewport";
 import { useComposerInteraction } from "./chat-composer-interaction";
 import { ConversationMessageInput } from "./conversation-composer-dock";
 import { useConversationScroll } from "./conversation-scroll";
@@ -305,6 +307,7 @@ export function PersonalUtilities({
   const attachment = useRef<AttachmentPicker>(null);
   const writingForm = useRef<HTMLFormElement>(null);
   const interaction = useComposerInteraction(writingForm);
+  useChatViewport(writingForm, tab === "chat");
   const [source, setSource] = useState<string | null>(null);
   const timeline = useRef<HTMLDivElement>(null);
   const sourceTrigger = useRef<HTMLElement | null>(null);
@@ -502,7 +505,7 @@ export function PersonalUtilities({
     }
   }
   if (tab !== "chat" && archive !== workspace)
-    return <p role="status">{uiText("Apro il tuo archivio personale…")}</p>;
+    return <LoadingStatus label={uiText("Apro il tuo archivio personale…")} />;
   return (
     <main
       className={styles.shell}
@@ -519,7 +522,7 @@ export function PersonalUtilities({
             className={`quiet ${styles.back}`}
             onClick={() => leave(onHome)}
           >
-            <WorkspaceIcon name="arrow" />
+            <WorkspaceIcon name="back" />
             <span>{uiText("Torna a tutti gli spazi")}</span>
           </button>
           <h1>{uiText("Area personale")}</h1>

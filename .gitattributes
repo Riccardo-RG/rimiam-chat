@@ -1,3 +1,0 @@
-# Expo prebuild generates these platform projects from mobile/app.config.ts.
-mobile/ios/** -linguist-detectable
-mobile/android/** -linguist-detectable

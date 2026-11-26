@@ -15,6 +15,7 @@ export function useComposerInteraction(ref: RefObject<HTMLElement | null>) {
     let shortest = viewport?.height ?? 0;
     let width = viewport?.width;
     let touchingControl = false;
+    let outsideTouchAction: Element | null = null;
     let keyboardTap:
       { button: HTMLButtonElement; x: number; y: number } | undefined;
     function pointerStart(event: PointerEvent) {
@@ -23,6 +24,15 @@ export function useComposerInteraction(ref: RefObject<HTMLElement | null>) {
           ? event.target.closest("button:enabled")
           : null;
       touchingControl = !!button && !!ref.current?.contains(button);
+      outsideTouchAction =
+        event.pointerType === "touch" &&
+        event.isPrimary &&
+        document.activeElement instanceof HTMLTextAreaElement &&
+        ref.current?.contains(document.activeElement) &&
+        event.target instanceof Element &&
+        !ref.current?.contains(event.target)
+          ? event.target.closest("button:enabled, a[href], summary")
+          : null;
       keyboardTap =
         touchingControl &&
         button instanceof HTMLButtonElement &&
@@ -35,6 +45,7 @@ export function useComposerInteraction(ref: RefObject<HTMLElement | null>) {
     }
     function pointerEnd() {
       touchingControl = false;
+      outsideTouchAction = null;
       keyboardTap = undefined;
     }
     function finishKeyboardTap(event: TouchEvent) {
@@ -85,12 +96,21 @@ export function useComposerInteraction(ref: RefObject<HTMLElement | null>) {
       if (!(target instanceof Node) || ref.current?.contains(target)) return;
       // WebKit can hand focus to the body between touchstart and click on Send.
       // A completed outside tap, or focus moving to a real control, ends editing.
-      if (event.type === "focusin" && target === document.body) return;
+      // WebKit may focus the surrounding article on mousedown before the
+      // synthesized click. Collapsing the dock then moves the link or button
+      // away from the finger. A completed tap below closes the dock.
+      if (
+        event.type === "focusin" &&
+        (target === document.body ||
+          (outsideTouchAction && target.contains(outsideTouchAction)))
+      )
+        return;
       setEditing(false);
     }
     viewport?.addEventListener("resize", keyboardResized);
     document.addEventListener("pointerdown", pointerStart, true);
     document.addEventListener("pointercancel", pointerEnd, true);
+    document.addEventListener("keydown", pointerEnd, true);
     document.addEventListener("touchend", finishKeyboardTap, {
       capture: true,
       passive: false,
@@ -102,6 +122,7 @@ export function useComposerInteraction(ref: RefObject<HTMLElement | null>) {
       viewport?.removeEventListener("resize", keyboardResized);
       document.removeEventListener("pointerdown", pointerStart, true);
       document.removeEventListener("pointercancel", pointerEnd, true);
+      document.removeEventListener("keydown", pointerEnd, true);
       document.removeEventListener("touchend", finishKeyboardTap, true);
       document.removeEventListener("click", pointerEnd, true);
       document.removeEventListener("focusin", leave, true);

@@ -13,6 +13,11 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "./api";
 import type { Command } from "@/contracts/commands";
 import type { ConversationHandoff } from "@/contracts/conversation-handoff";
+import {
+  assignmentLabel,
+  orderSpaceTasks,
+  pendingOffer,
+} from "../shared/task-offers";
 import { taskDraft } from "./task-draft";
 import {
   ReminderRepeatFields,
@@ -295,8 +300,8 @@ export function WorkspaceTasks({
   const name = (id: string | null) =>
     id
       ? (view?.members.find((m) => m.id === id)?.name ??
-        "Membro non disponibile")
-      : "Non assegnato";
+        uiText("Membro non disponibile"))
+      : uiText("Non assegnato");
   const readHistory = async (
     id: string,
     kind: "task" | "followup",
@@ -421,16 +426,7 @@ export function WorkspaceTasks({
   });
   const closedTask = (t: TaskItem) =>
     t.status === "completed" || t.status === "cancelled";
-  // The API paginates the two lists together. Order the visible records only.
-  const tasks = [...(view?.tasks ?? [])].sort((a, b) => {
-    const due = (t: TaskItem) =>
-      t.dueAt ? Date.parse(t.dueAt) : Number.POSITIVE_INFINITY;
-    return (
-      Number(closedTask(a)) - Number(closedTask(b)) ||
-      due(a) - due(b) ||
-      b.createdAt.localeCompare(a.createdAt)
-    );
-  });
+  const tasks = orderSpaceTasks(view?.tasks ?? [], actor);
   useEffect(() => {
     if (scheduleFocus && view) {
       const row = root.current?.querySelector<HTMLDetailsElement>(
@@ -452,21 +448,6 @@ export function WorkspaceTasks({
       status,
       noNormativeEffect: true,
     });
-  const assignment = (t: TaskItem) => {
-    if (t.responsible)
-      return t.responsibleAvailable
-        ? t.responsible === actor
-          ? "Te ne occupi tu"
-          : name(t.responsible)
-        : name(t.responsible) + " · accesso cessato";
-    if (t.suggestedPerson && !closedTask(t))
-      return t.declinedBy
-        ? "Proposta rifiutata"
-        : t.suggestedPerson === actor
-          ? "In attesa di te"
-          : "In attesa di " + name(t.suggestedPerson);
-    return "Non assegnata";
-  };
   const visibleTasks = tasks.filter(
     (t) => !mine || (t.responsible === actor && t.responsibleAvailable),
   );
@@ -734,7 +715,9 @@ export function WorkspaceTasks({
                     <span className={styles.status} data-state={t.status}>
                       {uiText(taskStatus[t.status])}
                     </span>
-                    <span className={styles.assignee}>{assignment(t)}</span>
+                    <span className={styles.assignee}>
+                      {assignmentLabel(t, actor, name, uiText)}
+                    </span>
                   </summary>
                   <div className={styles.taskDetail}>
                     {t.description && <p>{t.description}</p>}
@@ -761,12 +744,18 @@ export function WorkspaceTasks({
                           )
                         : ""}
                     </p>
-                    {!t.responsible && t.suggestedPerson && !closedTask(t) && (
+                    {pendingOffer(t) && (
                       <p>
-                        {t.declinedBy
-                          ? uiText("Proposta rifiutata da")
-                          : uiText("Proposta inviata a")}{" "}
-                        {name(t.suggestedPerson)}.
+                        {uiText(
+                          "Proposta da {0} a {1}.",
+                          name(t.actor),
+                          name(t.suggestedPerson),
+                        )}
+                      </p>
+                    )}
+                    {t.declinedBy && !t.responsible && !closedTask(t) && (
+                      <p>
+                        {uiText("Proposta rifiutata da")} {name(t.declinedBy)}.
                       </p>
                     )}
                     <div className={styles.taskActions}>
@@ -1062,18 +1051,34 @@ export function WorkspaceTasks({
                 )}
               </article>
             ))}
-          {!!view?.suggestions.length && (
+          {!mine && !scheduleFocus && !!view?.suggestions.length && (
             <details className={styles.row}>
               <summary>
-                {uiText("Proposte di Emme (")}
-                {view.suggestions.length})
+                {uiText(
+                  "Spunti dal contesto · {0}",
+                  String(view.suggestions.length),
+                )}
               </summary>
+              <p className="hint">
+                {uiText(
+                  "Emme ha raccolto questi spunti. Puoi usarne uno per preparare una bozza di attività.",
+                )}
+              </p>
               {view.suggestions.map((s) => (
                 <article key={s.id}>
+                  <strong>{s.subject}</strong>
                   <p>{s.content}</p>
-                  <small>
-                    {s.origin} · {s.qualification}
-                  </small>
+                  <details>
+                    <summary>{uiText("Origine dello spunto")}</summary>
+                    <p>
+                      {uiText(
+                        s.origin === "attributed"
+                          ? "Affermazione attribuita"
+                          : "Interpretazione di Emme",
+                      )}{" "}
+                      · {s.qualification}
+                    </p>
+                  </details>
                   {canContribute && (
                     <button
                       disabled={busy}
@@ -1081,14 +1086,14 @@ export function WorkspaceTasks({
                         reset();
                         setContent({
                           ...empty,
-                          title: s.subject,
-                          description: s.content,
+                          title: s.subject.slice(0, 160),
+                          description: s.content.slice(0, 8000),
                         });
                         setCandidate(s.id);
                         openEditor(taskEditor.current);
                       }}
                     >
-                      {uiText("Prepara un’attività dalla proposta")}
+                      {uiText("Prepara bozza di attività")}
                     </button>
                   )}
                 </article>

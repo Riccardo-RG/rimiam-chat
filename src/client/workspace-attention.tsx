@@ -9,6 +9,7 @@ import type { Command } from "@/contracts/commands";
 import { api, errorText } from "./api";
 import {
   collaborationModeLabels as modeLabels,
+  collaborationModeDescriptions,
   attentionReasonLabel,
   workspaceChangeLabel,
 } from "../shared/workspace-labels";
@@ -513,9 +514,7 @@ export function WorkspaceAttention({
             <summary>
               <span>
                 <strong>{uiText("Il ritmo di Emme")}</strong>
-                <small>
-                  {uiText("Scegli quando può intervenire nello spazio.")}
-                </small>
+                <small>{uiText(modeLabels[view.preference.mode])}</small>
               </span>
             </summary>
             <label>
@@ -538,6 +537,7 @@ export function WorkspaceAttention({
                 ))}
               </select>
             </label>
+            <p>{uiText(collaborationModeDescriptions[view.preference.mode])}</p>
             {view.preference.actor && (
               <small>
                 {uiText("Scelta da ")}

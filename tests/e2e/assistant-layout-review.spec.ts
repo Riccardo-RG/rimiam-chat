@@ -2,6 +2,7 @@ import { test, expect, type Page, type Locator } from "@playwright/test";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
+  openWithSession,
   fillWorkspaceName,
   register,
   joinTestWorkspace,
@@ -133,7 +134,7 @@ test("a populated Home, private settings, conversation and shared library fit th
     for (const [width, height] of viewports) {
       await test.step(width + " × " + height, async () => {
         await page.setViewportSize({ width, height });
-        await page.goto("/");
+        await openWithSession(page, "/");
         const home = page.getByRole("region", {
           name: "Personale",
           exact: true,

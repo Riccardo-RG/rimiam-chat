@@ -1,6 +1,11 @@
 import { readFile } from "node:fs/promises";
 import { expect, test, type Page } from "@playwright/test";
-import { fillWorkspaceName, joinTestWorkspace, register } from "./helpers";
+import {
+  openWithSession,
+  fillWorkspaceName,
+  joinTestWorkspace,
+  register,
+} from "./helpers";
 
 test("participants can listen to a chat attachment before downloading in a workspace and a private chat", async ({
   page,
@@ -83,7 +88,7 @@ test("participants can listen to a chat attachment before downloading in a works
     );
     expect(sent.ok()).toBe(true);
     await listen(guest);
-    await page.goto("/");
+    await openWithSession(page, "/");
     await page.getByRole("button", { name: "Scrivi a un contatto" }).click();
     await page
       .getByRole("button", { name: "Scrivi a Leo", exact: true })

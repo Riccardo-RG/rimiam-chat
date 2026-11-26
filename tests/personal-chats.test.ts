@@ -190,6 +190,65 @@ it("consults only an explicitly selected visible group, keeps private answers ou
     (await view(a, thread)).turns.find((t) => t.id === request.id),
   ).toMatchObject({ status: "unavailable", answer: null, references: [] });
 });
+it("continues private questions only within the same explicit space selection", async () => {
+  const a = await account(),
+    thread = randomUUID();
+  await fresh(a, thread);
+  const { id: target } = await createWorkspace(
+    a.id,
+    "Collaudo continuità",
+    randomUUID(),
+  );
+  const select = (workspace: string | null, expectedVersion: number) =>
+    act(a, {
+      action: "select",
+      thread,
+      target: workspace,
+      expectedVersion,
+      expectedActorId: a.id,
+    });
+  const history: string[][] = [];
+  const model: StructuredModel = {
+    async generateJSON({ prompt, schema }) {
+      const prior = JSON.parse(prompt).previousPrivateTurns ?? [];
+      history.push(prior.map((r: { question: string }) => r.question));
+      return schema.parse({
+        answer: "Risposta privata di prova.",
+        keys: [],
+        moreTerms: [],
+      });
+    },
+  };
+  const ask = (question: string, expectedVersion: number) =>
+    act(
+      a,
+      {
+        action: "ask",
+        thread,
+        target,
+        expectedVersion,
+        expectedActorId: a.id,
+        id: randomUUID(),
+        question,
+      },
+      model,
+    );
+  await select(target, 0);
+  await ask("Prima domanda", 1);
+  await ask("Seconda domanda", 1);
+  await ask("Terza domanda", 1);
+  await ask("Quarta domanda", 1);
+  await select(null, 1);
+  await select(target, 2);
+  await ask("Nuova consultazione", 3);
+  expect(history).toEqual([
+    [],
+    ["Prima domanda"],
+    ["Prima domanda", "Seconda domanda"],
+    ["Seconda domanda", "Terza domanda"],
+    [],
+  ]);
+});
 it("searches only the exact authorized query, verifies citations, keeps research private and shares a single reviewed result on explicit command", async () => {
   const a = await account(),
     b = await account(),

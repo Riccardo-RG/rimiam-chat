@@ -1,11 +1,16 @@
 "use client";
 import { useUiLanguage } from "../client/ui-language";
-import { customSpaceAssistantLabels } from "../shared/connection-name";
+import {
+  connectionUsage,
+  customSpaceAssistantLabels,
+} from "../shared/connection-name";
 
 import { ChatSketch } from "@/client/chat-sketch";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { WorkspaceIcon } from "@/client/workspace-icon";
+import { LoadingStatus } from "@/client/loading-status";
+import { SessionUnavailable } from "@/client/session-unavailable";
 import {
   ConversationMilestones,
   useConversationMilestones,
@@ -44,7 +49,6 @@ import {
 } from "@/client/private-consultation";
 import type { ConsultationRef } from "@/contracts/private-consultation";
 import { conversationReferenceSchema } from "@/contracts/activity";
-import { WorkspaceContext } from "@/client/workspace-context";
 import { WorkspaceGuide } from "@/client/workspace-guide";
 import type {
   ComposerActionId,
@@ -110,8 +114,6 @@ import {
 } from "@/client/message-attachments";
 import { WorkspaceCall } from "@/client/workspace-call";
 import { SpokenReply } from "@/client/spoken-reply";
-import { WorkspaceAccess } from "@/client/workspace-access";
-import { WorkspaceProject } from "@/client/workspace-project";
 import {
   WorkspaceAttention,
   type CompactAttention,
@@ -146,7 +148,6 @@ import {
 } from "@/client/assistant-settings";
 import { PersonalLauncher } from "@/client/personal-launcher";
 import type { PersonalTab } from "@/client/personal-utilities";
-import { WorkspaceActiveWork } from "@/client/workspace-active-work";
 import { EmmePresence, useCompactActivity } from "@/client/emme-presence";
 import {
   Fragment,
@@ -196,7 +197,7 @@ import { WorkspaceQuestions } from "@/client/workspace-questions";
 
 function PanelLoading() {
   const { t: uiText } = useUiLanguage();
-  return <p role="status">{uiText("Caricamento della vista…")}</p>;
+  return <LoadingStatus label={uiText("Caricamento della vista…")} />;
 }
 
 function WorkspaceInviteButton({ open }: { open: () => void }) {
@@ -248,6 +249,34 @@ const PersonalUtilities = dynamic(
     ),
   { loading: PanelLoading },
 );
+const WorkspaceProject = dynamic(
+  () =>
+    import("@/client/workspace-project").then(
+      (module) => module.WorkspaceProject,
+    ),
+  { loading: PanelLoading },
+);
+const WorkspaceAccess = dynamic(
+  () =>
+    import("@/client/workspace-access").then(
+      (module) => module.WorkspaceAccess,
+    ),
+  { loading: PanelLoading },
+);
+const WorkspaceActiveWork = dynamic(
+  () =>
+    import("@/client/workspace-active-work").then(
+      (module) => module.WorkspaceActiveWork,
+    ),
+  { loading: PanelLoading },
+);
+const WorkspaceContext = dynamic(
+  () =>
+    import("@/client/workspace-context").then(
+      (module) => module.WorkspaceContext,
+    ),
+  { loading: PanelLoading },
+);
 const WorkspaceArtifacts = dynamic(
   () =>
     import("@/client/workspace-artifacts").then(
@@ -292,7 +321,7 @@ function WorkspaceListAvailability({
       aria-busy={status === "loading"}
     >
       {status === "loading" ? (
-        <p role="status">{uiText("Caricamento dei tuoi spazi…")}</p>
+        <LoadingStatus label={uiText("Caricamento dei tuoi spazi…")} />
       ) : (
         <>
           <p role="alert">
@@ -350,6 +379,13 @@ function readableError(error: unknown) {
 
 export default function Home() {
   const state = auth.useSession();
+  if (!state.data && state.error && state.error.status !== 401)
+    return (
+      <SessionUnavailable
+        throttled={state.error.status === 429}
+        retry={state.refetch}
+      />
+    );
   return (
     <>
       <PushIdentityGuard
@@ -443,6 +479,7 @@ function WorkspaceApp({
   const [composerReference, setComposerReference] = useTabDraft<{
     reference: ConversationReference;
     title: string;
+    displayVersion?: number;
   } | null>(draftKey + ":reference", null);
   const composerDock = useRef<ComposerDockHandle>(null);
   const documentExitGuard = useRef<DocumentExitGuard>(null);
@@ -1414,10 +1451,14 @@ function WorkspaceApp({
       if (candidate) setCorrectionFor(candidate);
     }
   }
-  function askReference(reference: ConversationReference, title: string) {
+  function askReference(
+    reference: ConversationReference,
+    title: string,
+    displayVersion?: number,
+  ) {
     setComposerAssistance(null);
     clearQuote();
-    setComposerReference({ reference, title });
+    setComposerReference({ reference, title, displayVersion });
     setPanel("");
     requestAnimationFrame(() => composerDock.current?.write());
   }
@@ -1497,7 +1538,7 @@ function WorkspaceApp({
             <AppearanceControl />
           </div>
           {isPending && (
-            <p role="status">{uiText("Verifica della sessione…")}</p>
+            <LoadingStatus label={uiText("Verifica della sessione…")} />
           )}
           <div hidden={isPending}>
             <AccountAccess
@@ -1601,6 +1642,11 @@ function WorkspaceApp({
     return (
       <EmmePresence
         assistantName={assistantName}
+        connectionUsage={
+          activeConnection?.configured
+            ? connectionUsage(activeConnection, uiText)
+            : undefined
+        }
         key={`presence:${actor}:${workspaceId}`}
         workspace={workspaceId}
         actor={actor!}
@@ -1852,7 +1898,12 @@ function WorkspaceApp({
                 <IdentityImage className="workspace-photo" url={roomPhoto} />
               )}
               <div className="workspace-title-stack">
-                <h1 title={snapshot?.workspace.name}>
+                <h1
+                  className={
+                    snapshot && !inviteToken ? "space-name" : undefined
+                  }
+                  title={snapshot?.workspace.name}
+                >
                   {inviteToken
                     ? uiText("Invito allo spazio")
                     : (snapshot?.workspace.name ??
@@ -2286,15 +2337,18 @@ function WorkspaceApp({
                 workspaceSync.connection,
               )}
             >
-              <p role="status">
-                {workspaceSync.connection === "offline"
-                  ? uiText(
-                      "Sei offline. Lo spazio si aprirà quando tornerà la connessione.",
-                    )
-                  : workspaceSync.connection === "failed"
-                    ? uiText("Non riesco ad aprire lo spazio. Puoi riprovare.")
-                    : uiText("Sto aprendo lo spazio…")}
-              </p>
+              {workspaceSync.connection === "offline" ||
+              workspaceSync.connection === "failed" ? (
+                <p role="status">
+                  {workspaceSync.connection === "offline"
+                    ? uiText(
+                        "Sei offline. Lo spazio si aprirà quando tornerà la connessione.",
+                      )
+                    : uiText("Non riesco ad aprire lo spazio. Puoi riprovare.")}
+                </p>
+              ) : (
+                <LoadingStatus label={uiText("Sto aprendo lo spazio…")} />
+              )}
               {workspaceSync.connection === "failed" && (
                 <button
                   className="quiet"
@@ -2793,6 +2847,31 @@ function WorkspaceApp({
                                     source={file}
                                   />
                                 ))}
+                                {assistant &&
+                                  !m.consultationReferences?.length && (
+                                    <ConsultationSources
+                                      entries={(
+                                        m.citation_source_ids ?? []
+                                      ).flatMap((id) => {
+                                        const file = documentSources.get(id);
+                                        return file
+                                          ? [
+                                              {
+                                                kind: "source",
+                                                id,
+                                                version: 1,
+                                                label:
+                                                  (file.filename ??
+                                                    file.title) +
+                                                  " · v" +
+                                                  (file.document_version ?? 1),
+                                              },
+                                            ]
+                                          : [];
+                                      })}
+                                      open={openConsulted}
+                                    />
+                                  )}
                                 {!!m.consultationReferences?.length && (
                                   <ConsultationSources
                                     entries={m.consultationReferences}
@@ -3432,7 +3511,8 @@ function WorkspaceApp({
                                 "active_work"
                                   ? uiText("rev.")
                                   : uiText("v")}
-                                {composerReference.reference.version}
+                                {composerReference.displayVersion ??
+                                  composerReference.reference.version}
                               </span>
                               <button
                                 className="quiet"
@@ -3611,10 +3691,13 @@ function WorkspaceApp({
                               type="submit"
                               className="quiet ask-miriam composer-ask"
                               data-target="miriam"
-                              title={uiText(
-                                "Chiedi a {0}",
-                                String(assistantName),
-                              )}
+                              title={[
+                                uiText("Chiedi a {0}", assistantName),
+                                activeConnection &&
+                                  connectionUsage(activeConnection, uiText),
+                              ]
+                                .filter(Boolean)
+                                .join(" · ")}
                               disabled={
                                 busy ||
                                 attachments.preparing ||
@@ -4041,6 +4124,13 @@ function WorkspaceApp({
                       <>
                         <WorkspaceArtifacts
                           documentExitGuard={documentExitGuard}
+                          onAskFile={(file) =>
+                            askReference(
+                              { kind: "source", id: file.id, version: 1 },
+                              file.filename ?? file.title,
+                              file.document_version ?? 1,
+                            )
+                          }
                           openSource={openSource}
                           key={`artifacts:${actor}:${workspaceId}:${handoff?.id ?? "direct"}`}
                           handoff={

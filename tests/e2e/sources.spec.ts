@@ -217,7 +217,7 @@ test("two members share a document, accept its interpretation and retrieve gover
       .getByRole("button", { name: "Lascia lo spazio", exact: true })
       .click();
     await expect(
-      b.getByRole("button", { name: "Crea spazio", exact: true }),
+      b.getByRole("heading", { name: "I tuoi spazi", exact: true }),
     ).toBeVisible();
     await expect
       .poll(async () => (await b.request.get(href!)).status())

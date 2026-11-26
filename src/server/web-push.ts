@@ -323,6 +323,7 @@ export async function workspaceForPush(
   id: string,
   device: string,
   channel: "web" | "native",
+  includeMessage = false,
 ) {
   z.uuid().parse(id);
   z.uuid().parse(device);
@@ -341,7 +342,19 @@ export async function workspaceForPush(
       404,
     );
     await member(tx, view.row.workspace_id, actor);
-    return view.row.workspace_id as string;
+    const workspaceId = view.row.workspace_id as string;
+    if (
+      includeMessage &&
+      ["message", "result", "followup.chat"].includes(view.row.kind)
+    ) {
+      const original = await tx.query<{ id: string }>(
+        "SELECT id FROM message WHERE workspace_id=$1 AND id=$2",
+        [workspaceId, view.row.reference_id],
+      );
+      if (original.rows[0])
+        return { workspaceId, messageId: original.rows[0].id };
+    }
+    return { workspaceId };
   });
 }
 
@@ -351,8 +364,14 @@ export async function pushDeliveryTarget(
   id: string,
   device: string,
 ) {
-  const workspace = await workspaceForPush(actor, session, id, device, "web");
-  return { url: `/?workspace=${workspace}` };
+  const { workspaceId } = await workspaceForPush(
+    actor,
+    session,
+    id,
+    device,
+    "web",
+  );
+  return { url: `/?workspace=${workspaceId}` };
 }
 
 export interface PushTransport {

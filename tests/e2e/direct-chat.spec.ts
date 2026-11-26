@@ -1,5 +1,10 @@
 import { expect, test } from "@playwright/test";
-import { fillWorkspaceName, register, joinTestWorkspace } from "./helpers";
+import {
+  openWithSession,
+  fillWorkspaceName,
+  register,
+  joinTestWorkspace,
+} from "./helpers";
 test("two existing contacts message privately, give separate consent, and create a clean group with their chosen materials", async ({
   page,
   browser,
@@ -18,7 +23,7 @@ test("two existing contacts message privately, give separate consent, and create
       page.getByRole("heading", { name, exact: true }),
     ).toBeVisible();
     await joinTestWorkspace(page, guest, name, "Matteo");
-    await page.goto("/");
+    await openWithSession(page, "/");
     await page.getByRole("button", { name: "Scrivi a un contatto" }).click();
     await page
       .getByRole("button", { name: "Scrivi a Matteo", exact: true })
@@ -26,12 +31,23 @@ test("two existing contacts message privately, give separate consent, and create
     await expect(
       page.getByRole("heading", { name: "Matteo", exact: true }),
     ).toBeVisible();
-    await page.getByLabel("Messaggio privato").fill("Privato tra noi");
+    const directInput = page.getByLabel("Messaggio privato");
+    await directInput.fill("/task");
+    await expect(
+      page.getByRole("status").filter({ hasText: "Invia scrive a Matteo." }),
+    ).toBeVisible();
+    await page.getByRole("button", { name: "Apri il tuo riepilogo" }).click();
+    await expect(
+      page.getByRole("button", { name: "Riassumi per me" }),
+    ).toBeDisabled();
+    await page.getByRole("button", { name: "Chiudi", exact: true }).click();
+    await expect(directInput).toHaveValue("/task");
+    await directInput.fill("Privato tra noi");
     await page.getByLabel("Messaggio privato").press("Enter");
     await expect(
       page.getByText("Privato tra noi", { exact: true }),
     ).toBeVisible();
-    await guest.goto("/");
+    await openWithSession(guest, "/");
     await guest.getByRole("button", { name: /Riccardo.*Chat privata/ }).click();
     await expect(
       guest.getByText("Privato tra noi", { exact: true }),

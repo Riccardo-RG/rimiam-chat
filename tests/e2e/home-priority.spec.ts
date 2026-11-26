@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { fillWorkspaceName, register } from "./helpers";
+import { openWithSession, fillWorkspaceName, register } from "./helpers";
 
 test("Home prioritises recent conversations and keeps personal tools reachable at every viewport", async ({
   page,
@@ -15,7 +15,7 @@ test("Home prioritises recent conversations and keeps personal tools reachable a
   await expect(
     page.getByRole("heading", { name: "Interviste ai tester", exact: true }),
   ).toBeVisible();
-  await page.goto("/");
+  await openWithSession(page, "/");
   const room = "Lancio RIMIAM";
   await fillWorkspaceName(page, room);
   await expect(
@@ -41,7 +41,7 @@ test("Home prioritises recent conversations and keeps personal tools reachable a
     },
   );
   expect(response.ok()).toBe(true);
-  await page.goto("/");
+  await openWithSession(page, "/");
   const directory = page.getByRole("region", {
     name: "Elenco degli spazi disponibili",
   });

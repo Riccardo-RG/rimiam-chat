@@ -57,6 +57,7 @@ export function EmmePresence({
   actor,
   revision,
   openWork,
+  connectionUsage,
   overview,
 }: {
   workspace: string;
@@ -64,6 +65,7 @@ export function EmmePresence({
   actor: string;
   revision: number;
   openWork: (id: string) => void;
+  connectionUsage?: string;
   overview?: {
     attention: CompactAttention;
     goal?: string;
@@ -242,6 +244,7 @@ export function EmmePresence({
             <WorkspaceIcon name="close" />
           </button>
         </div>
+        {connectionUsage && <p>{connectionUsage}</p>}
         {overview && (
           <>
             {overview.emmeUnconfigured && (

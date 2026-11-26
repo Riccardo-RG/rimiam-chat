@@ -118,7 +118,7 @@ export async function processDocument(
       await lockWorkspace(tx, claim.workspace_id);
       const current = (
         await tx.query(
-          "SELECT p.*,coalesce(v.version,1) AS visibility_version FROM document_processing p LEFT JOIN document_visibility v ON (v.workspace_id,v.source_id)=(p.workspace_id,p.source_id) WHERE p.source_id=$1",
+          "SELECT p.*,p.lease_until>clock_timestamp() AS lease_valid,coalesce(v.version,1) AS visibility_version FROM document_processing p LEFT JOIN document_visibility v ON (v.workspace_id,v.source_id)=(p.workspace_id,p.source_id) WHERE p.source_id=$1",
           [sourceId],
         )
       ).rows[0];
@@ -137,6 +137,7 @@ export async function processDocument(
       let publication = "published";
       if (
         current.status !== "processing" ||
+        !current.lease_valid ||
         current.attempt_id !== claim.attempt
       )
         publication = "superseded";
@@ -204,7 +205,7 @@ export async function processDocument(
     await transaction(async (tx) => {
       await lockWorkspace(tx, claim.workspace_id);
       const updated = await tx.query(
-        "UPDATE document_processing SET status=$3,error_code=$4,lease_until=NULL WHERE source_id=$1 AND attempt_id=$2 AND status='processing' RETURNING source_id",
+        "UPDATE document_processing SET status=$3,error_code=$4,lease_until=NULL WHERE source_id=$1 AND attempt_id=$2 AND status='processing' AND lease_until>clock_timestamp() RETURNING source_id",
         [sourceId, claim.attempt, status, code],
       );
       await documentProcessingEvent(
@@ -222,9 +223,18 @@ export async function processDocument(
   }
 }
 export async function recoverDocuments() {
+  // A healthy or deliberately delayed job must not consume a slot in the
+  // repair batch, or a large queue can hide expired extractions indefinitely.
+  const missingDelivery = `NOT EXISTS (
+    SELECT 1 FROM graphile_worker.jobs j WHERE j.key='document:' || p.source_id
+    AND (j.locked_at IS NOT NULL OR j.attempts < j.max_attempts)
+  )`;
   const rows = (
     await pool.query(
-      "SELECT source_id,workspace_id FROM document_processing WHERE status='queued' OR (status='processing' AND lease_until<now()) LIMIT 100",
+      `SELECT p.source_id,p.workspace_id FROM document_processing p
+       WHERE (p.status='processing' AND p.lease_until<=now())
+          OR (p.status='queued' AND ${missingDelivery})
+       ORDER BY (p.status='processing') DESC, p.created_at, p.source_id LIMIT 100`,
     )
   ).rows;
   for (const row of rows)
@@ -232,11 +242,14 @@ export async function recoverDocuments() {
       await lockWorkspace(tx, row.workspace_id);
       const p = (
         await tx.query(
-          "SELECT * FROM document_processing WHERE source_id=$1 FOR UPDATE",
+          `SELECT p.attempt_id,p.status FROM document_processing p WHERE p.source_id=$1
+           AND ((p.status='processing' AND p.lease_until<=clock_timestamp()) OR
+                (p.status='queued' AND ${missingDelivery})) FOR UPDATE OF p`,
           [row.source_id],
         )
       ).rows[0];
-      if (p.status === "processing" && new Date(p.lease_until) < new Date()) {
+      if (!p) return;
+      if (p.status === "processing") {
         await tx.query(
           "UPDATE document_processing SET status='queued',attempt_id=NULL,lease_until=NULL,error_code='DOCUMENT_INTERRUPTED' WHERE source_id=$1",
           [row.source_id],
@@ -252,7 +265,6 @@ export async function recoverDocuments() {
           "DOCUMENT_INTERRUPTED",
         );
       }
-      if (p.status === "queued" || p.status === "processing")
-        await queueDocument(tx, row.source_id);
+      await queueDocument(tx, row.source_id);
     });
 }

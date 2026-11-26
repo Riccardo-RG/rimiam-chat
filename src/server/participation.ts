@@ -1,6 +1,38 @@
 import type { Tx } from "./db.ts";
-import { potentiallyHumanAddress } from "../shared/miriam-address.ts";
+import {
+  isAssistantAddress,
+  potentiallyHumanAddress,
+} from "../shared/miriam-address.ts";
 type CollaborationMode = "discreet" | "collaborative" | "proactive";
+
+export type TurnOccasion = "group_request" | "material_risk" | "other";
+
+export function permitsGroupIntervention(
+  preference: CollaborationMode,
+  content: string,
+  occasion?: TurnOccasion,
+  citesSource = false,
+) {
+  if (preference === "discreet") return false;
+  const words = content
+    .toLocaleLowerCase()
+    .replace(/[\p{P}\p{S}\p{Cf}]+/gu, " ")
+    .trim()
+    .replace(/\s+/g, " ");
+  if (
+    !words ||
+    /^(?:ciao|salve|buongiorno|buonasera|buonanotte|ehi|hey|hi|hello|grazie|thanks)(?: (?:a tutti|a tutte|ragazzi|ragazze|everyone|all))?$/u.test(
+      words,
+    )
+  )
+    return false;
+  // Older external agents may omit the classification. A question remains usable.
+  if (!occasion) return /[?？؟]/u.test(content);
+  return (
+    occasion === "group_request" ||
+    (preference === "proactive" && occasion === "material_risk" && citesSource)
+  );
+}
 
 export async function collaborationMode(
   tx: Tx,
@@ -16,9 +48,8 @@ export async function collaborationMode(
   );
 }
 
-/** Resolve an assistant alias against humans locally. A queued message keeps its
- * human addressee even if that participant leaves before the worker runs. */
-export async function legacyAddressTargetsMember(
+/** Resolve explicit vocatives against actual members, including membership at send time. */
+export async function addressTargetsMember(
   tx: Tx,
   workspace: string,
   speaker: string,
@@ -26,7 +57,15 @@ export async function legacyAddressTargetsMember(
   sourceId?: string,
   displayName = "Emme",
 ) {
-  const alias = potentiallyHumanAddress(content, displayName);
+  const assistant = isAssistantAddress(content, displayName);
+  const vocative = content
+    .trim()
+    .match(
+      /^(?:(?:ciao|ehi|hey|hi|hello)[\s,]+)?(?:@([\p{L}\p{M}\p{N}_’'.-]+)|([\p{L}\p{M}’'.-]+(?: [\p{L}\p{M}’'.-]+){0,3})\s*[,：:])/iu,
+    );
+  const alias = assistant
+    ? potentiallyHumanAddress(content, displayName)
+    : (vocative?.[1] ?? vocative?.[2])?.toLowerCase();
   if (!alias) return false;
   const match = await tx.query(
     `SELECT 1 FROM membership m JOIN "user" u ON u.id=m.user_id

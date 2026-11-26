@@ -30,6 +30,55 @@ export function libraryDay(value: string | Date) {
   ].join("-");
 }
 
+export function shortPageLabel(address: string) {
+  const { hostname, pathname } = new URL(address);
+  const segments = pathname.split("/").filter(Boolean);
+  const last = segments.at(-1);
+  if (!last) return hostname;
+  let segment = last;
+  try {
+    segment = decodeURIComponent(last);
+  } catch {
+    // Keep a malformed encoded path readable without changing its destination.
+  }
+  const letters = Array.from(
+    segment.replace(
+      /[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/g,
+      "",
+    ),
+  );
+  const abbreviated =
+    letters.length > 36
+      ? letters.slice(0, 35).join("") + "…"
+      : letters.join("");
+  return hostname + (segments.length > 1 ? "/…/" : "/") + abbreviated;
+}
+
+export function fileReading(file: Snapshot["sources"][number]) {
+  if (file.withdrawn) return "File ritirato";
+  if (file.processing_error === "MEDIA_DISCLOSURE_REQUIRED")
+    return "Lettura con AI non autorizzata.";
+  switch (file.processing_status) {
+    case "ready":
+      return null;
+    case "queued":
+      return "Lettura in attesa";
+    case "processing":
+      return "Lettura in corso";
+    case "needs_configuration":
+      return "Servizio di lettura da collegare";
+    case "needs_input":
+      return "Serve un chiarimento o un formato leggibile";
+    case "failed":
+      return "Lettura non riuscita";
+    case null:
+    case undefined:
+      return file.content?.trim() ? null : "Stato della lettura da verificare.";
+    default:
+      return "Stato della lettura da verificare.";
+  }
+}
+
 export function libraryView(
   state: Pick<Snapshot, "sources" | "messages">,
   {
@@ -71,7 +120,7 @@ export function libraryView(
       : state.messages.filter((message) => dateMatches(message.created_at));
   const pages = sharedPages(messagesInPeriod).map((p) => ({
     id: p.id,
-    title: p.href,
+    title: shortPageLabel(p.href),
     url: p.href,
   }));
   const mentions = sharedConversationLinks(messagesInPeriod).map((p) => ({
@@ -84,7 +133,9 @@ export function libraryView(
     (!type || type === "Collegamento")
       ? [...pages, ...mentions].filter(
           (link) =>
-            !query || link.title.toLocaleLowerCase("it").includes(query),
+            !query ||
+            link.title.toLocaleLowerCase("it").includes(query) ||
+            link.url?.toLocaleLowerCase("it").includes(query),
         )
       : [];
   const all = currentSharedFiles(state.sources).filter(

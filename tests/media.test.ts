@@ -338,6 +338,45 @@ describe("rich input originals and bounded extraction", () => {
       ).rowCount,
     ).toBe(1);
   });
+  it("preserves a scheduled extraction and rejects a late success before recovery runs", async () => {
+    const { a, w } = await setup();
+    const id = (await upload(a, w)).sourceId as string;
+    const scheduled = new Date(Date.now() + 3_600_000);
+    await pool.query(
+      "SELECT graphile_worker.add_job('document_extract',json_build_object('sourceId',$1::text),max_attempts:=1,job_key:=$2,run_at:=$3)",
+      [id, `document:${id}`, scheduled],
+    );
+    await recoverDocuments();
+    expect(
+      (
+        await pool.query(
+          "SELECT run_at FROM graphile_worker.jobs WHERE key=$1",
+          [`document:${id}`],
+        )
+      ).rows[0].run_at,
+    ).toEqual(scheduled);
+    await processDocument(id, {
+      async extract() {
+        await pool.query(
+          "UPDATE document_processing SET lease_until=now()-interval '1 second' WHERE source_id=$1",
+          [id],
+        );
+        return result;
+      },
+    });
+    expect((await processing(id)).status).toBe("processing");
+    expect(
+      (
+        await pool.query(
+          "SELECT publication FROM document_extraction WHERE source_id=$1",
+          [id],
+        )
+      ).rows,
+    ).toEqual([{ publication: "superseded" }]);
+    await recoverDocuments();
+    await processDocument(id, extractor);
+    expect((await processing(id)).status).toBe("ready");
+  });
   it("cannot publish after ended eligibility, reentry or cross-Workspace retry", async () => {
     const { a, b, w } = await setup();
     await join(a, b, w);

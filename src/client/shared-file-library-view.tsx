@@ -20,6 +20,7 @@ import {
   type AttachmentPicker,
 } from "./conversation-attachment";
 import {
+  fileReading,
   libraryDay,
   libraryEntryKey,
   libraryPeriods,
@@ -47,6 +48,7 @@ type Props = {
   ) => Promise<unknown>;
   action: (fn: () => Promise<void>) => Promise<void>;
   openSource: (id: string) => void;
+  onAskFile?: (file: SharedFile) => void;
   documentActions?: ReactNode;
 };
 
@@ -344,6 +346,29 @@ export function SharedFileLibrary(props: Props) {
       });
     });
   }
+  function favoriteButton(file: SharedFile) {
+    return (
+      <button
+        type="button"
+        className={styles.favorite}
+        aria-pressed={!!file.favorite}
+        disabled={props.busy}
+        aria-label={uiText(
+          file.favorite
+            ? "Rimuovi dai preferiti {0}"
+            : "Aggiungi ai preferiti {0}",
+          file.filename ?? file.title,
+        )}
+        onClick={() => star(file)}
+      >
+        <WorkspaceIcon
+          name={file.favorite ? "favoriteSelected" : "favorite"}
+          size={20}
+        />
+      </button>
+    );
+  }
+  const reading = preview && fileReading(preview);
   const hiddenView = showHidden && hidden.size > 0;
   const visibleList = list.filter(
     (entry) => hidden.has(libraryEntryKey(entry)) === hiddenView,
@@ -669,10 +694,11 @@ export function SharedFileLibrary(props: Props) {
                             target="_blank"
                             rel="noopener noreferrer"
                             title={link.url}
-                            aria-label={link.url}
+                            aria-label={link.title}
                           >
-                            <strong>{new URL(link.url).hostname}</strong>
-                            <span className={styles.linkPath}>{link.url}</span>
+                            <strong className={styles.linkPath}>
+                              {link.title}
+                            </strong>
                           </a>
                         ) : (
                           <strong>{link.title}</strong>
@@ -750,21 +776,7 @@ export function SharedFileLibrary(props: Props) {
                     </span>
                   </button>
                   <div className={styles.rowActions}>
-                    <button
-                      type="button"
-                      className="quiet"
-                      aria-pressed={!!file.favorite}
-                      disabled={props.busy}
-                      aria-label={uiText(
-                        file.favorite
-                          ? "Rimuovi dai preferiti {0}"
-                          : "Aggiungi ai preferiti {0}",
-                        name,
-                      )}
-                      onClick={() => star(file)}
-                    >
-                      {file.favorite ? "★" : "☆"}
-                    </button>
+                    {favoriteButton(file)}
                     {removalControl(key, name)}
                   </div>
                   {removalOptions(key, file)}
@@ -846,7 +858,65 @@ export function SharedFileLibrary(props: Props) {
           {!preview.withdrawn && (
             <CopyDocument key={preview.id} {...props} file={preview} />
           )}
+          {preview.document_version && (
+            <small>
+              {uiText("Versione {0}", String(preview.document_version))}
+            </small>
+          )}
+          {reading && !preview.withdrawn && (
+            <p role="status">{uiText(reading)}</p>
+          )}
+          {!preview.withdrawn && props.onAskFile && contributes && (
+            <button
+              type="button"
+              disabled={props.busy || !!reading}
+              onClick={() => {
+                dismissPreview();
+                props.onAskFile?.(preview);
+              }}
+            >
+              {uiText("Chiedi a Emme su questo file")}
+            </button>
+          )}
+          {!preview.withdrawn &&
+            contributes &&
+            ["failed", "needs_input", "needs_configuration"].includes(
+              preview.processing_status ?? "",
+            ) && (
+              <button
+                type="button"
+                disabled={props.busy}
+                onClick={() =>
+                  void props.action(async () => {
+                    const media = /^(image|audio)\//.test(
+                      preview.media_type ?? "",
+                    );
+                    if (
+                      media &&
+                      !window.confirm(
+                        uiText(
+                          "Inviare questo file al servizio AI configurato per leggerne il contenuto?",
+                        ),
+                      )
+                    )
+                      return;
+                    await props.command({
+                      type: "document.retry",
+                      sourceId: preview.id,
+                      ...(media ? { allowModelProcessing: true as const } : {}),
+                    });
+                  })
+                }
+              >
+                {uiText(
+                  preview.processing_error === "MEDIA_DISCLOSURE_REQUIRED"
+                    ? "Consenti lettura con AI…"
+                    : "Riprova lettura",
+                )}
+              </button>
+            )}
           <footer>
+            {!preview.withdrawn && favoriteButton(preview)}
             <FileVisibilityButton
               {...props}
               file={preview}

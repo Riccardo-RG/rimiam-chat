@@ -1,5 +1,7 @@
 import { expect, it } from "vitest";
 import {
+  fileReading,
+  shortPageLabel,
   libraryEntryKey,
   libraryView,
   type LibraryTab,
@@ -35,6 +37,20 @@ it("shows the same chronological library, filters and personal favorites on Web 
     work_id: null,
     favorite: true,
   };
+  expect(fileReading({ ...image, processing_status: "queued" })).toBe(
+    "Lettura in attesa",
+  );
+  expect(
+    fileReading({
+      ...image,
+      processing_status: "needs_input",
+      processing_error: "MEDIA_DISCLOSURE_REQUIRED",
+    }),
+  ).toBe("Lettura con AI non autorizzata.");
+  expect(
+    fileReading({ ...image, withdrawn: true, processing_status: "ready" }),
+  ).toBe("File ritirato");
+  expect(fileReading({ ...image, processing_status: "ready" })).toBeNull();
   const link: Snapshot["messages"][number] = {
     id: "link",
     content: "Vedi https://rimiam.example/guida",
@@ -299,4 +315,44 @@ it("rejects invalid, access-related and oversized URLs before creating a shared 
     "https://example.org/" + "a".repeat(12000),
   ])
     expect(pageMessage(url)).toBeUndefined();
+});
+
+it("labels saved pages without fetching metadata or exposing query strings and retains their exact searchable destination", () => {
+  const long =
+    "https://example.org/design/raccolta%20foto?filter=autunno#" +
+    "x".repeat(300);
+  expect(shortPageLabel(long)).toBe("example.org/…/raccolta foto");
+  expect(shortPageLabel("https://example.org/?q=segreto")).toBe("example.org");
+  expect(shortPageLabel("https://example.org/" + "a".repeat(350))).toBe(
+    "example.org/" + "a".repeat(35) + "…",
+  );
+  const message = {
+    id: "link",
+    actor_kind: "human",
+    author_id: "ada",
+    purpose: "conversation",
+    sequence: 1,
+    content: pageMessage(long, true)!,
+    created_at: "2026-11-19T12:00:00Z",
+  } as Snapshot["messages"][number];
+  for (const personal of [true, false]) {
+    const view = libraryView(
+      {
+        messages: [{ ...message, content: pageMessage(long, personal)! }],
+        sources: [],
+      },
+      {
+        tab: "Collegamenti",
+        term: "autunno",
+        type: "",
+        period: "all",
+        day: "",
+        until: "",
+        personal,
+      },
+    );
+    expect(view.links).toEqual([
+      { id: "link", title: "example.org/…/raccolta foto", url: long },
+    ]);
+  }
 });

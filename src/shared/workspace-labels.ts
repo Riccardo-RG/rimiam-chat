@@ -3,6 +3,12 @@ export const collaborationModeLabels = {
   collaborative: "Collaborativa",
   proactive: "Propositiva",
 };
+export const collaborationModeDescriptions = {
+  discreet: "Risponde a @Emme e a «Chiedi a Emme».",
+  collaborative:
+    "Può rispondere anche a una domanda o richiesta aperta al gruppo.",
+  proactive: "Può anche segnalare un rischio concreto indicando la fonte.",
+};
 export const workspaceChangeLabels: Record<string, string> = {
   goal: "Goal",
   information: "Informazioni accettate",

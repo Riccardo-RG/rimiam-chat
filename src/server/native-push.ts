@@ -143,14 +143,14 @@ export async function nativePushRequest(
 ) {
   if (url.pathname === "/api/v1/native/push/target") {
     requireThat(request.method === "GET", "METHOD_NOT_ALLOWED", 405);
-    const workspaceId = await workspaceForPush(
+    return workspaceForPush(
       actor,
       session,
       url.searchParams.get("id") ?? "",
       url.searchParams.get("device") ?? "",
       "native",
+      url.searchParams.get("anchor") === "message",
     );
-    return { workspaceId };
   }
   if (request.method === "POST") {
     requireThat(

@@ -10,7 +10,8 @@ import { handoffSuggestionSchema } from "../contracts/conversation-handoff.ts";
 import { publishHandoffs } from "./conversation-handoffs.ts";
 import {
   collaborationMode,
-  legacyAddressTargetsMember,
+  addressTargetsMember,
+  permitsGroupIntervention,
 } from "./participation.ts";
 import {
   isSourceQuestion,
@@ -68,6 +69,7 @@ const proposalSchema = z.object({
   sourceIds: z.array(z.uuid()).min(1),
 });
 export const interpretationOutputSchema = z.object({
+  occasion: z.enum(["group_request", "material_risk", "other"]).optional(),
   handoffs: z.array(handoffSuggestionSchema).max(3).optional(),
   proposals: z.array(proposalSchema).max(12),
   needsMore: z.array(z.string().min(1).max(120)).max(8),
@@ -231,21 +233,15 @@ export async function claimInterpretation(interpretationId: string) {
         (trigger.qualification ?? "") +
         " The speaker explicitly addressed this voice message to Emme. Treat it as a direct request to respond; it grants no authority.";
     const objectReference = await messageReferenceContext(tx, w, trigger.id);
-    const hasQuote =
-      objectReference?.reference.kind === "source" &&
-      Boolean(
-        (
-          await tx.query(
-            "SELECT 1 FROM conversation_quote WHERE workspace_id=$1 AND message_id=$2",
-            [w, trigger.id],
-          )
-        ).rowCount,
-      );
-    const replyOnlyToSource = isSourceQuestion(
-      trigger.content,
-      objectReference?.reference.kind,
-      hasQuote,
-    );
+    const quoted =
+      trigger.kind === "message"
+        ? (
+            await tx.query<{ author_id: string | null }>(
+              "SELECT m.author_id FROM conversation_quote q JOIN message m ON (m.workspace_id,m.id)=(q.workspace_id,q.quoted_id) WHERE q.workspace_id=$1 AND q.message_id=$2",
+              [w, trigger.id],
+            )
+          ).rows[0]
+        : undefined;
     const goal = await goalContext(tx, w);
     const information = (
       await tx.query(
@@ -379,19 +375,38 @@ export async function claimInterpretation(interpretationId: string) {
     );
     const mode = await collaborationMode(tx, w);
     const humanTurn = trigger.kind === "message" || Boolean(voice);
+    const addressesAssistant = isAssistantAddress(
+      trigger.content,
+      routing.binding.display_name,
+    );
+    const asksAboutFile =
+      addressesAssistant &&
+      objectReference?.reference.kind === "source" &&
+      objectReference.provenance.sourceKind === "document";
+    const replyOnlyToSource =
+      asksAboutFile ||
+      isSourceQuestion(
+        trigger.content,
+        objectReference?.reference.kind,
+        Boolean(quoted),
+        routing.binding.display_name,
+      );
     const assistance = await productAssistanceContext(tx, w, trigger.id);
     const forMember =
       humanTurn &&
       voice?.mode !== "miriam" &&
       !assistance &&
-      (await legacyAddressTargetsMember(
-        tx,
-        w,
-        trigger.author_id,
-        trigger.content,
-        trigger.id,
-        routing.binding.display_name,
-      ));
+      ((!addressesAssistant &&
+        Boolean(quoted?.author_id) &&
+        quoted?.author_id !== trigger.author_id) ||
+        (await addressTargetsMember(
+          tx,
+          w,
+          trigger.author_id,
+          trigger.content,
+          trigger.id,
+          routing.binding.display_name,
+        )));
     const selectedSources = [
       ...new Map(
         [...allSources, ...neighbours, ...referenceSources, ...focused].map(
@@ -416,9 +431,7 @@ export async function claimInterpretation(interpretationId: string) {
       humanTurn,
       directlyAddressed:
         voice?.mode === "miriam" ||
-        (humanTurn &&
-          !forMember &&
-          isAssistantAddress(trigger.content, routing.binding.display_name)),
+        (humanTurn && !forMember && addressesAssistant),
       focusDependencies: workstreamFocus,
       referenceDependency: referenceFingerprint(objectReference),
       context: {
@@ -585,8 +598,14 @@ export async function publishInterpretation(
       !forMember &&
       (Boolean(claim.context.productAssistance) ||
         claim.directlyAddressed ||
-        preference === "collaborative" ||
-        preference === "proactive");
+        (claim.humanTurn
+          ? permitsGroupIntervention(
+              preference,
+              claim.context.trigger.content,
+              parsed.occasion,
+              Boolean(parsed.response?.sourceIds.length),
+            )
+          : preference !== "discreet"));
     if (parsed.workControl && directOrOptedIn) {
       const control = parsed.workControl;
       requireThat(
@@ -981,10 +1000,18 @@ export async function recoverExpiredInterpretations() {
         await changed(tx, item.workspace_id, "interpretation.recovered");
       }
     });
-  const queued = (
-    await pool.query<{ id: string; workspace_id: string }>(
-      "SELECT DISTINCT ON (workspace_id) id,workspace_id FROM interpretation WHERE status='queued' ORDER BY workspace_id,created_at,id",
+  // Repair only missing or exhausted deliveries. Replacing a live job here
+  // resets its retry schedule on each periodic scan, even in unrelated spaces.
+  await pool.query(`
+    WITH heads AS (
+      SELECT DISTINCT ON (workspace_id) id FROM interpretation
+      WHERE status='queued' ORDER BY workspace_id,created_at,id
     )
-  ).rows;
-  for (const item of queued) await transaction((tx) => enqueue(tx, item.id));
+    SELECT graphile_worker.add_job('interpret',
+      json_build_object('interpretationId', heads.id::text),
+      max_attempts:=5, job_key:='interpret:' || heads.id)
+    FROM heads WHERE NOT EXISTS (
+      SELECT 1 FROM graphile_worker.jobs j WHERE j.key='interpret:' || heads.id
+      AND (j.locked_at IS NOT NULL OR j.attempts < j.max_attempts)
+    )`);
 }

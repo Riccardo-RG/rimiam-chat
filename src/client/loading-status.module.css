@@ -1,0 +1,31 @@
+.status,
+.page {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  color: var(--muted);
+  font-size: var(--type-control, 1rem);
+}
+.status {
+  padding-block: 0.75rem;
+}
+.page {
+  min-block-size: 100dvh;
+  justify-content: center;
+  flex-direction: column;
+}
+.page img {
+  inline-size: 48px;
+  block-size: 48px;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .status img,
+  .page img {
+    animation: loading 1.6s ease-in-out infinite alternate;
+  }
+}
+@keyframes loading {
+  to {
+    opacity: 0.5;
+  }
+}

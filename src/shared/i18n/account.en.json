@@ -1,4 +1,11 @@
 {
+  "Connessione inattiva. Nessun consumo.": "Connection inactive. No usage.",
+  "L’uso è a carico dell’account API configurato per questa installazione. Gli abbonamenti personali alla chat sono separati.": "Usage is billed to the API account configured for this installation. Personal chat subscriptions are separate.",
+  "Le richieste usano il server Ollama scelto dal gestore. I costi dipendono da chi ospita il modello.": "Requests use the configured Ollama server. Costs depend on who hosts the model.",
+  "Le richieste usano il servizio collegato dal gestore. La tariffa dipende da quel servizio.": "Requests use the service linked by the operator. That service sets the rate.",
+  "Il ritmo in Attività e argomenti decide quando interviene. Qui scegli come risponde in questo spazio.": "Rhythm in Activity and topics controls when the assistant speaks. Choose how it responds in this space here.",
+  "Le tue indicazioni personalizzano lo stile di base. Lascia vuoto per usare solo quello predefinito.": "Your instructions customize the default style. Leave this empty to use the default on its own.",
+  "Scrivi in inglese. Le tue indicazioni personalizzano lo stile di base.": "Write in English. Your instructions customize the default style.",
   "Per collegare un account, usa l’indirizzo": "To connect an account, use the email address",
   "Puoi collegare il calendario dalla Home.": "You can connect your calendar from Home.",
   "Mostra la password di conferma": "Show confirmation password",

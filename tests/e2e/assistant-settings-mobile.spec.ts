@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { devices, expect, test } from "@playwright/test";
-import { register } from "./helpers";
+import { openWithSession, register } from "./helpers";
 
 test.use({
   contextOptions: async ({ browserName }, provideOptions) => {
@@ -29,7 +29,7 @@ test("mobile navigation exposes settings and an outdated form cannot silently ov
   await expect(panel.getByLabel("Nome dell’assistente")).toHaveValue("Emme");
   await panel.getByLabel("Nome dell’assistente").fill("Bozza");
   const other = await context.newPage();
-  await other.goto("/");
+  await openWithSession(other, "/");
   await other
     .getByRole("region", { name: "Personale", exact: true })
     .getByRole("button", { name: "Configura Emme" })

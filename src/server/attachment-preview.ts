@@ -20,7 +20,7 @@ async function renderFirstPage(bytes: Buffer, signal: AbortSignal) {
   return new Promise<Buffer>((done, fail) => {
     const devFonts = "/opt/homebrew/etc/fonts/fonts.conf";
     const child = spawn(
-      process.env.DOCUMENT_PYTHON_PATH ?? "python3",
+      /* turbopackIgnore: true */ process.env.DOCUMENT_PYTHON_PATH ?? "python3",
       [resolve(process.cwd(), "scripts/render-pdf-preview.py")],
       {
         signal,

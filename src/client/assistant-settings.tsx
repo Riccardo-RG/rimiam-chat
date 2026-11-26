@@ -1,5 +1,5 @@
 "use client";
-import { connectionName } from "../shared/connection-name";
+import { connectionName, connectionUsage } from "../shared/connection-name";
 import { useUiLanguage } from "./ui-language";
 
 import { useEffect, useId, useRef, useState } from "react";
@@ -356,6 +356,13 @@ function SettingsForm({
         }}
         onChange={() => setNotice("")}
       >
+        {isShared && (
+          <p className={styles.hint}>
+            {uiText(
+              "Il ritmo in Attività e argomenti decide quando interviene. Qui scegli come risponde in questo spazio.",
+            )}
+          </p>
+        )}
         {editable ? (
           <>
             <label htmlFor={field + "guide"}>{guideLabel}</label>
@@ -368,7 +375,7 @@ function SettingsForm({
                     "Scrivi in inglese come vuoi che risponda in «Tu ed Emme».",
                   )}{" "}
               {uiText(
-                "Se lasci vuoto, si applicano le istruzioni predefinite di RIMIAM.",
+                "Le tue indicazioni personalizzano lo stile di base. Lascia vuoto per usare solo quello predefinito.",
               )}
             </p>
             <textarea
@@ -421,6 +428,10 @@ function SettingsForm({
             {saved.defaultInstructions}
           </p>
         </details>
+        <details className={styles.details}>
+          <summary>{uiText("Regole fisse di RIMIAM")}</summary>
+          <pre lang="en">{saved.baseInstructions}</pre>
+        </details>
         <label htmlFor={field + "conn"}>{uiText("Modello o agente")}</label>
         <select
           id={field + "conn"}
@@ -439,7 +450,10 @@ function SettingsForm({
           <p className={styles.hint}>
             {selected.configured
               ? uiText("Destinazione: {0}", String(selected.destination))
-              : uiText("Connessione non configurata su questa installazione.")}
+              : uiText(
+                  "Connessione non configurata su questa installazione.",
+                )}{" "}
+            {selected.configured && connectionUsage(selected, uiText)}
           </p>
         )}
         {(connectionId !== saved.connectionId || saved.needsReconfirmation) &&
@@ -507,10 +521,6 @@ function SettingsForm({
           readOnly={!editable || busy}
           onChange={(e) => setName(e.target.value)}
         />
-        <details className={styles.details}>
-          <summary>{uiText("Regole fisse di RIMIAM")}</summary>
-          <pre lang="en">{saved.baseInstructions}</pre>
-        </details>
         <a
           className={styles.download}
           href={

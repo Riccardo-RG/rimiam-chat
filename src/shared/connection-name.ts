@@ -1,5 +1,27 @@
 import type { AssistantSettings } from "../contracts/assistant-settings";
 
+/** Describes the configured credential boundary, without guessing a tariff. */
+export function connectionUsage(
+  connection: Pick<
+    AssistantSettings["connections"][number],
+    "provider" | "configured"
+  >,
+  t: (source: string) => string,
+) {
+  if (!connection.configured) return t("Connessione inattiva. Nessun consumo.");
+  if (connection.provider === "openai" || connection.provider === "anthropic")
+    return t(
+      "L’uso è a carico dell’account API configurato per questa installazione. Gli abbonamenti personali alla chat sono separati.",
+    );
+  if (connection.provider === "ollama")
+    return t(
+      "Le richieste usano il server Ollama scelto dal gestore. I costi dipendono da chi ospita il modello.",
+    );
+  return t(
+    "Le richieste usano il servizio collegato dal gestore. La tariffa dipende da quel servizio.",
+  );
+}
+
 export function customSpaceAssistantLabels(
   settings?: AssistantSettings | null,
 ) {

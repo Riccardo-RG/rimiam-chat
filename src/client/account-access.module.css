@@ -233,6 +233,7 @@
 .recoveryBack {
   display: inline-flex;
   align-items: center;
+  min-block-size: 44px;
   gap: 8px;
   margin-top: 28px;
   font-size: 0.875rem;

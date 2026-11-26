@@ -339,6 +339,42 @@ it("blocks new copies, document composition and email attachments while preservi
       await readDocument(a, personal, String(independent.sourceId))
     ).original_bytes.toString("base64"),
   ).toBe(uploadInput.bytesBase64);
+  const peer = await person();
+  const invitation = await command(a, w, {
+    type: "invitation.create",
+    email: peer + "@example.test",
+    fullHistoryDisclosed: true,
+  });
+  await acceptInvitation(peer, String(invitation.token), true);
+  const published = await exec(personal, {
+    type: "library.copy",
+    sourceId: independent.sourceId,
+    destinationId: w,
+  });
+  const publishedId = String(published.sourceId);
+  const copyView = async (actor: string) =>
+    (await snapshot(actor, w)).sources.find((s) => s.id === publishedId);
+  expect((await copyView(a))?.can_manage_visibility).toBe(true);
+  expect((await copyView(peer))?.can_manage_visibility).toBe(false);
+  await expect(command(peer, w, visibility(publishedId, 1))).rejects.toThrow(
+    "DOCUMENT_VISIBILITY_DENIED",
+  );
+  await exec(w, visibility(publishedId, 1));
+  await expect(readDocument(peer, w, publishedId)).rejects.toThrow(
+    "SOURCE_NOT_FOUND",
+  );
+  expect(
+    (
+      await readDocument(a, personal, String(independent.sourceId))
+    ).original_bytes.toString("base64"),
+  ).toBe(uploadInput.bytesBase64);
+  await exec(w, visibility(publishedId, 2, "document.restore"));
+  expect(
+    (await readDocument(peer, w, publishedId)).original_bytes.toString(
+      "base64",
+    ),
+  ).toBe(uploadInput.bytesBase64);
+  await expect(readDocument(a, w, id)).rejects.toThrow("SOURCE_NOT_FOUND");
   const privateFile = await exec(personal, uploadInput),
     privateId = String(privateFile.sourceId);
   await exec(personal, visibility(privateId, 1));

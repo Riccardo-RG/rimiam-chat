@@ -15,6 +15,28 @@ const fallbackInterpreter = configuredInterpreter();
 await runWorker(
   {
     async interpret(context) {
+      const decision = "@Miriam Native handoff decision ";
+      if (context.trigger.content.startsWith(decision)) {
+        return {
+          proposals: [],
+          needsMore: [],
+          response: {
+            mode: "respond",
+            text: "La proposta è pronta per la revisione.",
+            sourceIds: [context.trigger.id],
+          },
+          handoffs: [
+            {
+              kind: "project.propose",
+              summary: "Rivedi la proposta per la sessione di verifica",
+              suggestedText: "Teniamo la verifica il venerdì.",
+              target: null,
+              candidateIndex: null,
+              sourceIds: [context.trigger.id],
+            },
+          ],
+        };
+      }
       const prefix = "@Miriam Native handoff goal ";
       if (!context.trigger.content.startsWith(prefix))
         return fallbackInterpreter.interpret(context);

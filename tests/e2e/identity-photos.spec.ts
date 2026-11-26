@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import sharp from "sharp";
 import {
+  openWithSession,
   fillWorkspaceName,
   joinTestWorkspace,
   openAccountMenu,
@@ -221,7 +222,13 @@ test("editorial themes follow the device or explicit mode; personal and shared i
     await expect(
       people.getByRole("button", { name: "Apri la foto di Matteo Foto" }),
     ).toHaveCount(0);
-    await guest.goto("/");
+    await expect(
+      people
+        .getByRole("listitem")
+        .filter({ hasText: "Matteo Foto" })
+        .getByText("MF", { exact: true }),
+    ).toBeVisible();
+    await openWithSession(guest, "/");
     await guest.getByRole("button", { name: "Scrivi a un contatto" }).click();
     await guest
       .getByRole("button", { name: "Scrivi a Nora Foto", exact: true })

@@ -16,6 +16,8 @@ import {
   saveAssistantSettings,
 } from "../src/server/assistant-settings";
 import { assistantConnectionRevision } from "../src/server/assistant-connections";
+import { attentionView } from "../src/server/attention";
+import { askAboutMessage } from "../src/shared/miriam-address";
 import { saveAssistantSettingsSchema } from "../src/contracts/assistant-settings";
 
 afterAll(() => pool.end());
@@ -175,6 +177,117 @@ async function joined(owner: Person, other: Person, w: string) {
   );
   await acceptInvitation(other.id, invitation.token, true, other.session);
 }
+it("enforces shared rhythm for two people across reopening, even when custom instructions request every turn", async () => {
+  register();
+  const owner = await person(),
+    other = await person();
+  await pool.query("UPDATE \"user\" SET name='Giulia' WHERE id=$1", [other.id]);
+  const w = (await createWorkspace(owner.id, "Lancio", randomUUID())).id;
+  await joined(owner, other, w);
+  await save(owner, w, 0, local.id, "Emme", "Respond to every single message.");
+  const settings = await view(other, w);
+  expect(settings.canManage).toBe(false);
+  expect(settings.effectiveInstructions).toContain(
+    settings.defaultInstructions,
+  );
+  expect(settings.effectiveInstructions).toContain(
+    "Respond to every single message.",
+  );
+  let version = 0;
+  for (const mode of ["discreet", "collaborative", "proactive"] as const) {
+    if (mode !== "discreet") {
+      await execute(
+        other.id,
+        w,
+        randomUUID(),
+        { type: "attention.preference", mode, expectedVersion: version++ },
+        other.session,
+      );
+    }
+    expect((await attentionView(owner.id, w)).preference.mode).toBe(mode);
+    const cases = [
+      { content: "Ciao a tutti! 👋", occasion: "group_request", reply: false },
+      {
+        content: "Chi sa quale preventivo usare?",
+        occasion: "group_request",
+        reply: mode !== "discreet",
+      },
+      {
+        content: "@Giulia hai il preventivo?",
+        occasion: "group_request",
+        reply: false,
+      },
+      {
+        content: "Giulia, hai il preventivo?",
+        occasion: "group_request",
+        reply: false,
+      },
+      {
+        content: "Il preventivo scade prima della firma.",
+        occasion: "material_risk",
+        reply: mode === "proactive",
+      },
+      { content: "@Emme, ciao!", occasion: "other", reply: true },
+    ] as const;
+    const expected: string[] = [];
+    const handled: string[] = [];
+    for (const item of cases) {
+      const turn = await send(owner, w, item.content);
+      await processInterpretation(turn.interpretationId, {
+        async interpret(context) {
+          expect(context.collaborationMode).toBe(mode);
+          return {
+            occasion: item.occasion,
+            proposals: [],
+            needsMore: [],
+            response: {
+              mode: "respond",
+              text: "Risposta di prova",
+              sourceIds: [context.trigger.id],
+            },
+          };
+        },
+      });
+      handled.push(turn.messageId);
+      if (item.reply) expected.push(turn.messageId);
+    }
+    const fromCTA = await execute(
+      other.id,
+      w,
+      randomUUID(),
+      {
+        type: "message.send",
+        content: askAboutMessage,
+        reference: { kind: "source", id: handled[1], version: 1 },
+        quoteMessageId: handled[1],
+      },
+      other.session,
+    );
+    await processInterpretation(fromCTA.interpretationId, {
+      async interpret(c) {
+        expect(c.objectReference?.reference.id).toBe(handled[1]);
+        expect(c.replyOnlyToSource).toBe(true);
+        return {
+          proposals: [],
+          needsMore: [],
+          response: {
+            mode: "respond",
+            text: "Risposta alla citazione",
+            sourceIds: [c.trigger.id, handled[1]],
+          },
+        };
+      },
+    });
+    handled.push(fromCTA.messageId);
+    expected.push(fromCTA.messageId);
+    const chat = (await snapshot(other.id, w)).messages;
+    expect(
+      chat
+        .map((row) => row.reply_to_source_id)
+        .filter((id) => id && handled.includes(id)),
+    ).toEqual(expected);
+  }
+});
 it("keeps creator selections distinct per Workspace and personal account, with transactional creation and stale guards", async () => {
   register();
   const a = await person(),
@@ -365,6 +478,60 @@ it("blocks a changed destination before dispatch, blocks publication after resel
       )
     ).rowCount,
   ).toBe(0);
+});
+
+it("stops both members at the shared quota without falling back to a personal connection or paid default", async () => {
+  register();
+  vi.stubEnv("AI_MODE", "openai");
+  vi.stubEnv("AI_MODEL", "synthetic-model");
+  vi.stubEnv("OPENAI_API_KEY", "synthetic-key");
+  vi.stubEnv("AI_MAX_WORKSPACE_INVOCATIONS_PER_DAY", "1");
+  const creator = await person(),
+    contributor = await person();
+  const w = (await createWorkspace(creator.id, "Quota condivisa", randomUUID()))
+    .id;
+  await joined(creator, contributor, w);
+  await save(creator, w, 0, entry.id);
+  await save(contributor, undefined, 0, local.id);
+  const first = await send(contributor, w, "@Emme primo controllo");
+  const transport = vi.fn(async () =>
+    Response.json({
+      output: {
+        proposals: [],
+        needsMore: [],
+        response: {
+          mode: "respond",
+          text: "Controllato",
+          sourceIds: [first.messageId],
+        },
+      },
+    }),
+  );
+  vi.stubGlobal("fetch", transport);
+  await processInterpretation(first.interpretationId);
+  expect(transport).toHaveBeenCalledExactlyOnceWith(
+    new URL(entry.url),
+    expect.anything(),
+  );
+  const second = await send(creator, w, "@Emme secondo controllo");
+  await expect(processInterpretation(second.interpretationId)).rejects.toThrow(
+    "AI_USAGE_LIMIT_REACHED",
+  );
+  expect(transport).toHaveBeenCalledTimes(1);
+  expect(
+    (
+      await pool.query(
+        "SELECT COUNT(*)::int AS n FROM ai_invocation_admission WHERE workspace_id=$1",
+        [w],
+      )
+    ).rows[0].n,
+  ).toBe(1);
+  const state = await snapshot(contributor.id, w);
+  expect(
+    assistantRequestFailures(state.messages, state.interpretations).get(
+      second.messageId,
+    )?.reason,
+  ).toBe("usage");
 });
 it("rejects caller-supplied recipients, platform permissions and invalid display names", () => {
   const x = {

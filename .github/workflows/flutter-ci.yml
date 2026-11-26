@@ -1,0 +1,92 @@
+name: Flutter mobile
+
+on:
+  pull_request:
+    paths:
+      - 'mobile/**'
+      - 'src/contracts/**'
+      - 'src/shared/**'
+      - 'package*.json'
+      - '.github/workflows/flutter-ci.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'mobile/**'
+      - 'src/contracts/**'
+      - 'src/shared/**'
+      - 'package*.json'
+      - '.github/workflows/flutter-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: flutter-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mobile:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 55
+    env:
+      CI: 'true'
+      FLUTTER_SUPPRESS_ANALYTICS: 'true'
+      DART_SUPPRESS_ANALYTICS: 'true'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Check out the official Flutter 3.50.1 SDK
+        uses: actions/checkout@v6
+        with:
+          repository: flutter/flutter
+          ref: 3.50.1
+          path: .flutter-sdk
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Activate Flutter
+        shell: bash
+        run: |
+          test "$(git -C .flutter-sdk rev-parse HEAD)" = ae9b586f34a8443573f82ef57c3bf914a908cbf7
+          echo "$GITHUB_WORKSPACE/.flutter-sdk/bin" >> "$GITHUB_PATH"
+      - uses: actions/setup-node@v6
+        if: runner.os == 'Linux'
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Check the Web and mobile command catalog
+        if: runner.os == 'Linux'
+        run: |
+          npm ci
+          node --import tsx mobile/tool/sync_composer_actions.ts --check
+          node --import tsx mobile/tool/sync_ui_catalog.ts --check
+      - name: Install locked Dart dependencies
+        working-directory: mobile
+        run: flutter pub get --enforce-lockfile
+      - name: Analyze and test the mobile app
+        if: runner.os == 'Linux'
+        working-directory: mobile
+        run: |
+          dart analyze lib test tool
+          flutter test --no-pub
+      - name: Generate RIMIAM platform projects
+        working-directory: mobile
+        run: dart run tool/prepare_host.dart --app-id=com.rimiam.chat --output="$RUNNER_TEMP/rimiam-app"
+      - name: Resolve dependencies in the generated host
+        working-directory: ${{ runner.temp }}/rimiam-app
+        run: flutter pub get --enforce-lockfile
+      - name: Compile Android
+        if: runner.os == 'Linux'
+        working-directory: ${{ runner.temp }}/rimiam-app
+        run: flutter build apk --debug --no-pub
+      - name: Compile the iOS simulator app
+        if: runner.os == 'macOS'
+        working-directory: ${{ runner.temp }}/rimiam-app
+        run: |
+          export XCODE_XCCONFIG_FILE="$PWD/ios/Flutter/RimiamSimulatorSDK26.xcconfig"
+          flutter build ios --simulator --debug --no-pub

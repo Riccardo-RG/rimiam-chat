@@ -439,9 +439,8 @@
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  font-size: var(--type-caption);
-  font-weight: 400;
-  color: var(--muted);
+  color: var(--ink);
+  font-weight: 600;
 }
 .rowActions {
   justify-content: flex-end;
@@ -491,4 +490,32 @@
 }
 .list {
   container: library-list / inline-size;
+}
+
+button.favorite {
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+  min-width: 44px;
+  min-height: 44px;
+  background: transparent;
+  border-color: transparent;
+  border-radius: 50%;
+  color: var(--muted);
+}
+button.favorite[aria-pressed="true"] {
+  color: var(--accent);
+}
+button.favorite:hover {
+  background: var(--secondary-surface);
+}
+
+.savedReceipt {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.savedReceipt p {
+  margin: 0;
 }

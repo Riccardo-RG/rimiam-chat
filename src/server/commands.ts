@@ -52,10 +52,7 @@ import { recordMessageReference } from "./conversation-reference.ts";
 import { requestedWorkstreamTitle } from "../shared/workstream-intent.ts";
 import { recordProductAssistance } from "./product-assistance.ts";
 import { createConversationWorkstream } from "./conversation-workstreams.ts";
-import {
-  collaborationMode,
-  legacyAddressTargetsMember,
-} from "./participation.ts";
+import { collaborationMode, addressTargetsMember } from "./participation.ts";
 import {
   isAssistantAddress,
   isSourceQuestion,
@@ -635,15 +632,14 @@ export async function execute(
         // An imperative between people is ordinary Conversation in discreet mode.
         const called = isAssistantAddress(c.content, displayName);
         if (
-          (called &&
-            (await legacyAddressTargetsMember(
-              tx,
-              w,
-              actor,
-              c.content,
-              undefined,
-              displayName,
-            ))) ||
+          (await addressTargetsMember(
+            tx,
+            w,
+            actor,
+            c.content,
+            undefined,
+            displayName,
+          )) ||
           (!called && (await collaborationMode(tx, w)) === "discreet")
         ) {
           streamTitle = null;
@@ -1086,7 +1082,7 @@ async function apply(
       if (
         reminder &&
         c.clientTimeZone &&
-        !(await legacyAddressTargetsMember(
+        !(await addressTargetsMember(
           tx,
           w,
           actor,

@@ -1,0 +1,258 @@
+[
+  {
+    "id": "documents",
+    "label": "Apri il raccoglitore",
+    "englishLabel": "Open shared files",
+    "shortcuts": [
+      "/documenti",
+      "/file"
+    ],
+    "english": [
+      "/files",
+      "/documents"
+    ],
+    "keywords": "libreria raccolta artefatti allegati fonti pdf file condiviso Open shared files",
+    "needs": null
+  },
+  {
+    "id": "sketch",
+    "label": "Fai un disegno",
+    "englishLabel": "Draw a sketch",
+    "shortcuts": [
+      "/h",
+      "/disegna",
+      "/draw"
+    ],
+    "english": [
+      "/h",
+      "/draw"
+    ],
+    "keywords": "schizzo penna sketch draw drawing Draw a sketch",
+    "needs": "canContribute"
+  },
+  {
+    "id": "upload",
+    "label": "Carica un file",
+    "englishLabel": "Upload a file",
+    "shortcuts": [
+      "/carica"
+    ],
+    "english": [
+      "/upload"
+    ],
+    "keywords": "upload allega documento pdf Upload a file",
+    "needs": "canContribute"
+  },
+  {
+    "id": "research",
+    "label": "Prepara una ricerca sul web",
+    "englishLabel": "Research the web",
+    "shortcuts": [
+      "/ricerca"
+    ],
+    "english": [
+      "/research"
+    ],
+    "keywords": "internet fonti cerca online Research the web",
+    "needs": "canContribute"
+  },
+  {
+    "id": "analyze",
+    "label": "Prepara un’analisi con Emme",
+    "englishLabel": "Ask Emme for an analysis",
+    "shortcuts": [
+      "/analizza"
+    ],
+    "english": [
+      "/analyze"
+    ],
+    "keywords": "brief analisi lavoro emme Ask Emme for an analysis",
+    "needs": "canContribute"
+  },
+  {
+    "id": "work",
+    "label": "Da fare e promemoria",
+    "englishLabel": "Tasks and reminders",
+    "shortcuts": [
+      "/dafare",
+      "/lavoro"
+    ],
+    "english": [
+      "/tasks",
+      "/reminders"
+    ],
+    "keywords": "tasks lista compiti follow-up active work Tasks and reminders",
+    "needs": null
+  },
+  {
+    "id": "new-task",
+    "label": "Nuova attività",
+    "englishLabel": "New task",
+    "shortcuts": [
+      "/task"
+    ],
+    "english": [
+      "/task"
+    ],
+    "keywords": "attività crea nuovo compito New task",
+    "needs": "canContribute"
+  },
+  {
+    "id": "context",
+    "label": "Consulta il contesto",
+    "englishLabel": "Explore shared context",
+    "shortcuts": [
+      "/contesto"
+    ],
+    "english": [
+      "/context"
+    ],
+    "keywords": "Explore shared context",
+    "needs": null
+  },
+  {
+    "id": "questions",
+    "label": "Vedi le domande aperte",
+    "englishLabel": "Open questions",
+    "shortcuts": [
+      "/domande"
+    ],
+    "english": [
+      "/questions"
+    ],
+    "keywords": "questioni Open questions",
+    "needs": null
+  },
+  {
+    "id": "goal",
+    "label": "Apri l’obiettivo",
+    "englishLabel": "Open the goal",
+    "shortcuts": [
+      "/goal"
+    ],
+    "english": [
+      "/goal"
+    ],
+    "keywords": "Open the goal",
+    "needs": null
+  },
+  {
+    "id": "activity",
+    "label": "Apri attività e argomenti",
+    "englishLabel": "View activity and topics",
+    "shortcuts": [
+      "/attività"
+    ],
+    "english": [
+      "/activity",
+      "/topics"
+    ],
+    "keywords": "thread workstream View activity and topics",
+    "needs": null
+  },
+  {
+    "id": "ask-emme",
+    "label": "Chiedi a Emme",
+    "englishLabel": "Ask Emme",
+    "shortcuts": [
+      "/emme"
+    ],
+    "english": [
+      "/emme"
+    ],
+    "keywords": "ai aiuto assistente Ask Emme",
+    "needs": "canContribute"
+  },
+  {
+    "id": "invite",
+    "label": "Invita una persona",
+    "englishLabel": "Invite someone",
+    "shortcuts": [
+      "/invita"
+    ],
+    "english": [
+      "/invite"
+    ],
+    "keywords": "contatti partecipanti Invite someone",
+    "needs": "canInvite"
+  },
+  {
+    "id": "people",
+    "label": "Vedi le persone",
+    "englishLabel": "View people",
+    "shortcuts": [
+      "/persone"
+    ],
+    "english": [
+      "/people"
+    ],
+    "keywords": "membri View people",
+    "needs": null
+  },
+  {
+    "id": "calendar",
+    "label": "Apri il calendario",
+    "englishLabel": "Open calendar",
+    "shortcuts": [
+      "/calendario"
+    ],
+    "english": [
+      "/calendar"
+    ],
+    "keywords": "Open calendar",
+    "needs": null
+  },
+  {
+    "id": "email",
+    "label": "Apri la posta",
+    "englishLabel": "Open email",
+    "shortcuts": [
+      "/email"
+    ],
+    "english": [
+      "/email"
+    ],
+    "keywords": "mail gmail Open email",
+    "needs": null
+  },
+  {
+    "id": "notifications",
+    "label": "Gestisci le notifiche",
+    "englishLabel": "Manage notifications",
+    "shortcuts": [
+      "/notifiche"
+    ],
+    "english": [
+      "/notifications"
+    ],
+    "keywords": "Manage notifications",
+    "needs": null
+  },
+  {
+    "id": "feedback",
+    "label": "Apri i feedback beta",
+    "englishLabel": "Open beta feedback",
+    "shortcuts": [
+      "/feedback"
+    ],
+    "english": [
+      "/feedback"
+    ],
+    "keywords": "Open beta feedback",
+    "needs": null
+  },
+  {
+    "id": "guide",
+    "label": "Leggi la guida",
+    "englishLabel": "Read the guide",
+    "shortcuts": [
+      "/guida"
+    ],
+    "english": [
+      "/guide",
+      "/help"
+    ],
+    "keywords": "help istruzioni Read the guide",
+    "needs": null
+  }
+]

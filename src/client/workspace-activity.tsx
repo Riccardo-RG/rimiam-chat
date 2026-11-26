@@ -1,4 +1,5 @@
 "use client";
+import { FilePreviewBody } from "./file-preview";
 import { useUiLanguage } from "./ui-language";
 
 import { useEffect, useState } from "react";
@@ -151,7 +152,11 @@ export function ReferenceInspector({
   workspace: string;
   actor: string;
   reference: ConversationReference;
-  ask: (reference: ConversationReference, title: string) => void;
+  ask: (
+    reference: ConversationReference,
+    title: string,
+    displayVersion?: number,
+  ) => void;
   open: (panel: string) => void;
   inspect: (reference: ConversationReference) => void;
 }) {
@@ -205,6 +210,14 @@ export function ReferenceInspector({
           : uiText("Dettagli del riferimento")}
       </p>
       <h2>{detail.event?.title ?? detail.title}</h2>
+      {reference.kind === "source" &&
+        detail.provenance.sourceKind === "document" &&
+        !detail.provenance.withdrawn && (
+          <FilePreviewBody
+            path={`/api/v1/workspaces/${workspace}/source-file?id=${reference.id}`}
+            original={`/api/workspaces/${workspace}/sources/${reference.id}?preview=1`}
+          />
+        )}
       <p className="reference-qualification">
         {detail.event?.qualification ?? detail.qualification}
       </p>
@@ -235,7 +248,17 @@ export function ReferenceInspector({
           </p>
         </details>
       )}
-      <button onClick={() => ask(detail.reference, detail.title)}>
+      <button
+        onClick={() =>
+          ask(
+            detail.reference,
+            detail.title,
+            typeof detail.provenance.documentVersion === "number"
+              ? detail.provenance.documentVersion
+              : undefined,
+          )
+        }
+      >
         {uiText("Chiedi a Emme su questo passaggio")}
       </button>
       <button
@@ -265,8 +288,10 @@ export function ReferenceInspector({
           {reference.kind === "active_work"
             ? uiText("Revisione dell’evento di lavoro")
             : uiText("Versione")}{" "}
-          {detail.reference.version} ·{" "}
-          {new Date(detail.createdAt).toLocaleString(uiLocale)}
+          {typeof detail.provenance.documentVersion === "number"
+            ? detail.provenance.documentVersion
+            : detail.reference.version}{" "}
+          · {new Date(detail.createdAt).toLocaleString(uiLocale)}
         </p>
         <p className="hint">
           {uiText("Identità: ")}
