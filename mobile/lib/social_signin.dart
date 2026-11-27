@@ -51,14 +51,12 @@ class SocialSignIn {
       },
     );
     try {
-      if (!await open(uri))
-        throw const FormatException(
-          'Impossibile aprire il browser di sistema.',
-        );
-    } catch (_) {
-      await clear();
-      rethrow;
+      if (await open(uri)) return;
+    } on Exception {
+      // The platform launcher can throw instead of returning false.
     }
+    await clear();
+    throw const FormatException('Impossibile aprire il browser di sistema.');
   }
 
   Future<bool> complete(Uri uri) async {

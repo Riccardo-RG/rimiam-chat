@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
+import 'package:flutter/services.dart' show PlatformException;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
 
@@ -12,6 +14,9 @@ import '../lib/social_signin.dart';
 class _Api extends RimiamApi {
   _Api() : super(Uri.parse('https://rimiam.example.test'));
   final calls = <Map<String, dynamic>>[];
+  final signIn = Completer<void>();
+  @override
+  Future<void> login(String email, String password) => signIn.future;
   @override
   Future<Map<String, dynamic>> get(String path) async {
     expect(path, '/api/v1/native/social/providers');
@@ -93,9 +98,20 @@ void main() {
         'email': 'giulia@example.test',
         'password': 'Una-password-fittizia',
       });
+      expect(find.text('Verifica il tuo indirizzo'), findsOneWidget);
+      expect(find.widgetWithText(TextField, 'Password'), findsNothing);
       await tester.ensureVisible(find.text('Reinvia email di verifica'));
       await tester.tap(find.text('Reinvia email di verifica'));
       await tester.pumpAndSettle();
+      await tester.tap(find.text('Torna all’accesso'));
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<TextField>(find.widgetWithText(TextField, 'Email'))
+            .controller!
+            .text,
+        'giulia@example.test',
+      );
       await tester.tap(find.text('Password dimenticata?'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Invia email di recupero'));
@@ -107,6 +123,79 @@ void main() {
       expect(find.textContaining('riceverai un’email'), findsOneWidget);
     },
   );
+
+  testWidgets(
+    'a rejected sign-in reveals the error on a phone and keeps the form available',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(390, 590);
+      addTearDown(tester.view.reset);
+      final api = _Api();
+      addTearDown(api.close);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ListView(
+              children: [
+                AccountEntry(
+                  api: api,
+                  vault: _Vault(),
+                  callbacks: const Stream.empty(),
+                  changeInstallation: () {},
+                  authenticated: () async => fail('Invalid sign-in'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Email'),
+        'giulia@example.test',
+      );
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Password'),
+        'incorrect',
+      );
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pump();
+      expect(find.byType(LinearProgressIndicator), findsOneWidget);
+      api.signIn.completeError(ApiError(401, 'INVALID_EMAIL_OR_PASSWORD'));
+      await tester.pumpAndSettle();
+      expect(
+        find.text('Controlla email e password.').hitTestable(),
+        findsOneWidget,
+      );
+      expect(
+        tester
+            .widget<FilledButton>(find.widgetWithText(FilledButton, 'Accedi'))
+            .onPressed,
+        isNotNull,
+      );
+    },
+  );
+
+  test('a failed system browser launch explains the failure and clears the attempt', () async {
+    final api = _Api(), vault = _Vault();
+    addTearDown(api.close);
+    final social = SocialSignIn(
+      api,
+      vault,
+      open: (_) async => throw PlatformException(code: 'launch_failed'),
+    );
+    await expectLater(
+      social.start('google'),
+      throwsA(
+        isA<FormatException>().having(
+          (error) => accountIssue(error),
+          'feedback',
+          'Impossibile aprire il browser di sistema.',
+        ),
+      ),
+    );
+    expect(vault.data, isEmpty);
+  });
 
   test('the same installation completes a persisted browser login only for its original state and callback', () async {
     final api = _Api(), vault = _Vault();

@@ -1,18 +1,23 @@
 import 'ui_language.dart';
 
 import 'dart:async';
+import 'dart:io';
 
 import 'package:app_links/app_links.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:flutter/services.dart' show PlatformException;
 
 import 'api.dart';
 import 'chat_journal.dart';
 import 'social_signin.dart';
 
-enum _Mode { signIn, register, recover }
+enum _Mode { signIn, register, recover, verify }
 
 String accountIssue(Object e) {
   if (e is FormatException) return e.message;
+  if (e is PlatformException) {
+    return 'Accesso non salvato in modo sicuro sul dispositivo. Riprova.';
+  }
   if (e is ApiError) {
     if (e.status == 429)
       return 'Troppi tentativi. Attendi un minuto e riprova.';
@@ -23,7 +28,12 @@ String accountIssue(Object e) {
     if (e.status == 401 || e.code == 'INVALID_EMAIL_OR_PASSWORD')
       return 'Controlla email e password.';
   }
-  return 'Impossibile completare la richiesta. Controlla la connessione e riprova.';
+  if (e is SocketException ||
+      e is TimeoutException ||
+      e is HandshakeException) {
+    return 'Impossibile completare la richiesta. Controlla la connessione e riprova.';
+  }
+  return 'Accesso non riuscito. Riprova tra poco; se il problema continua, usa il recupero account.';
 }
 
 class AccountEntry extends StatefulWidget {
@@ -58,6 +68,16 @@ class _AccountEntryState extends State<AccountEntry> {
   _Mode _mode = _Mode.signIn;
   List<String> _providers = [];
   String _message = '';
+  bool _isError = false;
+  final _feedbackKey = GlobalKey();
+
+  void _revealFeedback() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final target = _feedbackKey.currentContext;
+      if (mounted && target != null)
+        Scrollable.ensureVisible(target, alignment: 0.45);
+    });
+  }
 
   @override
   void initState() {
@@ -105,7 +125,12 @@ class _AccountEntryState extends State<AccountEntry> {
       return;
     }
     await _run(() async {
-      if (!await _social.complete(uri) || !mounted) return;
+      try {
+        if (!await _social.complete(uri) || !mounted) return;
+      } catch (_) {
+        if (mounted) setState(() => _waiting = false);
+        rethrow;
+      }
       _waiting = false;
       await widget.authenticated();
     });
@@ -113,17 +138,25 @@ class _AccountEntryState extends State<AccountEntry> {
 
   Future<void> _run(Future<void> Function() fn) async {
     if (!mounted || _busy) return;
+    FocusManager.instance.primaryFocus?.unfocus();
     setState(() {
       _busy = true;
       _message = '';
+      _isError = false;
     });
     try {
       await fn();
     } catch (e) {
-      if (mounted) setState(() => _message = accountIssue(e));
+      if (mounted) {
+        setState(() {
+          _message = accountIssue(e);
+          _isError = true;
+        });
+      }
     } finally {
       if (mounted) {
         setState(() => _busy = false);
+        if (_message.isNotEmpty || _mode == _Mode.verify) _revealFeedback();
         final queued = _queuedCallback;
         _queuedCallback = null;
         if (queued != null) unawaited(_callback(queued));
@@ -136,6 +169,7 @@ class _AccountEntryState extends State<AccountEntry> {
     setState(() {
       _mode = mode;
       _message = '';
+      _isError = false;
       _showPassword = false;
       _password.clear();
     });
@@ -183,10 +217,13 @@ class _AccountEntryState extends State<AccountEntry> {
       throw const FormatException('Richiesta non confermata. Riprova.');
     if (mounted)
       setState(() {
-        _mode = _Mode.signIn;
+        final registering = !resend && _mode == _Mode.register;
+        _mode = registering || (resend && _mode == _Mode.verify)
+            ? _Mode.verify
+            : _Mode.signIn;
         _password.clear();
         _showPassword = false;
-        _message = 'Se la richiesta è applicabile, riceverai un’email con il prossimo passo.';
+        _message = registering ? '' : 'Se la richiesta è applicabile, riceverai un’email con il prossimo passo.';
       });
   });
 
@@ -196,6 +233,7 @@ class _AccountEntryState extends State<AccountEntry> {
       _Mode.signIn => 'Accedi',
       _Mode.register => 'Crea account',
       _Mode.recover => 'Recupera password',
+      _Mode.verify => 'Verifica il tuo indirizzo',
     });
     return AutofillGroup(
       child: Column(
@@ -211,70 +249,110 @@ class _AccountEntryState extends State<AccountEntry> {
           ),
           Text(title, style: Theme.of(context).textTheme.headlineSmall),
           const SizedBox(height: 12),
-          if (_mode == _Mode.register)
-            TextField(
-              controller: _name,
-              enabled: !_busy,
-              maxLength: 120,
-              autofillHints: const [AutofillHints.name],
-              textInputAction: TextInputAction.next,
-              decoration: InputDecoration(
-                labelText: uiText(context, 'Nome'),
-                counterText: '',
+          if (_mode == _Mode.verify) ...[
+            Text(
+              uiText(
+                context,
+                'Controlla la tua email: per entrare, apri il link di verifica. Se avevi già un account con questo indirizzo, accedi o recupera la password. Controlla anche lo spam.',
               ),
+              key: _message.isEmpty && !_busy ? _feedbackKey : null,
             ),
-          TextField(
-            controller: _email,
-            enabled: !_busy,
-            keyboardType: TextInputType.emailAddress,
-            autofillHints: const [AutofillHints.username],
-            autocorrect: false,
-            textInputAction: _mode == _Mode.recover
-                ? TextInputAction.done
-                : TextInputAction.next,
-            onSubmitted: _mode == _Mode.recover ? (_) => _submit() : null,
-            decoration: InputDecoration(labelText: uiText(context, 'Email')),
-          ),
-          if (_mode != _Mode.recover)
+            const SizedBox(height: 12),
+            FilledButton(
+              onPressed: _busy ? null : () => _changeMode(_Mode.signIn),
+              child: Text(uiText(context, 'Torna all’accesso')),
+            ),
+            TextButton(
+              onPressed: _busy ? null : () => _submit(resend: true),
+              child: Text(uiText(context, 'Reinvia email di verifica')),
+            ),
+          ] else ...[
+            if (_mode == _Mode.register)
+              TextField(
+                controller: _name,
+                enabled: !_busy,
+                maxLength: 120,
+                autofillHints: const [AutofillHints.name],
+                textInputAction: TextInputAction.next,
+                decoration: InputDecoration(
+                  labelText: uiText(context, 'Nome'),
+                  counterText: '',
+                ),
+              ),
             TextField(
-              controller: _password,
+              controller: _email,
               enabled: !_busy,
-              obscureText: !_showPassword,
-              enableSuggestions: false,
+              keyboardType: TextInputType.emailAddress,
+              autofillHints: const [AutofillHints.username],
               autocorrect: false,
-              autofillHints: [
-                _mode == _Mode.register
-                    ? AutofillHints.newPassword
-                    : AutofillHints.password,
-              ],
-              textInputAction: TextInputAction.done,
-              onSubmitted: (_) => _submit(),
-              decoration: InputDecoration(
-                labelText: uiText(context, 'Password'),
-                helperText: _mode == _Mode.register
-                    ? uiText(context, 'Da 12 a 128 caratteri')
-                    : null,
-                suffixIcon: IconButton(
-                  tooltip: _showPassword
-                      ? uiText(context, 'Nascondi password')
-                      : uiText(context, 'Mostra password'),
-                  onPressed: () =>
-                      setState(() => _showPassword = !_showPassword),
-                  icon: Icon(
-                    _showPassword ? Icons.visibility_off : Icons.visibility,
+              textInputAction: _mode == _Mode.recover
+                  ? TextInputAction.done
+                  : TextInputAction.next,
+              onSubmitted: _mode == _Mode.recover ? (_) => _submit() : null,
+              decoration: InputDecoration(labelText: uiText(context, 'Email')),
+            ),
+            if (_mode != _Mode.recover)
+              TextField(
+                controller: _password,
+                enabled: !_busy,
+                obscureText: !_showPassword,
+                enableSuggestions: false,
+                autocorrect: false,
+                autofillHints: [
+                  _mode == _Mode.register
+                      ? AutofillHints.newPassword
+                      : AutofillHints.password,
+                ],
+                textInputAction: TextInputAction.done,
+                onSubmitted: (_) => _submit(),
+                decoration: InputDecoration(
+                  labelText: uiText(context, 'Password'),
+                  helperText: _mode == _Mode.register
+                      ? uiText(context, 'Da 12 a 128 caratteri')
+                      : null,
+                  suffixIcon: IconButton(
+                    tooltip: _showPassword
+                        ? uiText(context, 'Nascondi password')
+                        : uiText(context, 'Mostra password'),
+                    onPressed: () =>
+                        setState(() => _showPassword = !_showPassword),
+                    icon: Icon(
+                      _showPassword ? Icons.visibility_off : Icons.visibility,
+                    ),
                   ),
                 ),
               ),
+            const SizedBox(height: 16),
+            FilledButton(
+              onPressed: _busy || _waiting ? null : () => _submit(),
+              child: Text(
+                _mode == _Mode.recover
+                    ? uiText(context, 'Invia email di recupero')
+                    : title,
+              ),
             ),
-          const SizedBox(height: 16),
-          FilledButton(
-            onPressed: _busy || _waiting ? null : () => _submit(),
-            child: Text(
-              _mode == _Mode.recover
-                  ? uiText(context, 'Invia email di recupero')
-                  : title,
+          ],
+          if (_busy)
+            Semantics(
+              liveRegion: true,
+              child: LinearProgressIndicator(
+                semanticsLabel: uiText(context, 'Attendi…'),
+              ),
             ),
-          ),
+          if (_message.isNotEmpty)
+            Padding(
+              key: _feedbackKey,
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              child: Semantics(
+                liveRegion: true,
+                child: Text(
+                  uiText(context, _message),
+                  style: _isError
+                      ? TextStyle(color: Theme.of(context).colorScheme.error)
+                      : null,
+                ),
+              ),
+            ),
           if (_mode == _Mode.signIn) ...[
             for (final p in _providers)
               OutlinedButton(
@@ -319,14 +397,11 @@ class _AccountEntryState extends State<AccountEntry> {
                 child: Text(uiText(context, 'Reinvia email di verifica')),
               ),
             ],
-          ] else
+          ] else if (_mode != _Mode.verify)
             TextButton(
               onPressed: _busy ? null : () => _changeMode(_Mode.signIn),
               child: Text(uiText(context, 'Torna all’accesso')),
             ),
-          if (_busy) const LinearProgressIndicator(),
-          if (_message.isNotEmpty)
-            Semantics(liveRegion: true, child: Text(uiText(context, _message))),
         ],
       ),
     );
