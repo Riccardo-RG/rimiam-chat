@@ -1,39 +1,43 @@
 # Pubblicare il Web di RIMIAM su Railway dal Mac
 
-Questa guida usa il pacchetto locale delle correzioni del 21 novembre 2026. Aggiorna il servizio Web della beta esistente. Database e worker sono già operativi; questo rilascio usa lo schema 075 già in produzione. Per distribuire l’app nativa servono build iOS e Android separate.
+Usa questa procedura per un rilascio del solo servizio Web. Parti dal commit verificato e approvato. Se cambia anche il worker o ci sono migrazioni da applicare, segui il [runbook di rilascio](RELEASE_RUNBOOK.md) per backup, ripristino di prova e ordine di aggiornamento dei servizi. Il [registro Railway](RAILWAY_DEPLOYMENT.md#current-setup) indica quale versione è stata pubblicata.
 
-### 1. Prepara il pacchetto
+### 1. Prepara il commit
 
-Apri Terminale nella radice della copia locale che contiene il pacchetto e incolla questo blocco. L’archivio si trova in `dist/releases` sul Mac dove è stato preparato e viene escluso da Git. Il blocco lo verifica e lo estrae in una cartella temporanea fuori dal repository. Prosegui soltanto se il controllo restituisce `rimiam-web-raccolta.tar.gz: OK` e la preparazione termina con «Pacchetto pronto».
+Apri il Terminale nella radice del repository. Il blocco chiede lo SHA del commit e prepara in una directory temporanea i soli file tracciati a quella revisione. Controlla lo SHA e il titolo stampati prima di procedere. Le modifiche locali e il file `.env` del Mac restano fuori dal pacchetto.
 
 ```sh
-cd dist/releases/2026-11-21-web-raccolta &&
-shasum -a 256 -c SHA256SUMS &&
+printf 'SHA del commit da pubblicare: ' &&
+IFS= read -r rimiam_ref &&
+test -n "$rimiam_ref" &&
+rimiam_sha="$(git rev-parse --verify --end-of-options "${rimiam_ref}^{commit}")" &&
+git show --no-patch --format='%H %s' "$rimiam_sha" &&
 rimiam_upload_dir="$(mktemp -d)" &&
-tar -xzf rimiam-web-raccolta.tar.gz -C "$rimiam_upload_dir" &&
-cd "$rimiam_upload_dir" &&
-test -f Dockerfile &&
-echo "Pacchetto pronto"
+git archive --format=tar -o "$rimiam_upload_dir/source.tar" "$rimiam_sha" &&
+mkdir "$rimiam_upload_dir/source" &&
+tar -xf "$rimiam_upload_dir/source.tar" -C "$rimiam_upload_dir/source" &&
+cd "$rimiam_upload_dir/source" &&
+test -f Dockerfile && test ! -e .env && echo "Pacchetto pronto"
 ```
 
-### 2. Accedi e pubblica
+### 2. Pubblica il Web
 
-Nella stessa finestra digita `railway login`. Completa l’accesso nel browser con l’account Railway che gestisce RIMIAM. Dalla cartella preparata al punto 1 esegui `railway link` e seleziona il progetto **rimiam-chat**, l’ambiente **production** e il servizio **rimiam-chat-web**. Controlla con `railway status` che la destinazione sia corretta. Il comando seguente carica il pacchetto su quel servizio.
+Nella stessa finestra esegui `railway login` se la sessione è scaduta. Con `railway link` scegli il progetto **rimiam-chat**, l’ambiente **production** e il servizio **rimiam-chat-web**. Controlla la destinazione con `railway status`. Annota l’identificativo restituito dall’[endpoint della versione](https://rimiam-chat-web-production.up.railway.app/api/release) prima del caricamento.
 
 ```sh
-test -n "$rimiam_upload_dir" && test "$PWD" = "$rimiam_upload_dir" && test -f Dockerfile &&
+test -n "$rimiam_sha" && test "$PWD" = "$rimiam_upload_dir/source" && test -f Dockerfile &&
 railway up --detach --environment production --service rimiam-chat-web \
-  --message "Raccolta, partecipanti e navigazione personale"
+  --message "Web $rimiam_sha"
 ```
 
-Apri il collegamento al deployment stampato dal comando. La conferma di caricamento indica che Railway ha ricevuto i file. Attendi lo stato **Success**. Se compare **Failed**, apri il primo errore nei log di build o di avvio e conserva il link del deployment. La funzione «Redeploy» del vecchio rilascio ripubblica il vecchio pacchetto. [Guida Railway al caricamento](https://docs.railway.com/cli/up)
+Apri il deployment indicato dal comando e attendi **Success**. Il caricamento riuscito conferma soltanto la ricezione dei file. In caso di errore, consulta i log di build o di avvio. [Comando railway up](https://docs.railway.com/cli/up)
 
-### 3. Controlla la versione online
+### 3. Verifica il rilascio
 
-1. Apri lo [stato del servizio](https://rimiam-chat-web-production.up.railway.app/api/health) e verifica che risponda. Su [versione Web](https://rimiam-chat-web-production.up.railway.app/api/release) deve comparire un identificativo diverso da quello precedente al rilascio (alle 01:45 del 21 novembre era `99ca1391-1bdf-43ab-8df3-814c044efacc`).
-2. Apri la [beta](https://rimiam-chat-web-production.up.railway.app/) sul telefono. Da **Tu ed Emme** usa il menu laterale per aprire **Oggi**. In uno spazio, apri **Condivisi**, filtra i collegamenti e verifica che un URL lungo resti nella larghezza dello schermo.
-3. Quando hai finito, puoi chiudere la sessione CLI con `railway logout`. Il servizio continua a funzionare. [Guida per provare dal telefono](PROVA_IPHONE.md)
+1. Controlla che lo [stato del servizio](https://rimiam-chat-web-production.up.railway.app/api/health) restituisca HTTP 200 e che l’[identificativo della versione](https://rimiam-chat-web-production.up.railway.app/api/release) sia cambiato rispetto a quello annotato.
+2. Apri la [beta](https://rimiam-chat-web-production.up.railway.app/) con un account di prova ed esegui il percorso interessato dalla modifica. Verifica anche il ritorno su una scheda già aperta.
+3. Registra commit, identificativo servito ed esito. Se hai aperto una sessione CLI temporanea, chiudila con `railway logout`. Revoca un eventuale token temporaneo usato per quel rilascio.
 
 ### Quale versione arriva sul telefono
 
-Chi usa RIMIAM da Safari, Chrome o dall’icona della Web app sulla Home riceve il rilascio Railway. L’app React Native installata usa un proprio pacchetto. Il percorso di distribuzione per i tester è una build iOS firmata su TestFlight oppure una build Android firmata distribuita su un canale di test. [Avvio e verifica dei client nativi](MULTICLIENT.md#run-the-mobile-app)
+Safari, Chrome e l’icona della Web app sulla Home ricevono il rilascio Web. L’app Flutter installata si aggiorna con una nuova build iOS o Android. Su iPhone puoi provarla dal Mac con Xcode oppure riceverla via TestFlight quando è distribuita ai tester. [Guida iPhone](PROVA_IPHONE.md) · [Build Flutter per iOS e Android](MULTICLIENT.md#run-the-mobile-app)

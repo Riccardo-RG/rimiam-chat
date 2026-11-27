@@ -1,13 +1,14 @@
 # Railway deployment preparation
 
-Updated **2026-11-21**. Use the [release runbook](RELEASE_RUNBOOK.md) for recovery/activation and the [external-service manifest](DEPLOY_EXTERNAL_SERVICES.md) for optional capabilities.
+Updated **2026-11-27**. Use the [release runbook](RELEASE_RUNBOOK.md) for recovery/activation and the [external-service manifest](DEPLOY_EXTERNAL_SERVICES.md) for optional capabilities.
 
 ## Current setup
 
-The hosted Web client and its worker share PostgreSQL. The next Web candidate has a separate manual upload and verification guide. [Web beta](https://rimiam-chat-web-production.up.railway.app/) · [Manual release guide](DEPLOY_WEB_MANUALE.md)
+The hosted Web client and its worker share PostgreSQL. The manual guide covers preparing a reviewed commit for a Web-only upload. [Web beta](https://rimiam-chat-web-production.up.railway.app/) · [Manual release guide](DEPLOY_WEB_MANUALE.md)
 
 | Date in 2026 | Scope and verification |
 | --- | --- |
+| 26 November | Web and worker deployed from [e58b07d](https://github.com/Riccardo-RG/rimiam-chat/commit/e58b07d2650cb7112015c1ff493dba7d7c4e9639). The pre-migration backup restored successfully in isolation. Production reached `076_library_copy_visibility.sql` with zero missing initial visibility events. The worker reported ready queues. Web health returned 200 and anonymous workspace and personal listings returned 401. The served release ID was `9ac7c22f-642c-4ffe-bb0f-38a20e56c267`. Mobile distribution is separate. |
 | 21 November | Web and worker ran through migration 075. The worker reported queue readiness. The signed-in Home showed conversations, personal tools and the daily agenda in order. Public health returned 200 and private lists returned 401 to anonymous requests. The release endpoint served its identifier with caching disabled. A database archive passed a complete read. An isolated restore and physical iPhone acceptance remain open. Native builds were tested locally. [Physical iPhone guide](PROVA_IPHONE.md) |
 | 20 November | The Studio Web release passed responsive login and registration checks. Profile controls shipped through migration 063, followed by Google identity and calendar integration through 072. The Google handoff requested identity scopes for sign-in. Calendar access was in external testing. Completing consent and reading a real private event remained pending, as did Microsoft registration. A later Web release updated touch controls, the Home calendar entry and assistant settings. The Safari toolbar evidence uses synthetic accounts on a simulator. [Responsive checks](../design/reviews/2026-11-20-studio/README.md) · [Published login](../design/reviews/2026-11-20-mobile-check/railway-login.jpg) · [Safari toolbar](../design/reviews/2026-11-20-mobile-check/safari-13-pro-toolbar.webp) · [Google setup](GOOGLE_INTEGRATIONS.md#self-hosting-with-google) |
 | 19 November | Web and worker shipped the agenda, direct conversation and personal utility contracts through migration 062. Pre- and post-migration workspace and message counts matched. Signed-in Home, protected API routes, health and worker readiness were checked. |

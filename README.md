@@ -6,9 +6,9 @@
 
 People and Emme work in a shared Conversation. The server preserves sources, accepted information, decisions, tasks and work results as distinct, inspectable records. A model can propose a change; it cannot turn its interpretation into another person's consent or permission to act.
 
-**Web beta · 21 November 2026.** The latest recorded Railway release runs the Web app and worker through database migration 075. The Home screen opens with conversations, followed by personal tools and the daily agenda. Two test accounts have exchanged messages, received an invitation by email and checked a contextual reply from Emme. [Open the beta](https://rimiam-chat-web-production.up.railway.app/) · [Deployment record](docs/development/RAILWAY_DEPLOYMENT.md#current-setup).
+**Web beta · 26 November 2026.** Railway runs the Web app and worker from commit `e58b07d` with database migration 076. The release check confirmed worker readiness and authenticated access boundaries. [Open the beta](https://rimiam-chat-web-production.up.railway.app/) · [Deployment record](docs/development/RAILWAY_DEPLOYMENT.md#current-setup).
 
-**In this checkout.** The next release candidate adds a direct route to the daily agenda and keeps workspace navigation available in personal tools. In a populated space, you can browse shared screenshots, files and links by date or type and return to the original message. These changes have been tested locally. The Flutter app targets iOS and Android. Distribution to testers and physical-device acceptance are pending. [Current status and evidence](docs/development/STATUS.md) · [Technical case study](docs/development/PORTFOLIO_CASE_STUDY.md).
+**Clients.** On the Web, you can open the daily agenda, browse shared files by date or type and return to the original message. The iOS and Android app uses Flutter and connects to the same installation. You can install a development build on your iPhone from a Mac. Signed distribution to testers and physical-device acceptance are pending. [iPhone guide](docs/development/PROVA_IPHONE.md) · [Verification by platform](docs/development/MULTICLIENT.md) · [Technical case study](docs/development/PORTFOLIO_CASE_STUDY.md).
 
 ## What you can explore
 

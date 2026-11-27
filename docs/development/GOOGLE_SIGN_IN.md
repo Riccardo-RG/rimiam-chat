@@ -21,7 +21,7 @@ Google setup references checked on 2026-09-29: [Better Auth Google provider](htt
 
 ## Installed iOS and Android apps
 
-The React Native client discovers identity providers from the selected installation at `GET /api/v1/native/social/providers`. A fork supplies its own HTTPS origin and OAuth client on the server. The user selects their own Google or Microsoft identity in the system browser. Both providers return to the existing HTTPS **Web** callback. The installed app and the provider do not need a shared client secret.
+The [Flutter sign-in screen](../../mobile/lib/account_entry.dart) discovers identity providers from the selected installation at `GET /api/v1/native/social/providers`. A fork supplies its own HTTPS origin and OAuth client on the server. The user selects their own Google or Microsoft identity in the system browser. Both providers return to the existing HTTPS **Web** callback. The installed app and the provider do not need a shared client secret.
 
 A successful callback can redirect to `com.rimiam.chat:/oauth/complete` with a 90-second single-use code. The independent app session is issued only after the device exchanges the code and its original PKCE verifier at the same installation. The grant expires or becomes unusable if the browser session or account loses eligibility. The app stores its pending verifier and resulting session in protected device storage. If an exchange response is lost, restart sign-in. Signing out of the app revokes its own session. Apply migration 074 on the server before distributing clients that use this flow.
 

@@ -4,7 +4,7 @@
 
 Richiesta: ricostruire il prodotto esistente per la successiva analisi con l’utente, ChatGPT e Claude Design. Unico output di questo lavoro: questo documento. Nessun cambiamento a codice, ADR, provider o GitHub.
 
-Per il frontend mobile attuale, consulta la guida React Native. Le osservazioni sui client mobili di questo audit riguardano il codice della revisione indicata sopra. [Guida React Native](../development/MULTICLIENT.md).
+Le osservazioni mobili si riferiscono alla revisione di settembre indicata qui sopra. Per il client attuale e le prove su iOS e Android, consulta la [guida Flutter](../development/MULTICLIENT.md).
 
 ## Come leggere l’evidenza
 
